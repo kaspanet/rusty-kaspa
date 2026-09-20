@@ -114,7 +114,7 @@ setDefaultStorageFolder(storageFolder);
                     //console.log("transactions[data.binding.id]", data.binding.id, transactions[data.binding.id], transactions)
                     // console.log("record.hasAddress :receive:", data.hasAddress(firstAccount.receiveAddress));
                     // console.log("record.hasAddress :change:", data.hasAddress(firstAccount.changeAddress));
-                    // console.log("record.data", data.data)
+                    console.log("record.data", type, data)
                     // console.log("record.blockDaaScore", data.blockDaaScore)
                     if (data.type != "change"){
                         //transactions[data.binding.id].set(data.id+"", data.serialize());
@@ -123,23 +123,26 @@ setDefaultStorageFolder(storageFolder);
                 break;
                 case "reorg":
                     //transactions[data.binding.id].delete(data.id+"");
-                    log_transactions(data.binding.id)
+                    console.log("reorg data", data)
+                    //log_transactions(data.binding.id)
                 break;
                 case "balance":
                     balance[data.id] = data.balance;
-                    log_title("Balance");
+                    
                     let list = [];
                     Object.keys(balance).map(id=>{
+                        let b = balance[id];
                         list.push({
                             Account: id.substring(0, 5)+"...",
-                            Mature: sompiToKaspaString(data.balance.mature),
-                            Pending: sompiToKaspaString(data.balance.pending),
-                            Outgoing: sompiToKaspaString(data.balance.outgoing),
-                            MatureUtxo: data.balance.matureUtxoCount,
-                            PendingUtxo: data.balance.pendingUtxoCount,
-                            StasisUtxo: data.balance.stasisUtxoCount
+                            Mature: sompiToKaspaString(b.mature),
+                            Pending: sompiToKaspaString(b.pending),
+                            Outgoing: sompiToKaspaString(b.outgoing),
+                            MatureUtxo: b.matureUtxoCount,
+                            PendingUtxo: b.pendingUtxoCount,
+                            StasisUtxo: b.stasisUtxoCount
                         })
                     })
+                    log_title("Balance");
                     console.table(list)
                     console.log("");
                 break;
@@ -199,27 +202,32 @@ setDefaultStorageFolder(storageFolder);
 
         // Start wallet processing
         await wallet.start();
+        let accounts;
+        let firstAccount = {};
+        async function listAccount(){
+            // List accounts
+            accounts = await wallet.accountsEnumerate({});
+            firstAccount = accounts.accountDescriptors[0];
 
-        // List accounts
-        let accounts = await wallet.accountsEnumerate({});
-        let firstAccount = accounts.accountDescriptors[0];
+            //console.log("firstAccount:", firstAccount);
 
-        //console.log("firstAccount:", firstAccount);
+            // Activate Account
+            await wallet.accountsActivate({
+                accountIds:[firstAccount.accountId]
+            });
 
-        // Activate Account
-        await wallet.accountsActivate({
-            accountIds:[firstAccount.accountId]
-        });
+            log_title("Accounts");
+            accounts.accountDescriptors.forEach(a=>{
+                console.log(`Account: ${a.accountId}`);
+                console.log(`   Account type: ${a.kind.toString()}`);
+                console.log(`   Account Name: ${a.accountName}`);
+                console.log(`   Receive Address: ${a.receiveAddress}`);
+                console.log(`   Change Address: ${a.changeAddress}`);
+                console.log("")
+            });
+        }
 
-        log_title("Accounts");
-        accounts.accountDescriptors.forEach(a=>{
-            console.log(`Account: ${a.accountId}`);
-            console.log(`   Account type: ${a.kind.toString()}`);
-            console.log(`   Account Name: ${a.accountName}`);
-            console.log(`   Receive Address: ${a.receiveAddress}`);
-            console.log(`   Change Address: ${a.changeAddress}`);
-            console.log("")
-        });
+        await listAccount();
 
         // // Account sweep/compound transactions
         // let sweepResult = await wallet.accountsSend({
@@ -231,23 +239,35 @@ setDefaultStorageFolder(storageFolder);
         // Send kaspa to address
         let sendResult = await wallet.accountsSend({
             walletSecret,
+            // @ts-ignore
             accountId: firstAccount.accountId,
             priorityFeeSompi: kaspaToSompi("0.001"),
             destination:[{
+                // @ts-ignore
                 address: firstAccount.changeAddress,
-                amount: kaspaToSompi("1.5")
+                amount: kaspaToSompi("1.567")
             }]
         });
         console.log("sendResult", sendResult);
+
+        // @ts-ignore
+        log_transactions(firstAccount.accountId)
 
         // Transfer kaspa between accounts
         let transferResult = await wallet.accountsTransfer({
             walletSecret,
             sourceAccountId: firstAccount.accountId,
             destinationAccountId: firstAccount.accountId,
-            transferAmountSompi: kaspaToSompi("2.4"),
+            transferAmountSompi: kaspaToSompi("2.456"),
         });
         console.log("transferResult", transferResult);
+
+
+        // await wallet.disconnect()
+
+        // wallet.setNetworkId("mainnet")
+        // await wallet.connect()
+        // await listAccount();
 
         
     } catch(ex) {

@@ -6,8 +6,8 @@ use core::fmt::Debug;
 use kaspa_core::{debug, trace};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 pub type CollectorNotificationChannel<T> = Channel<T>;

@@ -3,7 +3,8 @@ use crate::flowcontext::{
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
-use crate::{v5, v6};
+use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
+use crate::{v10, v11};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -17,7 +18,7 @@ use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy};
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy, ConsensusSessionOwned};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -25,16 +26,17 @@ use kaspa_core::{
 };
 use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
-use kaspa_mining::manager::MiningManagerProxy;
 use kaspa_mining::mempool::tx::{Orphan, Priority};
+use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::RbfPolicy};
 use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
+    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
     common::ProtocolError,
     convert::model::version::Version,
     make_message,
-    pb::{kaspad_message::Payload, InvRelayBlockMessage},
-    ConnectionInitializer, Hub, KaspadHandshake, PeerKey, PeerProperties, Router,
+    pb::{InvRelayBlockMessage, kaspad_message::Payload},
 };
+use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
@@ -45,20 +47,20 @@ use std::{
     iter::once,
     ops::Deref,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
 use tokio::sync::{
-    mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
     RwLock as AsyncRwLock,
+    mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
 };
-use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
+use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
-/// The P2P protocol version. Currently the only one supported.
-const PROTOCOL_VERSION: u32 = 6;
+/// The P2P protocol version.
+const PROTOCOL_VERSION: u32 = 11;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -89,7 +91,7 @@ pub struct BlockEventLogger {
 }
 
 impl BlockEventLogger {
-    pub fn new(bps: usize) -> Self {
+    fn new(bps: usize) -> Self {
         let (sender, receiver) = unbounded_channel();
         Self { bps, sender, receiver: Mutex::new(Some(receiver)) }
     }
@@ -133,11 +135,7 @@ impl BlockEventLogger {
 
                 impl Display for LogHash {
                     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                        if let Some(hash) = self.op {
-                            hash.fmt(f)
-                        } else {
-                            Ok(())
-                        }
+                        if let Some(hash) = self.op { hash.fmt(f) } else { Ok(()) }
                     }
                 }
 
@@ -163,11 +161,11 @@ impl BlockEventLogger {
                     match ev {
                         BlockLogEvent::Relay(hash) => {
                             summary.relay_count += 1;
-                            summary.relay_rep = Some(hash)
+                            summary.relay_rep = Some(hash);
                         }
                         BlockLogEvent::Submit(hash) => {
                             summary.submit_count += 1;
-                            summary.submit_rep = Some(hash)
+                            summary.submit_rep = Some(hash);
                         }
                         BlockLogEvent::Orphaned(hash, roots_count) => {
                             summary.orphan_roots_count += roots_count;
@@ -224,13 +222,19 @@ pub struct FlowContextInner {
     mining_manager: MiningManagerProxy,
     pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
+    user_agent_rules: UserAgentRuleSet,
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
 
+    bps: usize,
+
     // Orphan parameters
     orphan_resolution_range: u32,
     max_orphans: usize,
+
+    // Mining rule engine
+    mining_rule_engine: Arc<MiningRuleEngine>,
 }
 
 #[derive(Clone)]
@@ -303,14 +307,16 @@ impl FlowContext {
         mining_manager: MiningManagerProxy,
         tick_service: Arc<TickService>,
         notification_root: Arc<ConsensusNotificationRoot>,
+        hub: Hub,
+        mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
-        let hub = Hub::new();
-
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log2().ceil() as u32;
+        let bps = config.bps() as usize;
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
+        let user_agent_rules = UserAgentRuleSet::parse_lossy(&config.user_agent_rules);
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
-        let max_orphans = (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize).min(MAX_ORPHANS_UPPER_BOUND);
+        let max_orphans = (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k() as usize).min(MAX_ORPHANS_UPPER_BOUND);
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
@@ -327,16 +333,19 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
-                block_event_logger: if config.bps() > 1 { Some(BlockEventLogger::new(config.bps() as usize)) } else { None },
+                user_agent_rules,
+                block_event_logger: Some(BlockEventLogger::new(bps)),
+                bps,
                 orphan_resolution_range,
                 max_orphans,
                 config,
+                mining_rule_engine,
             }),
         }
     }
 
     pub fn block_invs_channel_size(&self) -> usize {
-        self.config.bps() as usize * Router::incoming_flow_baseline_channel_size()
+        self.bps * Router::incoming_flow_baseline_channel_size()
     }
 
     pub fn orphan_resolution_range(&self) -> u32 {
@@ -392,20 +401,12 @@ impl FlowContext {
 
     /// If IBD is running, returns the IBD peer we are syncing from
     pub fn ibd_peer_key(&self) -> Option<PeerKey> {
-        if self.is_ibd_running() {
-            self.ibd_metadata.read().map(|md| md.peer)
-        } else {
-            None
-        }
+        if self.is_ibd_running() { self.ibd_metadata.read().map(|md| md.peer) } else { None }
     }
 
     /// If IBD is running, returns the DAA score of the relay block which triggered it
     pub fn ibd_relay_daa_score(&self) -> Option<u64> {
-        if self.is_ibd_running() {
-            self.ibd_metadata.read().map(|md| md.daa_score)
-        } else {
-            None
-        }
+        if self.is_ibd_running() { self.ibd_metadata.read().map(|md| md.daa_score) } else { None }
     }
 
     fn try_adding_request_impl(req: Hash, map: &Arc<Mutex<HashMap<Hash, RequestScopeMetadata>>>) -> Option<RequestScope<Hash>> {
@@ -493,7 +494,7 @@ impl FlowContext {
             return Err(err)?;
         }
         // Broadcast as soon as the block has been validated and inserted into the DAG
-        self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
+        self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) }), None).await;
 
         self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
         self.log_block_event(BlockLogEvent::Submit(hash));
@@ -535,13 +536,13 @@ impl FlowContext {
             .iter()
             .map(|(b, _)| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
             .collect();
-        self.hub.broadcast_many(msgs).await;
+        self.hub.broadcast_many(msgs, None).await;
 
         // Process blocks in topological order
         blocks.sort_by(|a, b| a.0.header.blue_work.partial_cmp(&b.0.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks.into_iter()) {
+        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks) {
             // We only care about waiting for virtual to process the block at this point, before proceeding with post-processing
             // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
             let _ = virtual_state_task.await;
@@ -555,8 +556,8 @@ impl FlowContext {
             }
         }
 
-        // Transaction relay is disabled if the node is out of sync and thus not mining
-        if !consensus.async_is_nearly_synced().await {
+        // Transaction relay is disabled if the node is out of sync
+        if !self.is_nearly_synced(consensus).await {
             return;
         }
 
@@ -595,6 +596,16 @@ impl FlowContext {
         }
     }
 
+    pub async fn is_nearly_synced(&self, session: &ConsensusSessionOwned) -> bool {
+        let sink_daa_score_and_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        self.mining_rule_engine.is_nearly_synced(sink_daa_score_and_timestamp)
+    }
+
+    pub async fn should_mine(&self, session: &ConsensusSessionOwned) -> bool {
+        let sink_daa_score_and_timestamp = session.async_get_sink_daa_score_timestamp().await;
+        self.mining_rule_engine.should_mine(sink_daa_score_and_timestamp)
+    }
+
     /// Notifies that the UTXO set was reset due to pruning point change via IBD.
     pub fn on_pruning_point_utxoset_override(&self) {
         // Notifications from the flow context might be ignored if the inner channel is already closing
@@ -618,14 +629,46 @@ impl FlowContext {
         transaction: Transaction,
         orphan: Orphan,
     ) -> Result<(), ProtocolError> {
-        let accepted_transactions =
-            self.mining_manager().clone().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan).await?;
+        let transaction_insertion = self
+            .mining_manager()
+            .clone()
+            .validate_and_insert_transaction(consensus, transaction, Priority::High, orphan, RbfPolicy::Forbidden)
+            .await?;
         self.broadcast_transactions(
-            accepted_transactions.iter().map(|x| x.id()),
+            transaction_insertion.accepted.iter().map(|x| x.id()),
             false, // RPC transactions are considered high priority, so we don't want to throttle them
         )
         .await;
         Ok(())
+    }
+
+    /// Replaces the rpc-submitted transaction into the mempool and propagates it to peers.
+    ///
+    /// Returns the removed mempool transaction on successful replace by fee.
+    ///
+    /// Transactions submitted through rpc are considered high priority. This definition does not affect the tx selection algorithm
+    /// but only changes how we manage the lifetime of the tx. A high-priority tx does not expire and is repeatedly rebroadcasted to
+    /// peers
+    pub async fn submit_rpc_transaction_replacement(
+        &self,
+        consensus: &ConsensusProxy,
+        transaction: Transaction,
+    ) -> Result<Arc<Transaction>, ProtocolError> {
+        let transaction_insertion = self
+            .mining_manager()
+            .clone()
+            .validate_and_insert_transaction(consensus, transaction, Priority::High, Orphan::Forbidden, RbfPolicy::Mandatory)
+            .await?;
+        self.broadcast_transactions(
+            transaction_insertion.accepted.iter().map(|x| x.id()),
+            false, // RPC transactions are considered high priority, so we don't want to throttle them
+        )
+        .await;
+        // The combination of args above of Orphan::Forbidden and RbfPolicy::Mandatory should always result
+        // in a removed transaction returned, however we prefer failing gracefully in case of future internal mempool changes
+        transaction_insertion.removed.ok_or(ProtocolError::Other(
+            "Replacement transaction was actually accepted but the *replaced* transaction was not returned from the mempool",
+        ))
     }
 
     /// Returns true if the time has come for running the task cleaning mempool transactions.
@@ -673,7 +716,6 @@ impl ConnectionInitializer for FlowContext {
         // Subnets are not currently supported
         let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
-        // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd
 
         // Perform the handshake
@@ -696,22 +738,44 @@ impl ConnectionInitializer for FlowContext {
             return Err(ProtocolError::WrongNetwork(network_name, peer_version.network));
         }
 
+        if let Some(reason) = self.user_agent_rules.reject_reason(&peer_version.user_agent) {
+            match reason {
+                UserAgentRuleRejectReason::AllowanceExcluded => {
+                    info!(
+                        "Rejecting peer {} because user agent is outside configured allowance rules: {}",
+                        router, peer_version.user_agent
+                    );
+                }
+                UserAgentRuleRejectReason::Rejection(rule) => {
+                    info!(
+                        "Rejecting peer {} because user agent matched rejection rule `{}`: {}",
+                        router,
+                        rule.source(),
+                        peer_version.user_agent
+                    );
+                }
+            }
+            return Err(ProtocolError::OtherOwned(format!("peer user agent rejected: {}", peer_version.user_agent)));
+        }
+
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
-        // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v6::register(self.clone(), router.clone()), PROTOCOL_VERSION),
-            5 => (v5::register(self.clone(), router.clone()), 5),
+        let peer_protocol_version = peer_version.protocol_version;
+
+        // Peers must advertise at least the current protocol version. Register all flows according to version.
+        let (flows, applied_protocol_version) = match peer_protocol_version {
+            v if v >= PROTOCOL_VERSION => (v11::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+            10 => (v10::register(self.clone(), router.clone()), 10),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
         // Build and register the peer properties
         let peer_properties = Arc::new(PeerProperties {
-            user_agent: peer_version.user_agent.to_owned(),
+            user_agent: peer_version.user_agent,
             advertised_protocol_version: peer_version.protocol_version,
             protocol_version: applied_protocol_version,
             disable_relay_tx: peer_version.disable_relay_tx,
-            subnetwork_id: peer_version.subnetwork_id.to_owned(),
+            subnetwork_id: peer_version.subnetwork_id,
             time_offset,
         });
         router.set_properties(peer_properties);

@@ -1,6 +1,19 @@
+//!
+//! # Network Types
+//!
+//! This module implements [`NetworkType`] (such as `mainnet`, `testnet`, `devnet`, and `simnet`)
+//! and [`NetworkId`] that combines a network type with an optional numerical suffix.
+//!
+//! The suffix is used to differentiate between multiple networks of the same type and is used
+//! explicitly with `testnet` networks, allowing declaration of testnet versions such as
+//! `testnet-10`, `testnet-11`, etc.
+//!
+
+#![allow(non_snake_case)]
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Prefix;
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
@@ -231,7 +244,7 @@ impl NetworkId {
             NetworkType::Mainnet => 16111,
             NetworkType::Testnet => match self.suffix {
                 Some(10) => 16211,
-                Some(11) => 16311,
+                Some(12) => 16311,
                 None | Some(_) => 16411,
             },
             NetworkType::Simnet => 16511,
@@ -240,10 +253,9 @@ impl NetworkId {
     }
 
     pub fn iter() -> impl Iterator<Item = Self> {
-        static NETWORK_IDS: [NetworkId; 5] = [
+        static NETWORK_IDS: [NetworkId; 4] = [
             NetworkId::new(NetworkType::Mainnet),
             NetworkId::with_suffix(NetworkType::Testnet, 10),
-            NetworkId::with_suffix(NetworkType::Testnet, 11),
             NetworkId::new(NetworkType::Devnet),
             NetworkId::new(NetworkType::Simnet),
         ];
@@ -312,11 +324,7 @@ impl FromStr for NetworkId {
 
 impl Display for NetworkId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(suffix) = self.suffix {
-            write!(f, "{}-{}", self.network_type, suffix)
-        } else {
-            write!(f, "{}", self.network_type)
-        }
+        if let Some(suffix) = self.suffix { write!(f, "{}-{}", self.network_type, suffix) } else { write!(f, "{}", self.network_type) }
     }
 }
 
@@ -331,7 +339,7 @@ impl Serialize for NetworkId {
 
 struct NetworkIdVisitor;
 
-impl<'de> de::Visitor<'de> for NetworkIdVisitor {
+impl de::Visitor<'_> for NetworkIdVisitor {
     type Value = NetworkId;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -400,8 +408,11 @@ impl TryFrom<JsValue> for NetworkId {
 
 impl TryCastFromJs for NetworkId {
     type Error = NetworkIdError;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(network_id) = value.as_ref().as_string() {
                 Ok(NetworkId::from_str(&network_id)?)
             } else {

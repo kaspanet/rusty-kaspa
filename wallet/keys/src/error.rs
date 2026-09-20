@@ -52,6 +52,9 @@ pub enum Error {
     #[error("Invalid PublicKey (must be a string or an instance of PrivateKey)")]
     InvalidPublicKey,
 
+    #[error("XOnlyPublicKey can not be used for ECDSA")]
+    InvalidXOnlyPublicKeyForECDSA,
+
     #[error("Invalid PublicKey Array (must be string[] or PrivateKey[])")]
     InvalidPublicKeyArray,
 

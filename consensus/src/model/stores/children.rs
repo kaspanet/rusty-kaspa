@@ -4,11 +4,11 @@ use kaspa_consensus_core::BlockLevel;
 use kaspa_database::prelude::BatchDbWriter;
 use kaspa_database::prelude::CachePolicy;
 use kaspa_database::prelude::CachedDbSetAccess;
+use kaspa_database::prelude::DB;
 use kaspa_database::prelude::DbWriter;
 use kaspa_database::prelude::ReadLock;
 use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::DB;
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
@@ -26,7 +26,7 @@ pub trait ChildrenStore {
 /// A DB + cache implementation of `DbChildrenStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbChildrenStore {
-    db: Arc<DB>,
+    _db: Arc<DB>,
     access: CachedDbSetAccess<Hash, Hash, BlockHasher, BlockHasher>,
 }
 
@@ -34,7 +34,7 @@ impl DbChildrenStore {
     pub fn new(db: Arc<DB>, level: BlockLevel, cache_policy: CachePolicy) -> Self {
         let lvl_bytes = level.to_le_bytes();
         Self {
-            db: Arc::clone(&db),
+            _db: Arc::clone(&db),
             access: CachedDbSetAccess::new(
                 db,
                 cache_policy,
@@ -45,7 +45,7 @@ impl DbChildrenStore {
 
     pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_policy: CachePolicy) -> Self {
         let db_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsChildren).collect();
-        Self { db: Arc::clone(&db), access: CachedDbSetAccess::new(db, cache_policy, db_prefix) }
+        Self { _db: Arc::clone(&db), access: CachedDbSetAccess::new(db, cache_policy, db_prefix) }
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, parent: Hash, child: Hash) -> Result<(), StoreError> {

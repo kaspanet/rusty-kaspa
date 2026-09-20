@@ -2,12 +2,13 @@ use super::{
     error::ConversionError,
     model::{
         trusted::{TrustedDataEntry, TrustedDataPackage},
-        version::Version,
+        version::{MAX_USER_AGENT_LEN, Version},
     },
     option::TryIntoOptionEx,
 };
 use crate::pb as protowire;
 use kaspa_consensus_core::{
+    block::Block,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
@@ -15,7 +16,7 @@ use kaspa_consensus_core::{
 use kaspa_hashes::Hash;
 use kaspa_utils::networking::{IpAddress, PeerId};
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -44,16 +45,19 @@ impl From<Version> for protowire::VersionMessage {
 impl TryFrom<protowire::VersionMessage> for Version {
     type Error = ConversionError;
     fn try_from(msg: protowire::VersionMessage) -> Result<Self, Self::Error> {
+        let mut user_agent = msg.user_agent;
+        user_agent.truncate(user_agent.floor_char_boundary(MAX_USER_AGENT_LEN));
+        user_agent.shrink_to_fit();
         Ok(Self {
             protocol_version: msg.protocol_version,
             services: msg.services,
             timestamp: msg.timestamp as u64,
-            address: if msg.address.is_none() { None } else { Some(msg.address.unwrap().try_into()?) },
+            address: msg.address.map(TryInto::try_into).transpose()?,
             id: PeerId::from_slice(&msg.id)?,
-            user_agent: msg.user_agent.clone(),
+            user_agent,
             disable_relay_tx: msg.disable_relay_tx,
-            subnetwork_id: if msg.subnetwork_id.is_none() { None } else { Some(msg.subnetwork_id.unwrap().try_into()?) },
-            network: msg.network.clone(),
+            subnetwork_id: msg.subnetwork_id.map(TryInto::try_into).transpose()?,
+            network: msg.network,
         })
     }
 }
@@ -85,7 +89,23 @@ impl TryFrom<protowire::RequestIbdChainBlockLocatorMessage> for (Option<Hash>, O
 impl TryFrom<protowire::PruningPointProofMessage> for PruningPointProof {
     type Error = ConversionError;
     fn try_from(msg: protowire::PruningPointProofMessage) -> Result<Self, Self::Error> {
-        msg.headers.into_iter().map(|v| v.try_into()).collect()
+        // The pruning proof can contain many duplicate headers (across levels), so we use a local cache in order
+        // to make sure we hold a single Arc per header
+        let mut cache: HashMap<Hash, Arc<Header>> = HashMap::with_capacity(4000);
+        msg.headers
+            .into_iter()
+            .map(|level| {
+                level
+                    .headers
+                    .into_iter()
+                    .map(|x| {
+                        let header: Header = x.try_into()?;
+                        // Clone the existing Arc if found
+                        Ok(cache.entry(header.hash).or_insert_with(|| Arc::new(header)).clone())
+                    })
+                    .collect()
+            })
+            .collect()
     }
 }
 
@@ -99,9 +119,9 @@ impl TryFrom<protowire::PruningPointsMessage> for PruningPointsList {
 impl TryFrom<protowire::TrustedDataMessage> for TrustedDataPackage {
     type Error = ConversionError;
     fn try_from(msg: protowire::TrustedDataMessage) -> Result<Self, Self::Error> {
-        Ok(Self::new(
-            msg.daa_window.into_iter().map(|x| x.try_into()).collect::<Result<Vec<_>, Self::Error>>()?,
-            msg.ghostdag_data.into_iter().map(|x| x.try_into()).collect::<Result<Vec<_>, Self::Error>>()?,
+        Ok(TrustedDataPackage::new(
+            msg.daa_window.into_iter().map(|x| x.try_into()).collect::<Result<Vec<_>, ConversionError>>()?,
+            msg.ghostdag_data.into_iter().map(|x| x.try_into()).collect::<Result<Vec<_>, ConversionError>>()?,
         ))
     }
 }
@@ -109,7 +129,8 @@ impl TryFrom<protowire::TrustedDataMessage> for TrustedDataPackage {
 impl TryFrom<protowire::BlockWithTrustedDataV4Message> for TrustedDataEntry {
     type Error = ConversionError;
     fn try_from(msg: protowire::BlockWithTrustedDataV4Message) -> Result<Self, Self::Error> {
-        Ok(Self::new(msg.block.try_into_ex()?, msg.daa_window_indices, msg.ghostdag_data_indices))
+        let block: Block = msg.block.ok_or(ConversionError::NoneValue)?.try_into()?;
+        Ok(TrustedDataEntry::new(block, msg.daa_window_indices, msg.ghostdag_data_indices))
     }
 }
 
@@ -143,6 +164,14 @@ impl TryFrom<protowire::RequestPruningPointUtxoSetMessage> for Hash {
     }
 }
 
+impl TryFrom<protowire::RequestPruningPointSmtStateMessage> for Hash {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestPruningPointSmtStateMessage) -> Result<Self, Self::Error> {
+        msg.pruning_point_hash.try_into_ex()
+    }
+}
+
 impl TryFrom<protowire::InvRelayBlockMessage> for Hash {
     type Error = ConversionError;
 
@@ -163,6 +192,13 @@ impl TryFrom<protowire::RequestIbdBlocksMessage> for Vec<Hash> {
     type Error = ConversionError;
 
     fn try_from(msg: protowire::RequestIbdBlocksMessage) -> Result<Self, Self::Error> {
+        msg.hashes.into_iter().map(|v| v.try_into()).collect()
+    }
+}
+impl TryFrom<protowire::RequestBlockBodiesMessage> for Vec<Hash> {
+    type Error = ConversionError;
+
+    fn try_from(msg: protowire::RequestBlockBodiesMessage) -> Result<Self, Self::Error> {
         msg.hashes.into_iter().map(|v| v.try_into()).collect()
     }
 }

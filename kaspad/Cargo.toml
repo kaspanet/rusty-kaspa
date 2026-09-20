@@ -19,6 +19,7 @@ kaspa-alloc.workspace = true # This changes the global allocator for all of the 
 
 kaspa-addresses.workspace = true
 kaspa-addressmanager.workspace = true
+kaspa-build-info.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
@@ -31,9 +32,12 @@ kaspa-index-processor.workspace = true
 kaspa-mining.workspace = true
 kaspa-notify.workspace = true
 kaspa-p2p-flows.workspace = true
+kaspa-p2p-lib.workspace = true
+kaspa-p2p-mining.workspace = true
 kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
+kaspa-system-info.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
@@ -41,22 +45,31 @@ kaspa-utxoindex.workspace = true
 kaspa-wrpc-server.workspace = true
 
 async-channel.workspace = true
-clap.workspace = true
+cfg-if.workspace = true
+clap = { workspace = true, features = ["env"]}
 dhat = { workspace = true, optional = true }
-serde.workspace = true
 dirs.workspace = true
 futures-util.workspace = true
+itertools.workspace = true
 log.workspace = true
 num_cpus.workspace = true
 rand.workspace = true
 rayon.workspace = true
+rocksdb.workspace = true
+serde.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
+serde_json.workspace = true
+
 toml = "0.8.10"
 serde_with = "3.7.0"
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]
 devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]
+semaphore-trace = ["kaspa-utils/semaphore-trace"]
+
+[lints]
+workspace = true

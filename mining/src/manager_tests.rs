@@ -1,113 +1,194 @@
 #[cfg(test)]
 mod tests {
     use crate::{
-        block_template::builder::BlockTemplateBuilder,
+        MiningCounters,
+        block_template::{builder::BlockTemplateBuilder, policy::Policy},
         errors::{MiningManagerError, MiningManagerResult},
         manager::MiningManager,
         mempool::{
             config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
             errors::RuleError,
-            tx::{Orphan, Priority},
+            model::frontier::selectors::TakeAllSelector,
+            tx::{Orphan, Priority, RbfPolicy},
         },
-        model::{candidate_tx::CandidateTransaction, tx_query::TransactionQuery},
+        model::{tx_insert::TransactionInsertion, tx_query::TransactionQuery},
         testutils::consensus_mock::ConsensusMock,
-        MiningCounters,
     };
+    use itertools::Itertools;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
         api::ConsensusApi,
         block::TemplateBuildMode,
         coinbase::MinerData,
+        config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
-        errors::tx::{TxResult, TxRuleError},
-        mass::transaction_estimated_serialized_size,
-        subnets::SUBNETWORK_ID_NATIVE,
+        errors::tx::TxRuleError,
+        mass::{BlockLaneLimits, BlockMassLimits, NonContextualMasses, transaction_estimated_serialized_size},
+        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{
-            scriptvec, MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-            TransactionOutput, UtxoEntry,
+            MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+            UtxoEntry, scriptvec,
         },
     };
     use kaspa_hashes::Hash;
+    use kaspa_mining_errors::mempool::RuleResult;
     use kaspa_txscript::{
         pay_to_address_script, pay_to_script_hash_signature_script,
-        test_helpers::{create_transaction, op_true_script},
+        test_helpers::{create_transaction, create_transaction_with_change, op_true_script},
     };
-    use std::sync::Arc;
+    use kaspa_utils::mem_size::MemSizeEstimator;
+    use std::{iter::once, sync::Arc};
     use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
 
     const TARGET_TIME_PER_BLOCK: u64 = 1_000;
     const MAX_BLOCK_MASS: u64 = 500_000;
+    const BLOCK_LANE_LIMITS: BlockLaneLimits =
+        BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };
+
+    fn default_mining_manager() -> MiningManager {
+        MiningManager::new(
+            TARGET_TIME_PER_BLOCK,
+            false,
+            BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS),
+            BLOCK_LANE_LIMITS,
+            None,
+            Arc::new(MiningCounters::default()),
+        )
+    }
 
     // test_validate_and_insert_transaction verifies that valid transactions were successfully inserted into the mempool.
     #[test]
     fn test_validate_and_insert_transaction() {
         const TX_COUNT: u32 = 10;
-        let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
-        let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
-        for transaction in transactions_to_insert.iter() {
-            let result = mining_manager.validate_and_insert_mutable_transaction(
-                consensus.as_ref(),
-                transaction.clone(),
-                Priority::Low,
-                Orphan::Allowed,
-            );
-            assert!(result.is_ok(), "inserting a valid transaction failed");
-        }
 
-        // The UtxoEntry was filled manually for those transactions, so the transactions won't be considered orphans.
-        // Therefore, all the transactions expected to be contained in the mempool.
-        let (transactions_from_pool, _) = mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly);
-        assert_eq!(
-            transactions_to_insert.len(),
-            transactions_from_pool.len(),
-            "wrong number of transactions in mempool: expected: {}, got: {}",
-            transactions_to_insert.len(),
-            transactions_from_pool.len()
-        );
-        transactions_to_insert.iter().for_each(|tx_to_insert| {
-            let found_exact_match = transactions_from_pool.contains(tx_to_insert);
-            let tx_from_pool = transactions_from_pool.iter().find(|tx_from_pool| tx_from_pool.id() == tx_to_insert.id());
-            let found_transaction_id = tx_from_pool.is_some();
-            if found_transaction_id && !found_exact_match {
-                let tx = tx_from_pool.unwrap();
-                assert_eq!(
-                    tx_to_insert.calculated_fee.unwrap(),
-                    tx.calculated_fee.unwrap(),
-                    "wrong fee in transaction {}: expected: {}, got: {}",
-                    tx.id(),
-                    tx_to_insert.calculated_fee.unwrap(),
-                    tx.calculated_fee.unwrap()
-                );
-                assert_eq!(
-                    tx_to_insert.calculated_compute_mass.unwrap(),
-                    tx.calculated_compute_mass.unwrap(),
-                    "wrong mass in transaction {}: expected: {}, got: {}",
-                    tx.id(),
-                    tx_to_insert.calculated_compute_mass.unwrap(),
-                    tx.calculated_compute_mass.unwrap()
-                );
+        for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
+            let consensus = Arc::new(ConsensusMock::new());
+            let mining_manager = default_mining_manager();
+            let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
+            for transaction in transactions_to_insert.iter() {
+                let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
+                    consensus.as_ref(),
+                    transaction.clone(),
+                    priority,
+                    orphan,
+                    rbf_policy,
+                ));
+                match rbf_policy {
+                    RbfPolicy::Forbidden | RbfPolicy::Allowed => {
+                        assert!(result.is_ok(), "({priority:?}, {orphan:?}, {rbf_policy:?}) inserting a valid transaction failed");
+                    }
+                    RbfPolicy::Mandatory => {
+                        assert!(
+                            result.is_err(),
+                            "({priority:?}, {orphan:?}, {rbf_policy:?}) replacing a valid transaction without replacement in mempool should fail"
+                        );
+                        let err = result.unwrap_err();
+                        assert_eq!(
+                            RuleError::RejectRbfNoDoubleSpend,
+                            err,
+                            "({priority:?}, {orphan:?}, {rbf_policy:?}) wrong error: expected {} got: {}",
+                            RuleError::RejectRbfNoDoubleSpend,
+                            err,
+                        );
+                    }
+                }
             }
-            assert!(found_exact_match, "missing transaction {} in the mempool, no exact match", tx_to_insert.id());
-        });
 
-        // The parent's transaction was inserted into the consensus, so we want to verify that
-        // the child transaction is not considered an orphan and inserted into the mempool.
-        let transaction_not_an_orphan = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
-        let result = mining_manager.validate_and_insert_transaction(
-            consensus.as_ref(),
-            transaction_not_an_orphan.clone(),
+            // The UtxoEntry was filled manually for those transactions, so the transactions won't be considered orphans.
+            // Therefore, all the transactions expected to be contained in the mempool if replace by fee policy allowed it.
+            let (transactions_from_pool, _) = mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly);
+            let transactions_inserted = match rbf_policy {
+                RbfPolicy::Forbidden | RbfPolicy::Allowed => transactions_to_insert.clone(),
+                RbfPolicy::Mandatory => {
+                    vec![]
+                }
+            };
+            assert_eq!(
+                transactions_inserted.len(),
+                transactions_from_pool.len(),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) wrong number of transactions in mempool: expected: {}, got: {}",
+                transactions_inserted.len(),
+                transactions_from_pool.len()
+            );
+            transactions_inserted.iter().for_each(|tx_to_insert| {
+                let found_exact_match = transactions_from_pool.contains(tx_to_insert);
+                let tx_from_pool = transactions_from_pool.iter().find(|tx_from_pool| tx_from_pool.id() == tx_to_insert.id());
+                let found_transaction_id = tx_from_pool.is_some();
+                if found_transaction_id && !found_exact_match {
+                    let tx = tx_from_pool.unwrap();
+                    assert_eq!(
+                        tx_to_insert.calculated_fee.unwrap(),
+                        tx.calculated_fee.unwrap(),
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) wrong fee in transaction {}: expected: {}, got: {}",
+                        tx.id(),
+                        tx_to_insert.calculated_fee.unwrap(),
+                        tx.calculated_fee.unwrap()
+                    );
+                    assert_eq!(
+                        tx_to_insert.calculated_non_contextual_masses.unwrap(),
+                        tx.calculated_non_contextual_masses.unwrap(),
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) wrong mass in transaction {}: expected: {}, got: {}",
+                        tx.id(),
+                        tx_to_insert.calculated_non_contextual_masses.unwrap(),
+                        tx.calculated_non_contextual_masses.unwrap()
+                    );
+                }
+                assert!(
+                    found_exact_match,
+                    "({priority:?}, {orphan:?}, {rbf_policy:?}) missing transaction {} in the mempool, no exact match",
+                    tx_to_insert.id()
+                );
+            });
+
+            // The parent's transaction was inserted into the consensus, so we want to verify that
+            // the child transaction is not considered an orphan and inserted into the mempool.
+            let transaction_not_an_orphan = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                transaction_not_an_orphan.clone(),
+                priority,
+                orphan,
+                RbfPolicy::Forbidden,
+            );
+            assert!(
+                result.is_ok(),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) inserting the child transaction {} into the mempool failed",
+                transaction_not_an_orphan.id()
+            );
+            let (transactions_from_pool, _) = mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly);
+            assert!(
+                contained_by(transaction_not_an_orphan.id(), &transactions_from_pool),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) missing transaction {} in the mempool",
+                transaction_not_an_orphan.id()
+            );
+        }
+    }
+
+    #[test]
+    fn test_reject_coinbase_transaction() {
+        let consensus = ConsensusMock::new();
+        // Coinbase transactions must be rejected even when non-standard transactions are allowed.
+        let mining_manager = MiningManager::new(
+            TARGET_TIME_PER_BLOCK,
+            true,
+            BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS),
+            BLOCK_LANE_LIMITS,
+            None,
+            Arc::new(MiningCounters::default()),
+        );
+        let transaction = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, vec![]);
+        let transaction_id = transaction.id();
+
+        let result = into_mempool_result(mining_manager.validate_and_insert_transaction(
+            &consensus,
+            transaction,
             Priority::Low,
             Orphan::Allowed,
-        );
-        assert!(result.is_ok(), "inserting the child transaction {} into the mempool failed", transaction_not_an_orphan.id());
-        let (transactions_from_pool, _) = mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly);
-        assert!(
-            contained_by(transaction_not_an_orphan.id(), &transactions_from_pool),
-            "missing transaction {} in the mempool",
-            transaction_not_an_orphan.id()
-        );
+            RbfPolicy::Allowed,
+        ));
+
+        assert_eq!(result, Err(RuleError::RejectCoinbase(transaction_id)));
+        assert!(mining_manager.get_transaction(&transaction_id, TransactionQuery::All).is_none());
     }
 
     /// test_simulated_error_in_consensus verifies that a predefined result is actually
@@ -115,132 +196,406 @@ mod tests {
     /// insert a transaction.
     #[test]
     fn test_simulated_error_in_consensus() {
-        let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
+            let consensus = Arc::new(ConsensusMock::new());
+            let mining_manager = default_mining_manager();
 
-        // Build an invalid transaction with some gas and inform the consensus mock about the result it should return
-        // when the mempool will submit this transaction for validation.
-        let mut transaction = create_transaction_with_utxo_entry(0, 1);
-        Arc::make_mut(&mut transaction.tx).gas = 1000;
-        let status = Err(TxRuleError::TxHasGas);
-        consensus.set_status(transaction.id(), status.clone());
+            // Build an invalid transaction with some gas and inform the consensus mock about the result it should return
+            // when the mempool will submit this transaction for validation.
+            let mut transaction = create_transaction_with_utxo_entry(0, 1);
+            Arc::make_mut(&mut transaction.tx).gas = 1000;
+            let tx_err = TxRuleError::TxHasGas("simulated non-zero gas validation error");
+            let expected = match rbf_policy {
+                RbfPolicy::Forbidden | RbfPolicy::Allowed => Err(RuleError::from(tx_err.clone())),
+                RbfPolicy::Mandatory => Err(RuleError::RejectRbfNoDoubleSpend),
+            };
+            consensus.set_status(transaction.id(), Err(tx_err));
 
-        // Try validate and insert the transaction into the mempool
-        let result = into_status(mining_manager.validate_and_insert_transaction(
-            consensus.as_ref(),
-            transaction.tx.as_ref().clone(),
-            Priority::Low,
-            Orphan::Allowed,
-        ));
+            // Try validate and insert the transaction into the mempool
+            let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
+                consensus.as_ref(),
+                transaction.clone(),
+                priority,
+                orphan,
+                rbf_policy,
+            ));
 
-        assert_eq!(
-            status, result,
-            "Unexpected result when trying to insert an invalid transaction: expected: {status:?}, got: {result:?}",
-        );
-        let pool_tx = mining_manager.get_transaction(&transaction.id(), TransactionQuery::All);
-        assert!(pool_tx.is_none(), "Mempool contains a transaction that should have been rejected");
+            assert_eq!(
+                expected, result,
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) unexpected result when trying to insert an invalid transaction: expected: {expected:?}, got: {result:?}",
+            );
+            let pool_tx = mining_manager.get_transaction(&transaction.id(), TransactionQuery::All);
+            assert!(
+                pool_tx.is_none(),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) mempool contains a transaction that should have been rejected"
+            );
+        }
     }
 
     /// test_insert_double_transactions_to_mempool verifies that an attempt to insert a transaction
     /// more than once into the mempool will result in raising an appropriate error.
     #[test]
     fn test_insert_double_transactions_to_mempool() {
-        let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
+            let consensus = Arc::new(ConsensusMock::new());
+            let mining_manager = default_mining_manager();
 
-        let transaction = create_transaction_with_utxo_entry(0, 0);
+            let transaction = create_transaction_with_utxo_entry(0, 0);
 
-        // submit the transaction to the mempool
-        let result = mining_manager.validate_and_insert_mutable_transaction(
-            consensus.as_ref(),
-            transaction.clone(),
-            Priority::Low,
-            Orphan::Allowed,
-        );
-        assert!(result.is_ok(), "mempool should have accepted a valid transaction but did not");
-
-        // submit the same transaction again to the mempool
-        let result = mining_manager.validate_and_insert_transaction(
-            consensus.as_ref(),
-            transaction.tx.as_ref().clone(),
-            Priority::Low,
-            Orphan::Allowed,
-        );
-        assert!(result.is_err(), "mempool should refuse a double submit of the same transaction but accepts it");
-        if let Err(MiningManagerError::MempoolError(RuleError::RejectDuplicate(transaction_id))) = result {
-            assert_eq!(
-                transaction.id(),
-                transaction_id,
-                "the error returned by the mempool should include id {} but provides {}",
-                transaction.id(),
-                transaction_id
+            // submit the transaction to the mempool
+            let result = mining_manager.validate_and_insert_mutable_transaction(
+                consensus.as_ref(),
+                transaction.clone(),
+                priority,
+                orphan,
+                rbf_policy.for_insert(),
             );
-        } else {
-            panic!(
-                "the nested error returned by the mempool should be variant RuleError::RejectDuplicate but is {:?}",
-                result.err().unwrap()
+            assert!(
+                result.is_ok(),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should have accepted a valid transaction but did not"
             );
+
+            // submit the same transaction again to the mempool
+            let result = into_mempool_result(mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                transaction.tx.as_ref().clone(),
+                priority,
+                orphan,
+                rbf_policy,
+            ));
+            match result {
+                Err(RuleError::RejectDuplicate(transaction_id)) => {
+                    assert_eq!(
+                        transaction.id(),
+                        transaction_id,
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should include transaction id {} but provides {}",
+                        transaction.id(),
+                        transaction_id
+                    );
+                }
+                Err(err) => {
+                    panic!(
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should be {:?} but is {err:?}",
+                        RuleError::RejectDuplicate(transaction.id())
+                    );
+                }
+                Ok(()) => {
+                    panic!(
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double submit of the same transaction but accepts it"
+                    );
+                }
+            }
         }
     }
 
-    // test_double_spend_in_mempool verifies that an attempt to insert a transaction double-spending
-    // another transaction already in the mempool will result in raising an appropriate error.
+    /// test_double_spend_in_mempool verifies that an attempt to insert a transaction double-spending
+    /// another transaction already in the mempool will result in raising an appropriate error.
     #[test]
     fn test_double_spend_in_mempool() {
-        let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
+            let consensus = Arc::new(ConsensusMock::new());
+            let mining_manager = default_mining_manager();
 
-        let transaction = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
-        assert!(
-            consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction.clone())),
-            "the consensus mock should have spendable UTXOs for the newly created transaction {}",
-            transaction.id()
-        );
-
-        let result =
-            mining_manager.validate_and_insert_transaction(consensus.as_ref(), transaction.clone(), Priority::Low, Orphan::Allowed);
-        assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
-
-        let mut double_spending_transaction = transaction.clone();
-        double_spending_transaction.outputs[0].value -= 1; // do some minor change so that txID is different
-        double_spending_transaction.finalize();
-        assert_ne!(
-            transaction.id(),
-            double_spending_transaction.id(),
-            "two transactions differing by only one output value should have different ids"
-        );
-        let result = mining_manager.validate_and_insert_transaction(
-            consensus.as_ref(),
-            double_spending_transaction.clone(),
-            Priority::Low,
-            Orphan::Allowed,
-        );
-        assert!(result.is_err(), "mempool should refuse a double spend transaction but accepts it");
-        if let Err(MiningManagerError::MempoolError(RuleError::RejectDoubleSpendInMempool(_, transaction_id))) = result {
-            assert_eq!(
-                transaction.id(),
-                transaction_id,
-                "the error returned by the mempool should include id {} but provides {}",
-                transaction.id(),
-                transaction_id
+            let transaction = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
+            assert!(
+                consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction.clone())),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) the consensus mock should have spendable UTXOs for the newly created transaction {}",
+                transaction.id()
             );
-        } else {
-            panic!(
-                "the nested error returned by the mempool should be variant RuleError::RejectDoubleSpendInMempool but is {:?}",
-                result.err().unwrap()
+
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                transaction.clone(),
+                priority,
+                orphan,
+                RbfPolicy::Forbidden,
             );
+            assert!(
+                result.is_ok(),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) the mempool should accept a valid transaction when it is able to populate its UTXO entries"
+            );
+
+            let mut double_spending_transaction = transaction.clone();
+            double_spending_transaction.outputs[0].value += 1; // do some minor change so that txID is different while not increasing fee
+            double_spending_transaction.finalize();
+            assert_ne!(
+                transaction.id(),
+                double_spending_transaction.id(),
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) two transactions differing by only one output value should have different ids"
+            );
+            let result = into_mempool_result(mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                double_spending_transaction.clone(),
+                priority,
+                orphan,
+                rbf_policy,
+            ));
+            match result {
+                Err(RuleError::RejectDoubleSpendInMempool(_, transaction_id)) => {
+                    assert_eq!(
+                        transaction.id(),
+                        transaction_id,
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should include id {} but provides {}",
+                        transaction.id(),
+                        transaction_id
+                    );
+                }
+                Err(err) => {
+                    panic!(
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should be RuleError::RejectDoubleSpendInMempool but is {err:?}"
+                    );
+                }
+                Ok(()) => {
+                    panic!(
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double spend transaction ineligible to RBF but accepts it"
+                    );
+                }
+            }
         }
     }
 
-    // test_handle_new_block_transactions verifies that all the transactions in the block were successfully removed from the mempool.
+    /// test_replace_by_fee_in_mempool verifies that an attempt to insert a double-spending transaction
+    /// will cause or not the transaction(s) double spending in the mempool to be replaced/removed,
+    /// depending on varying factors.
+    #[test]
+    fn test_replace_by_fee_in_mempool() {
+        const BASE_FEE: u64 = DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE;
+
+        struct TxOp {
+            /// Funding transaction indexes
+            tx: Vec<usize>,
+            /// Funding transaction output indexes
+            output: Vec<usize>,
+            /// Add a change output to the transaction
+            change: bool,
+            /// Transaction fee
+            fee: u64,
+            /// Children binary tree depth
+            depth: usize,
+        }
+
+        impl TxOp {
+            fn change(&self) -> Option<u64> {
+                self.change.then_some(900 * SOMPI_PER_KASPA)
+            }
+        }
+
+        struct Test {
+            name: &'static str,
+            /// Initial transactions in the mempool
+            starts: Vec<TxOp>,
+            /// Replacement transaction submitted to the mempool
+            replacement: TxOp,
+            /// Expected RBF result for the 3 policies [Forbidden, Allowed, Mandatory]
+            expected: [bool; 3],
+        }
+
+        impl Test {
+            fn run_rbf(&self, rbf_policy: RbfPolicy, expected: bool) {
+                let consensus = Arc::new(ConsensusMock::new());
+                let mining_manager = default_mining_manager();
+                let funding_transactions = create_and_add_funding_transactions(&consensus, 10);
+
+                // RPC submit the initial transactions
+                let (transactions, children): (Vec<_>, Vec<_>) =
+                    self.starts
+                        .iter()
+                        .map(|tx_op| {
+                            let transaction = create_funded_transaction(
+                                select_transactions(&funding_transactions, &tx_op.tx),
+                                tx_op.output.clone(),
+                                tx_op.change(),
+                                tx_op.fee,
+                            );
+                            assert!(
+                                consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction.clone())),
+                                "[{}, {:?}] the consensus should have spendable UTXOs for the newly created transaction {}",
+                                self.name, rbf_policy, transaction.id()
+                            );
+                            let result = mining_manager.validate_and_insert_transaction(
+                                consensus.as_ref(),
+                                transaction.clone(),
+                                Priority::High,
+                                Orphan::Allowed,
+                                RbfPolicy::Forbidden,
+                            );
+                            assert!(
+                                result.is_ok(),
+                                "[{}, {:?}] the mempool should accept a valid transaction when it is able to populate its UTXO entries",
+                                self.name, rbf_policy,
+                            );
+                            let children = create_children_tree(&transaction, tx_op.depth);
+                            let children_count = (2_usize.pow(tx_op.depth as u32) - 1) * transaction.outputs.len();
+                            assert_eq!(
+                                children.len(), children_count,
+                                "[{}, {:?}] a parent transaction with {} output(s) should generate a binary children tree of depth {} with {} children but got {}",
+                                self.name, rbf_policy, transaction.outputs.len(), tx_op.depth, children_count, children.len(),
+                            );
+                            validate_and_insert_transactions(
+                                &mining_manager,
+                                consensus.as_ref(),
+                                children.iter(),
+                                Priority::High,
+                                Orphan::Allowed,
+                                RbfPolicy::Forbidden,
+                            );
+                            (transaction, children)
+                        })
+                        .unzip();
+
+                // RPC submit transaction replacement
+                let transaction_replacement = create_funded_transaction(
+                    select_transactions(&funding_transactions, &self.replacement.tx),
+                    self.replacement.output.clone(),
+                    self.replacement.change(),
+                    self.replacement.fee,
+                );
+                assert!(
+                    consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction_replacement.clone())),
+                    "[{}, {:?}] the consensus should have spendable UTXOs for the newly created transaction {}",
+                    self.name,
+                    rbf_policy,
+                    transaction_replacement.id()
+                );
+                let tx_count = mining_manager.transaction_count(TransactionQuery::TransactionsOnly);
+                let expected_tx_count = match expected {
+                    true => tx_count + 1 - transactions.len() - children.iter().map(|x| x.len()).sum::<usize>(),
+                    false => tx_count,
+                };
+                let priority = match rbf_policy {
+                    RbfPolicy::Forbidden | RbfPolicy::Mandatory => Priority::High,
+                    RbfPolicy::Allowed => Priority::Low,
+                };
+                let result = mining_manager.validate_and_insert_transaction(
+                    consensus.as_ref(),
+                    transaction_replacement.clone(),
+                    priority,
+                    Orphan::Forbidden,
+                    rbf_policy,
+                );
+                if expected {
+                    assert!(result.is_ok(), "[{}, {:?}] mempool should accept a RBF transaction", self.name, rbf_policy,);
+                    let tx_insertion = result.unwrap();
+                    assert_eq!(
+                        tx_insertion.removed.as_ref().unwrap().id(),
+                        transactions[0].id(),
+                        "[{}, {:?}] RBF should return the removed transaction",
+                        self.name,
+                        rbf_policy,
+                    );
+                    transactions.iter().for_each(|x| {
+                        assert!(
+                            !mining_manager.has_transaction(&x.id(), TransactionQuery::All),
+                            "[{}, {:?}] RBF replaced transaction should no longer be in the mempool",
+                            self.name,
+                            rbf_policy,
+                        );
+                    });
+                    assert_transaction_count(
+                        &mining_manager,
+                        expected_tx_count,
+                        &format!(
+                            "[{}, {:?}] RBF should remove all chained transactions of the removed mempool transaction(s)",
+                            self.name, rbf_policy
+                        ),
+                    );
+                } else {
+                    assert!(result.is_err(), "[{}, {:?}] mempool should reject the RBF transaction", self.name, rbf_policy);
+                    transactions.iter().for_each(|x| {
+                        assert!(
+                            mining_manager.has_transaction(&x.id(), TransactionQuery::All),
+                            "[{}, {:?}] RBF transaction target is no longer in the mempool",
+                            self.name,
+                            rbf_policy
+                        );
+                    });
+                    assert_transaction_count(
+                        &mining_manager,
+                        expected_tx_count,
+                        &format!("[{}, {:?}] a failing RBF should leave the mempool unchanged", self.name, rbf_policy),
+                    );
+                }
+            }
+
+            fn run(&self) {
+                [RbfPolicy::Forbidden, RbfPolicy::Allowed, RbfPolicy::Mandatory].iter().copied().enumerate().for_each(
+                    |(i, rbf_policy)| {
+                        self.run_rbf(rbf_policy, self.expected[i]);
+                    },
+                )
+            }
+        }
+
+        let tests = vec![
+            Test {
+                name: "1 input, 1 output <=> 1 input, 1 output, constant fee",
+                starts: vec![TxOp { tx: vec![0], output: vec![0], change: false, fee: BASE_FEE, depth: 0 }],
+                replacement: TxOp { tx: vec![0], output: vec![0], change: false, fee: BASE_FEE, depth: 0 },
+                expected: [false, false, false],
+            },
+            Test {
+                name: "1 input, 1 output <=> 1 input, 1 output, increased fee",
+                starts: vec![TxOp { tx: vec![0], output: vec![0], change: false, fee: BASE_FEE, depth: 0 }],
+                replacement: TxOp { tx: vec![0], output: vec![0], change: false, fee: BASE_FEE * 2, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "2 inputs, 2 outputs <=> 2 inputs, 2 outputs, increased fee",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE * 2, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "4 inputs, 2 outputs <=> 2 inputs, 2 outputs, constant fee",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0, 1], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "2 inputs, 2 outputs <=> 2 inputs, 1 output, constant fee",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0], change: false, fee: BASE_FEE, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "2 inputs, 2 outputs <=> 4 inputs, 2 output, constant fee (MUST FAIL on fee/mass)",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0, 1], change: true, fee: BASE_FEE, depth: 0 },
+                expected: [false, false, false],
+            },
+            Test {
+                name: "2 inputs, 1 output <=> 4 inputs, 2 output, increased fee (MUST FAIL on fee/mass)",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: false, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0, 1], change: true, fee: BASE_FEE + 10, depth: 0 },
+                expected: [false, false, false],
+            },
+            Test {
+                name: "2 inputs, 2 outputs <=> 2 inputs, 1 output, constant fee, partial double spend overlap",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 2], output: vec![0], change: false, fee: BASE_FEE, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "(2 inputs, 2 outputs) * 2 <=> 4 inputs, 2 outputs, increased fee, 2 double spending mempool transactions (MUST FAIL on Mandatory)",
+                starts: vec![
+                    TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 },
+                    TxOp { tx: vec![0, 1], output: vec![1], change: true, fee: BASE_FEE, depth: 2 },
+                ],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0, 1], change: true, fee: BASE_FEE * 2, depth: 0 },
+                expected: [false, true, false],
+            },
+        ];
+
+        for test in tests {
+            test.run();
+        }
+    }
+
+    /// test_handle_new_block_transactions verifies that all the transactions in the block were successfully removed from the mempool.
     #[test]
     fn test_handle_new_block_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        let mining_manager = default_mining_manager();
 
         const TX_COUNT: u32 = 10;
         let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
@@ -250,6 +605,7 @@ mod tests {
                 transaction.tx.as_ref().clone(),
                 Priority::Low,
                 Orphan::Allowed,
+                RbfPolicy::Forbidden,
             );
             assert!(result.is_ok(), "the insertion of a new valid transaction in the mempool failed");
         }
@@ -284,7 +640,7 @@ mod tests {
         let result = mining_manager.handle_new_block_transactions(consensus.as_ref(), 3, &block_with_rest);
         assert!(
             result.is_ok(),
-            "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"            
+            "the handling by the mempool of the transactions of a block accepted by the consensus should succeed but returned {result:?}"
         );
         for handled_tx_id in rest.iter().map(|x| x.id()) {
             assert!(
@@ -295,12 +651,11 @@ mod tests {
     }
 
     #[test]
-    // test_double_spend_with_block verifies that any transactions which are now double spends as a result of the block's new transactions
-    // will be removed from the mempool.
+    /// test_double_spend_with_block verifies that any transactions which are now double spends as a result of the block's new transactions
+    /// will be removed from the mempool.
     fn test_double_spend_with_block() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        let mining_manager = default_mining_manager();
 
         let transaction_in_the_mempool = create_transaction_with_utxo_entry(0, 0);
         let result = mining_manager.validate_and_insert_transaction(
@@ -308,6 +663,7 @@ mod tests {
             transaction_in_the_mempool.tx.as_ref().clone(),
             Priority::Low,
             Orphan::Allowed,
+            RbfPolicy::Forbidden,
         );
         assert!(result.is_ok());
 
@@ -326,12 +682,11 @@ mod tests {
         );
     }
 
-    // test_orphan_transactions verifies that a transaction could be a part of a new block template only if it's not an orphan.
+    /// test_orphan_transactions verifies that a transaction could be a part of a new block template only if it's not an orphan.
     #[test]
     fn test_orphan_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        let mining_manager = default_mining_manager();
 
         // Before each parent transaction we add a transaction that funds it and insert the funding transaction in the consensus.
         const TX_PAIRS_COUNT: usize = 5;
@@ -340,8 +695,13 @@ mod tests {
         assert_eq!(parent_txs.len(), TX_PAIRS_COUNT);
         assert_eq!(child_txs.len(), TX_PAIRS_COUNT);
         for orphan in child_txs.iter() {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), orphan.clone(), Priority::Low, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                orphan.clone(),
+                Priority::Low,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "the mempool should accept the valid orphan transaction {}", orphan.id());
         }
         let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
@@ -383,14 +743,18 @@ mod tests {
         let unorphaned_txs = result.unwrap();
         let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert_eq!(
-            unorphaned_txs.len(), child_txs.len() - SKIPPED_TXS,
+            unorphaned_txs.len(),
+            child_txs.len() - SKIPPED_TXS,
             "the mempool is expected to have unorphaned all but one child transactions after all but one parent transactions were accepted by the consensus: expected: {}, got: {}",
-            unorphaned_txs.len(), child_txs.len() - SKIPPED_TXS
+            unorphaned_txs.len(),
+            child_txs.len() - SKIPPED_TXS
         );
         assert_eq!(
-            child_txs.len() - SKIPPED_TXS, populated_txs.len(),
+            child_txs.len() - SKIPPED_TXS,
+            populated_txs.len(),
             "the mempool is expected to contain all but one child transactions after all but one parent transactions were accepted by the consensus: expected: {}, got: {}",
-            child_txs.len() - SKIPPED_TXS, populated_txs.len()
+            child_txs.len() - SKIPPED_TXS,
+            populated_txs.len()
         );
         for populated in populated_txs.iter() {
             assert!(
@@ -413,9 +777,11 @@ mod tests {
             assert!(contained_by(child.id(), &populated_txs), "child transaction {} should exist in the mempool", child.id());
         }
         assert_eq!(
-            SKIPPED_TXS, orphans.len(),
+            SKIPPED_TXS,
+            orphans.len(),
             "the orphan pool is expected to contain one child transaction after all but one parent transactions were accepted by the consensus: expected: {}, got: {}",
-            SKIPPED_TXS, orphans.len()
+            SKIPPED_TXS,
+            orphans.len()
         );
         for orphan in orphans.iter() {
             assert!(
@@ -485,15 +851,22 @@ mod tests {
         );
 
         // Add the remaining parent transaction into the mempool
-        let result =
-            mining_manager.validate_and_insert_transaction(consensus.as_ref(), parent_txs[0].clone(), Priority::Low, Orphan::Allowed);
+        let result = mining_manager.validate_and_insert_transaction(
+            consensus.as_ref(),
+            parent_txs[0].clone(),
+            Priority::Low,
+            Orphan::Allowed,
+            RbfPolicy::Forbidden,
+        );
         assert!(result.is_ok(), "the insertion of the remaining parent transaction in the mempool failed");
-        let unorphaned_txs = result.unwrap();
+        let unorphaned_txs = result.unwrap().accepted;
         let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert_eq!(
-            unorphaned_txs.len(), SKIPPED_TXS + 1,
+            unorphaned_txs.len(),
+            SKIPPED_TXS + 1,
             "the mempool is expected to have unorphaned the remaining child transaction after the matching parent transaction was inserted into the mempool: expected: {}, got: {}",
-            SKIPPED_TXS + 1, unorphaned_txs.len()
+            SKIPPED_TXS + 1,
+            unorphaned_txs.len()
         );
         assert_eq!(
             SKIPPED_TXS + SKIPPED_TXS,
@@ -581,7 +954,8 @@ mod tests {
         ];
 
         let consensus = Arc::new(ConsensusMock::new());
-        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
+        let mut config =
+            Config::build_default(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), BLOCK_LANE_LIMITS);
         // Limit the orphan pool to 2 transactions
         config.maximum_orphan_transaction_count = 2;
         let counters = Arc::new(MiningCounters::default());
@@ -592,8 +966,13 @@ mod tests {
 
         // Try submit children while rejecting orphans
         for (tx, test) in child_txs.iter().zip(tests.iter()) {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), tx.clone(), test.priority, Orphan::Forbidden);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                tx.clone(),
+                test.priority,
+                Orphan::Forbidden,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_err(), "mempool should reject an orphan transaction with {:?} when asked to do so", test.priority);
             if let Err(MiningManagerError::MempoolError(RuleError::RejectDisallowedOrphan(transaction_id))) = result {
                 assert_eq!(
@@ -613,8 +992,13 @@ mod tests {
 
         // Try submit children while accepting orphans
         for (tx, test) in child_txs.iter().zip(tests.iter()) {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), tx.clone(), test.priority, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                tx.clone(),
+                test.priority,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert_eq!(
                 test.should_enter_orphan_pool,
                 result.is_ok(),
@@ -623,7 +1007,7 @@ mod tests {
                 test.insert_result()
             );
             if let Ok(unorphaned_txs) = result {
-                assert!(unorphaned_txs.is_empty(), "mempool should unorphan no transaction since it only contains orphans");
+                assert!(unorphaned_txs.accepted.is_empty(), "mempool should unorphan no transaction since it only contains orphans");
             } else if let Err(MiningManagerError::MempoolError(RuleError::RejectOrphanPoolIsFull(pool_len, config_len))) = result {
                 assert_eq!(
                     (config.maximum_orphan_transaction_count as usize, config.maximum_orphan_transaction_count),
@@ -642,10 +1026,15 @@ mod tests {
 
         // Submit all the parents
         for (i, (tx, test)) in parent_txs.iter().zip(tests.iter()).enumerate() {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), tx.clone(), test.priority, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                tx.clone(),
+                test.priority,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "mempool should accept a valid transaction with {:?} when asked to do so", test.priority,);
-            let unorphaned_txs = result.as_ref().unwrap();
+            let unorphaned_txs = &result.as_ref().unwrap().accepted;
             assert_eq!(
                 test.should_unorphan,
                 unorphaned_txs.len() > 1,
@@ -665,8 +1054,7 @@ mod tests {
     #[test]
     fn test_revalidate_high_priority_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        let mining_manager = default_mining_manager();
 
         // Create two valid transactions that double-spend each other (child_tx_1, child_tx_2)
         let (parent_tx, child_tx_1) = create_parent_and_children_transactions(&consensus, vec![3000 * SOMPI_PER_KASPA]);
@@ -681,9 +1069,14 @@ mod tests {
         consensus.add_transaction(child_tx_2.clone(), 3);
 
         // Add to mempool a transaction that spends child_tx_2 (as high priority)
-        let spending_tx = create_transaction(&child_tx_2, 1_000);
-        let result =
-            mining_manager.validate_and_insert_transaction(consensus.as_ref(), spending_tx.clone(), Priority::High, Orphan::Allowed);
+        let spending_tx = create_transaction(&child_tx_2, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
+        let result = mining_manager.validate_and_insert_transaction(
+            consensus.as_ref(),
+            spending_tx.clone(),
+            Priority::High,
+            Orphan::Allowed,
+            RbfPolicy::Forbidden,
+        );
         assert!(result.is_ok(), "the insertion in the mempool of the spending transaction failed");
 
         // Revalidate, to make sure spending_tx is still valid
@@ -725,29 +1118,38 @@ mod tests {
         assert!(orphan_txs.is_empty(), "orphan pool should be empty");
     }
 
-    // test_modify_block_template verifies that modifying a block template changes coinbase data correctly.
+    /// test_modify_block_template verifies that modifying a block template changes coinbase data correctly.
     #[test]
     fn test_modify_block_template() {
         let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        let mining_manager = default_mining_manager();
 
         // Before each parent transaction we add a transaction that funds it and insert the funding transaction in the consensus.
         const TX_PAIRS_COUNT: usize = 12;
         let (parent_txs, child_txs) = create_arrays_of_parent_and_children_transactions(&consensus, TX_PAIRS_COUNT);
 
         for (parent_tx, child_tx) in parent_txs.iter().zip(child_txs.iter()) {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), parent_tx.clone(), Priority::Low, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                parent_tx.clone(),
+                Priority::Low,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "the mempool should accept the valid parent transaction {}", parent_tx.id());
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), child_tx.clone(), Priority::Low, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                child_tx.clone(),
+                Priority::Low,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "the mempool should accept the valid child transaction {}", parent_tx.id());
         }
 
         // Collect all parent transactions for the next block template.
         // They are ready since they have no parents in the mempool.
-        let transactions = mining_manager.block_candidate_transactions();
+        let transactions = mining_manager.build_selector().select_transactions();
         assert_eq!(
             TX_PAIRS_COUNT,
             transactions.len(),
@@ -755,7 +1157,7 @@ mod tests {
         );
         parent_txs.iter().for_each(|x| {
             assert!(
-                transactions.iter().any(|tx| tx.tx.id() == x.id()),
+                transactions.iter().any(|tx| tx.id() == x.id()),
                 "the parent transaction {} should be candidate for the next block template",
                 x.id()
             );
@@ -767,12 +1169,105 @@ mod tests {
         // TODO: extend the test according to the golang scenario
     }
 
+    // This is a sanity test for the mempool eviction policy. We check that if the mempool reached to its maximum
+    // (in bytes) a high paying transaction will evict as much transactions as needed so it can enter the
+    // mempool.
+    // TODO: Add a test where we try to add a heavy transaction with fee rate that's higher than some of the mempool
+    // transactions, but not enough, so the transaction will be rejected nonetheless.
+    #[test]
+    fn test_evict() {
+        const TX_COUNT: usize = 10;
+        let txs = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i as u32, 0)).collect_vec();
+
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mut config =
+            Config::build_default(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), BLOCK_LANE_LIMITS);
+        let tx_size = txs[0].mempool_estimated_bytes();
+        let size_limit = TX_COUNT * tx_size;
+        config.mempool_size_limit = size_limit;
+        let mining_manager = MiningManager::with_config(config, None, counters);
+
+        for tx in txs {
+            validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
+        }
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
+        let high_fee = MAX_BLOCK_MASS * DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE / 1000;
+
+        let heavy_tx_low_fee = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(2081);
+            heavy_tx
+        };
+        assert!(validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx_low_fee.clone()).is_err());
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
+
+        let heavy_tx_high_fee = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32 + 1, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(high_fee);
+            heavy_tx
+        };
+        validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx_high_fee.clone()).unwrap();
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT - 5);
+        assert!(mining_manager.get_estimated_size() <= size_limit);
+
+        let too_big_tx = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32 + 2, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; size_limit];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(high_fee);
+            heavy_tx
+        };
+        assert!(validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), too_big_tx.clone()).is_err());
+    }
+
+    #[test]
+    fn test_realtime_feerate_estimations_respect_minimum_standard_feerate() {
+        let minimum_feerate = DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE as f64 / 1000.0;
+
+        for tx_count in [0, 1, 10, 100, 500] {
+            let consensus = Arc::new(ConsensusMock::new());
+            let mining_manager = default_mining_manager();
+
+            for i in 0..tx_count {
+                let tx = create_transaction_with_utxo_entry(i, 0);
+                validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
+            }
+
+            let estimations = mining_manager.get_realtime_feerate_estimations();
+            for bucket in estimations.ordered_buckets() {
+                assert!(
+                    bucket.feerate >= minimum_feerate,
+                    "mempool with {tx_count} txs returned bucket feerate {} below minimum standard feerate {}",
+                    bucket.feerate,
+                    minimum_feerate
+                );
+            }
+        }
+    }
+
+    fn validate_and_insert_mutable_transaction(
+        mining_manager: &MiningManager,
+        consensus: &dyn ConsensusApi,
+        tx: MutableTransaction,
+    ) -> Result<TransactionInsertion, MiningManagerError> {
+        mining_manager.validate_and_insert_mutable_transaction(consensus, tx, Priority::Low, Orphan::Allowed, RbfPolicy::Forbidden)
+    }
+
     fn sweep_compare_modified_template_to_built(
         consensus: &dyn ConsensusApi,
         address_prefix: Prefix,
         mining_manager: &MiningManager,
-        transactions: Vec<CandidateTransaction>,
+        transactions: Vec<Transaction>,
     ) {
+        let transactions = transactions.into_iter().map(Arc::new).collect::<Vec<_>>();
         for _ in 0..4 {
             // Run a few times to get more randomness
             compare_modified_template_to_built(
@@ -839,7 +1334,7 @@ mod tests {
         consensus: &dyn ConsensusApi,
         address_prefix: Prefix,
         mining_manager: &MiningManager,
-        transactions: Vec<CandidateTransaction>,
+        transactions: Vec<Arc<Transaction>>,
         first_op: OpType,
         second_op: OpType,
     ) {
@@ -848,7 +1343,12 @@ mod tests {
 
         // Build a fresh template for coinbase2 as a reference
         let builder = mining_manager.block_template_builder();
-        let result = builder.build_block_template(consensus, &miner_data_2, transactions, TemplateBuildMode::Standard);
+        let result = builder.build_block_template(
+            consensus,
+            &miner_data_2,
+            Box::new(TakeAllSelector::new(transactions, Policy::new(u64::MAX, BLOCK_LANE_LIMITS))),
+            TemplateBuildMode::Standard,
+        );
         assert!(result.is_ok(), "build block template failed for miner data 2");
         let expected_template = result.unwrap();
 
@@ -920,17 +1420,81 @@ mod tests {
         let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the redeem script is canonical");
 
         let input = TransactionInput::new(previous_outpoint, signature_script, MAX_TX_IN_SEQUENCE_NUM, 1);
-        let entry = UtxoEntry::new(SOMPI_PER_KASPA, script_public_key.clone(), block_daa_score, true);
+        let entry = UtxoEntry::new(SOMPI_PER_KASPA, script_public_key.clone(), block_daa_score, true, None);
         let output = TransactionOutput::new(SOMPI_PER_KASPA - DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, script_public_key);
         let transaction = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
         let mut mutable_tx = MutableTransaction::from_tx(transaction);
         mutable_tx.calculated_fee = Some(DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         // Please note: this is the ConsensusMock version of the calculated_mass which differs from Consensus
-        mutable_tx.calculated_compute_mass = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
+        let transaction_serialized_size = transaction_estimated_serialized_size(&mutable_tx.tx);
+        mutable_tx.calculated_non_contextual_masses =
+            Some(NonContextualMasses::new(transaction_serialized_size, transaction_serialized_size));
         mutable_tx.entries[0] = Some(entry);
 
         mutable_tx
+    }
+
+    fn create_and_add_funding_transactions(consensus: &Arc<ConsensusMock>, count: usize) -> Vec<Transaction> {
+        // Make the funding amounts always different so that funding txs have different ids
+        (0..count)
+            .map(|i| {
+                let funding_tx = create_transaction_without_input(vec![1_000 * SOMPI_PER_KASPA, 2_500 * SOMPI_PER_KASPA + i as u64]);
+                consensus.add_transaction(funding_tx.clone(), 1);
+                funding_tx
+            })
+            .collect_vec()
+    }
+
+    fn select_transactions<'a>(transactions: &'a [Transaction], indexes: &'a [usize]) -> impl Iterator<Item = &'a Transaction> {
+        indexes.iter().map(|i| &transactions[*i])
+    }
+
+    fn create_funded_transaction<'a>(
+        txs_to_spend: impl Iterator<Item = &'a Transaction>,
+        output_indexes: Vec<usize>,
+        change: Option<u64>,
+        fee: u64,
+    ) -> Transaction {
+        create_transaction_with_change(txs_to_spend, output_indexes, change, fee)
+    }
+
+    fn create_children_tree(parent: &Transaction, depth: usize) -> Vec<Transaction> {
+        let mut tree = vec![];
+        let root = [parent.clone()];
+        let mut parents = &root[..];
+        let mut first_child = 0;
+        for _ in 0..depth {
+            let mut children = vec![];
+            for parent in parents {
+                children.extend(parent.outputs.iter().enumerate().map(|(i, output)| {
+                    create_transaction_with_change(
+                        once(parent),
+                        vec![i],
+                        Some(output.value / 2),
+                        DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+                    )
+                }));
+            }
+            tree.extend(children);
+            parents = &tree[first_child..];
+            first_child = tree.len()
+        }
+        tree
+    }
+
+    fn validate_and_insert_transactions<'a>(
+        mining_manager: &MiningManager,
+        consensus: &dyn ConsensusApi,
+        transactions: impl Iterator<Item = &'a Transaction>,
+        priority: Priority,
+        orphan: Orphan,
+        rbf_policy: RbfPolicy,
+    ) {
+        transactions.for_each(|transaction| {
+            let result = mining_manager.validate_and_insert_transaction(consensus, transaction.clone(), priority, orphan, rbf_policy);
+            assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
+        });
     }
 
     fn create_arrays_of_parent_and_children_transactions(
@@ -959,7 +1523,7 @@ mod tests {
 
     fn create_child_and_parent_txs_and_add_parent_to_consensus(consensus: &Arc<ConsensusMock>) -> Transaction {
         let parent_tx = create_transaction_without_input(vec![500 * SOMPI_PER_KASPA]);
-        let child_tx = create_transaction(&parent_tx, 1000);
+        let child_tx = create_transaction(&parent_tx, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         consensus.add_transaction(parent_tx, 1);
         child_tx
     }
@@ -974,11 +1538,13 @@ mod tests {
         transactions.iter().any(|x| x.as_ref().id() == transaction_id)
     }
 
-    fn into_status<T>(result: MiningManagerResult<T>) -> TxResult<()> {
+    fn into_mempool_result<T>(result: MiningManagerResult<T>) -> RuleResult<()> {
         match result {
             Ok(_) => Ok(()),
-            Err(MiningManagerError::MempoolError(RuleError::RejectTxRule(err))) => Err(err),
-            _ => Ok(()),
+            Err(MiningManagerError::MempoolError(err)) => Err(err),
+            _ => {
+                panic!("result is an unsupported error");
+            }
         }
     }
 
@@ -999,5 +1565,27 @@ mod tests {
         let address = Address::new(prefix, Version::PubKeyECDSA, &pk.serialize());
         let script = pay_to_address_script(&address);
         MinerData::new(script, vec![])
+    }
+
+    #[allow(dead_code)]
+    fn all_priority_orphan_combinations() -> impl Iterator<Item = (Priority, Orphan)> {
+        [Priority::Low, Priority::High]
+            .iter()
+            .flat_map(|priority| [Orphan::Allowed, Orphan::Forbidden].iter().map(|orphan| (*priority, *orphan)))
+    }
+
+    fn all_priority_orphan_rbf_policy_combinations() -> impl Iterator<Item = (Priority, Orphan, RbfPolicy)> {
+        [Priority::Low, Priority::High].iter().flat_map(|priority| {
+            [Orphan::Allowed, Orphan::Forbidden].iter().flat_map(|orphan| {
+                [RbfPolicy::Forbidden, RbfPolicy::Allowed, RbfPolicy::Mandatory]
+                    .iter()
+                    .map(|rbf_policy| (*priority, *orphan, *rbf_policy))
+            })
+        })
+    }
+
+    fn assert_transaction_count(mining_manager: &MiningManager, expected_count: usize, message: &str) {
+        let count = mining_manager.transaction_count(TransactionQuery::TransactionsOnly);
+        assert_eq!(expected_count, count, "{message} mempool transaction count: expected {}, got {}", expected_count, count);
     }
 }

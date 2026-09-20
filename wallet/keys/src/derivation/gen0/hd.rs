@@ -2,7 +2,7 @@ use crate::derivation::traits::*;
 use crate::imports::*;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
-use kaspa_bip32::types::{ChainCode, HmacSha512, KeyFingerprint, PublicKeyBytes, KEY_SIZE};
+use kaspa_bip32::types::{ChainCode, HmacSha512, KEY_SIZE, KeyFingerprint, PublicKeyBytes};
 use kaspa_bip32::{
     AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
     PrivateKey, PublicKey, SecretKey, SecretKeyExt,
@@ -85,7 +85,7 @@ impl PubkeyDerivationManagerV0 {
         *self.opt_inner() = None;
     }
 
-    fn opt_inner(&self) -> MutexGuard<Option<Inner>> {
+    fn opt_inner(&self) -> MutexGuard<'_, Option<Inner>> {
         self.inner.lock().unwrap()
     }
 
@@ -176,7 +176,7 @@ impl PubkeyDerivationManagerV0 {
             return Ok(*key);
         }
 
-        Err(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending  (Error: 102).".into()))
+        Err(crate::error::Error::Custom("PubkeyDerivationManagerV0 initialization is pending  (Error: 105).".into()))
     }
 
     pub fn create_address(key: &secp256k1::PublicKey, prefix: AddressPrefix, _ecdsa: bool) -> Result<Address> {

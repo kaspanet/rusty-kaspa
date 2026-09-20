@@ -1,12 +1,18 @@
-#![allow(non_snake_case)]
+//!
+//! WASM interfaces and conversion to and from RPC messages.
+//!
 
+#![allow(non_snake_case)]
 use crate::error::RpcError as Error;
 use crate::error::RpcResult as Result;
 use crate::model::*;
+use js_sys::Array;
+use js_sys::Object;
 use kaspa_addresses::Address;
 use kaspa_addresses::AddressOrStringArrayT;
-use kaspa_consensus_client::Transaction;
 use kaspa_consensus_client::UtxoEntryReference;
+use kaspa_consensus_client::{OptionalHeader, Transaction};
+use kaspa_consensus_core::tx as cctx;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 pub use serde_wasm_bindgen::from_value;
 use wasm_bindgen::prelude::*;
@@ -31,13 +37,38 @@ macro_rules! try_from {
 const TS_ACCEPTED_TRANSACTION_IDS: &'static str = r#"
     /**
      * Accepted transaction IDs.
-     * 
+     *
      * @category Node RPC
      */
     export interface IAcceptedTransactionIds {
         acceptingBlockHash : HexString;
         acceptedTransactionIds : HexString[];
     }
+"#;
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ADDED_ACCEPTANCE_DATA: &'static str = r#"
+    /**
+     * Accepted Acceptance Data
+     *
+     * @category Node RPC
+     */
+    export interface IChainBlockAddedTransactions {
+        chainBlockHeader: IOptionalHeader;
+        // small hack because wasm doesn't define OptionalTransaction utility
+        acceptedTransactions: Partial<ITransaction>[];
+    }
+"#;
+
+// DataVerbosityLevel
+#[wasm_bindgen(typescript_custom_section)]
+const TS_DATA_VERBOSITY_LEVEL: &'static str = r#"
+    /**
+     * Data Verbosity level
+     *
+     * @category Node RPC
+     */
+    export type DataVerbosityLevel = "None" | "Low" | "High" | "Full";
 "#;
 
 // ---
@@ -318,6 +349,38 @@ try_from! ( args: GetMetricsResponse, IGetMetricsResponse, {
 // ---
 
 declare! {
+    IGetConnectionsRequest,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetConnectionsRequest { }
+    "#,
+}
+
+try_from! ( args: IGetConnectionsRequest, GetConnectionsRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetConnectionsResponse,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetConnectionsResponse {
+        [key: string]: any
+    }
+    "#,
+}
+
+try_from! ( args: GetConnectionsResponse, IGetConnectionsResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
     IGetSinkRequest,
     r#"
     /**
@@ -486,8 +549,8 @@ declare! {
     IAddPeerRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IAddPeerRequest {
@@ -505,8 +568,8 @@ declare! {
     IAddPeerResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IAddPeerResponse { }
@@ -522,8 +585,8 @@ declare! {
     IBanRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IBanRequest {
@@ -543,8 +606,8 @@ declare! {
     IBanResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IBanResponse { }
@@ -619,8 +682,8 @@ declare! {
     IGetBalanceByAddressResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBalanceByAddressResponse {
@@ -640,8 +703,8 @@ declare! {
     "IGetBalancesByAddressesRequest | Address[] | string[]",
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBalancesByAddressesRequest {
@@ -664,8 +727,8 @@ declare! {
     IGetBalancesByAddressesResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IBalancesByAddressesEntry {
@@ -673,8 +736,8 @@ declare! {
         balance : bigint;
     }
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBalancesByAddressesResponse {
@@ -693,8 +756,8 @@ declare! {
     IGetBlockRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlockRequest {
@@ -712,8 +775,8 @@ declare! {
     IGetBlockResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlockResponse {
@@ -732,8 +795,8 @@ declare! {
     IGetBlocksRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlocksRequest {
@@ -752,8 +815,8 @@ declare! {
     IGetBlocksResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlocksResponse {
@@ -773,8 +836,8 @@ declare! {
     IGetBlockTemplateRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlockTemplateRequest {
@@ -788,7 +851,7 @@ declare! {
 }
 
 try_from! ( args: IGetBlockTemplateRequest, GetBlockTemplateRequest, {
-    let pay_address = args.get_cast::<Address>("payAddress")?.into_owned();
+    let pay_address = args.cast_into::<Address>("payAddress")?;
     let extra_data = if let Some(extra_data) = args.try_get_value("extraData")? {
         if let Some(text) = extra_data.as_string() {
             text.into_bytes()
@@ -808,12 +871,12 @@ declare! {
     IGetBlockTemplateResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetBlockTemplateResponse {
-        block : IBlock;
+        block : IRawBlock;
     }
     "#,
 }
@@ -825,11 +888,87 @@ try_from! ( args: GetBlockTemplateResponse, IGetBlockTemplateResponse, {
 // ---
 
 declare! {
+    IGetCurrentBlockColorRequest,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetCurrentBlockColorRequest {
+        hash: HexString;
+    }
+    "#,
+}
+
+try_from! ( args: IGetCurrentBlockColorRequest, GetCurrentBlockColorRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetCurrentBlockColorResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetCurrentBlockColorResponse {
+        blue: boolean;
+    }
+    "#,
+}
+
+try_from! ( args: GetCurrentBlockColorResponse, IGetCurrentBlockColorResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
+    IGetBlockRewardInfoRequest,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetBlockRewardInfoRequest {
+        hash: HexString;
+    }
+    "#,
+}
+
+try_from! ( args: IGetBlockRewardInfoRequest, GetBlockRewardInfoRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetBlockRewardInfoResponse,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetBlockRewardInfoResponse {
+        header: IHeader;
+        blockColor: BlockColor;
+        confirmationCount?: bigint;
+        mergingChainBlockHash?: HexString;
+        rewardAmount?: bigint;
+    }
+    "#,
+}
+
+try_from! ( args: GetBlockRewardInfoResponse, IGetBlockRewardInfoResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
     IGetDaaScoreTimestampEstimateRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetDaaScoreTimestampEstimateRequest {
@@ -846,8 +985,8 @@ declare! {
     IGetDaaScoreTimestampEstimateResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetDaaScoreTimestampEstimateResponse {
@@ -866,8 +1005,8 @@ declare! {
     IGetCurrentNetworkRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetCurrentNetworkRequest { }
@@ -882,8 +1021,8 @@ declare! {
     IGetCurrentNetworkResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetCurrentNetworkResponse {
@@ -902,8 +1041,8 @@ declare! {
     IGetHeadersRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetHeadersRequest {
@@ -922,8 +1061,8 @@ declare! {
     IGetHeadersResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetHeadersResponse {
@@ -942,13 +1081,13 @@ declare! {
     IGetMempoolEntriesRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetMempoolEntriesRequest {
-        includeOrphanPool? : boolean;
-        filterTransactionPool? : boolean;
+        /** Whether or not to include the orphan pool (transactions which inputs are not known at this time) */
+        includeOrphanPool: boolean;
+        /** Whether or not to filter out the transaction pool */
+        filterTransactionPool: boolean;
     }
     "#,
 }
@@ -961,8 +1100,8 @@ declare! {
     IGetMempoolEntriesResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntriesResponse {
@@ -981,14 +1120,16 @@ declare! {
     IGetMempoolEntriesByAddressesRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntriesByAddressesRequest {
         addresses : Address[] | string[];
-        includeOrphanPool? : boolean;
-        filterTransactionPool? : boolean;
+        /** Whether or not to include the orphan pool (transactions which inputs are not known at this time) */
+        includeOrphanPool: boolean;
+        /** Whether or not to filter out the transaction pool */
+        filterTransactionPool: boolean;
     }
     "#,
 }
@@ -1001,8 +1142,8 @@ declare! {
     IGetMempoolEntriesByAddressesResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntriesByAddressesResponse {
@@ -1021,8 +1162,8 @@ declare! {
     IGetMempoolEntryRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntryRequest {
@@ -1041,8 +1182,8 @@ declare! {
     IGetMempoolEntryResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetMempoolEntryResponse {
@@ -1061,8 +1202,8 @@ declare! {
     IGetSubnetworkRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetSubnetworkRequest {
@@ -1079,8 +1220,8 @@ declare! {
     IGetSubnetworkResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetSubnetworkResponse {
@@ -1100,11 +1241,11 @@ declare! {
     "IGetUtxosByAddressesRequest | Address[] | string[]",
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
-    export interface IGetUtxosByAddressesRequest { 
+    export interface IGetUtxosByAddressesRequest {
         addresses : Address[] | string[]
     }
     "#,
@@ -1124,12 +1265,12 @@ declare! {
     IGetUtxosByAddressesResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetUtxosByAddressesResponse {
-        entries : IUtxoEntry[];
+        entries : UtxoEntryReference[];
     }
     "#,
 }
@@ -1149,13 +1290,18 @@ declare! {
     IGetVirtualChainFromBlockRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetVirtualChainFromBlockRequest {
         startHash : HexString;
         includeAcceptedTransactionIds: boolean;
+        /**
+         * If passed, this request will only return blocks that have at least minConfirmationCount number of confirmations. Confirmation is counted through the distance from virtual chain tip.
+         * If not passed, it will be interpreted as 0.
+         */
+        minConfirmationCount?: number;
     }
     "#,
 }
@@ -1168,8 +1314,8 @@ declare! {
     IGetVirtualChainFromBlockResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IGetVirtualChainFromBlockResponse {
@@ -1184,14 +1330,73 @@ try_from! ( args: GetVirtualChainFromBlockResponse, IGetVirtualChainFromBlockRes
     Ok(to_value(&args)?.into())
 });
 
+declare! {
+    IGetVirtualChainFromBlockV2Request,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetVirtualChainFromBlockV2Request {
+        startHash : HexString;
+        dataVerbosityLevel?: DataVerbosityLevel;
+        /**
+         * If passed, this request will only return blocks that have at least minConfirmationCount number of confirmations. Confirmation is counted through the distance from virtual chain tip.
+         * If not passed, it will be interpreted as 0.
+         */
+        minConfirmationCount?: number;
+    }
+    "#,
+}
+
+try_from! ( args: IGetVirtualChainFromBlockV2Request, GetVirtualChainFromBlockV2Request, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetVirtualChainFromBlockV2Response,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetVirtualChainFromBlockV2Response {
+        removedChainBlockHashes : HexString[];
+        addedChainBlockHashes : HexString[];
+        chainBlockAcceptedTransactions : IChainBlockAddedTransactions[];
+    }
+    "#,
+}
+
+try_from! ( args: GetVirtualChainFromBlockV2Response, IGetVirtualChainFromBlockV2Response, {
+    let value = Object::new();
+    value.set("addedChainBlockHashes", &to_value(&args.added_chain_block_hashes)?)?;
+    value.set("removedChainBlockHashes", &to_value(&args.removed_chain_block_hashes)?)?;
+
+    let chain_block_accepted_transactions = Array::new();
+    for entry in args.chain_block_accepted_transactions.iter() {
+        let element = Object::new();
+
+        element.set("chainBlockHeader", &OptionalHeader::from(&entry.chain_block_header).into())?;
+        element.set("acceptedTransactions", &to_value(&entry.accepted_transactions)?)?;
+
+        chain_block_accepted_transactions.push(&element);
+    }
+
+    value.set("chainBlockAcceptedTransactions", chain_block_accepted_transactions.as_ref())?;
+
+    Ok(IGetVirtualChainFromBlockV2Response { obj: value })
+});
 // ---
 
 declare! {
     IResolveFinalityConflictRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IResolveFinalityConflictRequest {
@@ -1208,8 +1413,8 @@ declare! {
     IResolveFinalityConflictResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IResolveFinalityConflictResponse { }
@@ -1226,12 +1431,12 @@ declare! {
     ISubmitBlockRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface ISubmitBlockRequest {
-        block : IBlock;
+        block : IRawBlock;
         allowNonDAABlocks: boolean;
     }
     "#,
@@ -1244,7 +1449,7 @@ try_from! ( args: ISubmitBlockRequest, SubmitBlockRequest, {
 #[wasm_bindgen(typescript_custom_section)]
 const TS_SUBMIT_BLOCK_REPORT: &'static str = r#"
     /**
-     * 
+     *
      * @category Node RPC
      */
     export enum SubmitBlockRejectReason {
@@ -1263,7 +1468,7 @@ const TS_SUBMIT_BLOCK_REPORT: &'static str = r#"
     }
 
     /**
-     * 
+     *
      * @category Node RPC
      */
     export interface ISubmitBlockReport {
@@ -1276,8 +1481,8 @@ declare! {
     ISubmitBlockResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface ISubmitBlockResponse {
@@ -1293,12 +1498,72 @@ try_from! ( args: SubmitBlockResponse, ISubmitBlockResponse, {
 // ---
 
 declare! {
+    ISubmitTransactionReplacementRequest,
+    // "ISubmitTransactionRequest | Transaction",
+    r#"
+    /**
+     * Submit transaction replacement to the node.
+     *
+     * @category Node RPC
+     */
+    export interface ISubmitTransactionReplacementRequest {
+        transaction : Transaction,
+    }
+    "#,
+}
+
+try_from! ( args: ISubmitTransactionReplacementRequest, SubmitTransactionReplacementRequest, {
+    let transaction = if let Some(transaction) = args.try_get_value("transaction")? {
+        transaction
+    } else {
+        args.into()
+    };
+
+    let request = if let Ok(transaction) = Transaction::try_owned_from(&transaction) {
+        SubmitTransactionReplacementRequest {
+            transaction : transaction.into(),
+        }
+    } else {
+        from_value(transaction)?
+    };
+    Ok(request)
+});
+
+declare! {
+    ISubmitTransactionReplacementResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface ISubmitTransactionReplacementResponse {
+        transactionId : HexString;
+        replacedTransaction: Transaction;
+    }
+    "#,
+}
+
+try_from! ( args: SubmitTransactionReplacementResponse, ISubmitTransactionReplacementResponse, {
+    let transaction_id = args.transaction_id;
+    let replaced_transaction  = cctx::Transaction::try_from(args.replaced_transaction)?;
+    let replaced_transaction = Transaction::from(replaced_transaction);
+
+    let response = ISubmitTransactionReplacementResponse::default();
+    response.set("transactionId", &transaction_id.into())?;
+    response.set("replacedTransaction", &replaced_transaction.into())?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
     ISubmitTransactionRequest,
     // "ISubmitTransactionRequest | Transaction",
     r#"
     /**
      * Submit transaction to the node.
-     * 
+     *
      * @category Node RPC
      */
     export interface ISubmitTransactionRequest {
@@ -1322,7 +1587,11 @@ try_from! ( args: ISubmitTransactionRequest, SubmitTransactionRequest, {
             allow_orphan,
         }
     } else {
-        from_value(transaction)?
+        let tx = Transaction::try_cast_from(&transaction)?;
+        SubmitTransactionRequest {
+            transaction : tx.as_ref().into(),
+            allow_orphan,
+        }
     };
     Ok(request)
 });
@@ -1331,8 +1600,8 @@ declare! {
     ISubmitTransactionResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface ISubmitTransactionResponse {
@@ -1351,8 +1620,8 @@ declare! {
     IUnbanRequest,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IUnbanRequest {
@@ -1372,8 +1641,8 @@ declare! {
     IUnbanResponse,
     r#"
     /**
-     * 
-     * 
+     *
+     *
      * @category Node RPC
      */
     export interface IUnbanResponse { }
@@ -1383,3 +1652,247 @@ declare! {
 try_from! ( args: UnbanResponse, IUnbanResponse, {
     Ok(to_value(&args)?.into())
 });
+
+// ---
+
+declare! {
+    IFeerateBucket,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IFeerateBucket {
+        /**
+         * The fee/mass ratio estimated to be required for inclusion time <= estimated_seconds
+         */
+        feerate : number;
+        /**
+         * The estimated inclusion time for a transaction with fee/mass = feerate
+         */
+        estimatedSeconds : number;
+    }
+    "#,
+}
+
+declare! {
+    IFeeEstimate,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IFeeEstimate {
+        /**
+         * *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
+         *
+         * Note: for all buckets, feerate values represent fee/mass of a transaction in `sompi/gram` units.
+         * Given a feerate value recommendation, calculate the required fee by
+         * taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
+         */
+
+        priorityBucket : IFeerateBucket;
+        /**
+         * A vector of *normal* priority feerate values. The first value of this vector is guaranteed to exist and
+         * provide an estimation for sub-*minute* DAG inclusion. All other values will have shorter estimation
+         * times than all `low_bucket` values. Therefor by chaining `[priority] | normal | low` and interpolating
+         * between them, one can compose a complete feerate function on the client side. The API makes an effort
+         * to sample enough "interesting" points on the feerate-to-time curve, so that the interpolation is meaningful.
+         */
+
+        normalBuckets : IFeerateBucket[];
+        /**
+        * An array of *low* priority feerate values. The first value of this vector is guaranteed to
+        * exist and provide an estimation for sub-*hour* DAG inclusion.
+        */
+        lowBuckets : IFeerateBucket[];
+    }
+    "#,
+}
+
+try_from!( estimate: RpcFeeEstimate, IFeeEstimate, {
+
+    let priority_bucket = IFeerateBucket::default();
+    priority_bucket.set("feerate", &estimate.priority_bucket.feerate.into())?;
+    priority_bucket.set("estimatedSeconds", &estimate.priority_bucket.estimated_seconds.into())?;
+
+    let normal_buckets = estimate.normal_buckets.into_iter().map(|normal_bucket| {
+        let bucket = IFeerateBucket::default();
+        bucket.set("feerate", &normal_bucket.feerate.into())?;
+        bucket.set("estimatedSeconds", &normal_bucket.estimated_seconds.into())?;
+        Ok(bucket)
+    }).collect::<Result<Vec<IFeerateBucket>>>()?;
+
+    let low_buckets = estimate.low_buckets.into_iter().map(|low_bucket| {
+        let bucket = IFeerateBucket::default();
+        bucket.set("feerate", &low_bucket.feerate.into())?;
+        bucket.set("estimatedSeconds", &low_bucket.estimated_seconds.into())?;
+        Ok(bucket)
+    }).collect::<Result<Vec<IFeerateBucket>>>()?;
+
+    let estimate = IFeeEstimate::default();
+    estimate.set("priorityBucket", &priority_bucket)?;
+    estimate.set("normalBuckets", &js_sys::Array::from_iter(normal_buckets))?;
+    estimate.set("lowBuckets", &js_sys::Array::from_iter(low_buckets))?;
+
+    Ok(estimate)
+});
+
+// ---
+
+declare! {
+    IGetFeeEstimateRequest,
+    r#"
+    /**
+     * Get fee estimate from the node.
+     *
+     * @category Node RPC
+     */
+    export interface IGetFeeEstimateRequest { }
+    "#,
+}
+
+try_from! ( args: IGetFeeEstimateRequest, GetFeeEstimateRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetFeeEstimateResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetFeeEstimateResponse {
+        estimate : IFeeEstimate;
+    }
+    "#,
+}
+
+try_from!( args: GetFeeEstimateResponse, IGetFeeEstimateResponse, {
+    let estimate = IFeeEstimate::try_from(args.estimate)?;
+    let response = IGetFeeEstimateResponse::default();
+    response.set("estimate", &estimate)?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
+    IFeeEstimateVerboseExperimentalData,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IFeeEstimateVerboseExperimentalData {
+        mempoolReadyTransactionsCount : bigint;
+        mempoolReadyTransactionsTotalMass : bigint;
+        networkMassPerSecond : bigint;
+        nextBlockTemplateFeerateMin : number;
+        nextBlockTemplateFeerateMedian : number;
+        nextBlockTemplateFeerateMax : number;
+    }
+    "#,
+}
+
+try_from!( data: RpcFeeEstimateVerboseExperimentalData, IFeeEstimateVerboseExperimentalData, {
+
+    let target = IFeeEstimateVerboseExperimentalData::default();
+    target.set("mempoolReadyTransactionsCount", &js_sys::BigInt::from(data.mempool_ready_transactions_count).into())?;
+    target.set("mempoolReadyTransactionsTotalMass", &js_sys::BigInt::from(data.mempool_ready_transactions_total_mass).into())?;
+    target.set("networkMassPerSecond", &js_sys::BigInt::from(data.network_mass_per_second).into())?;
+    target.set("nextBlockTemplateFeerateMin", &data.next_block_template_feerate_min.into())?;
+    target.set("nextBlockTemplateFeerateMedian", &data.next_block_template_feerate_median.into())?;
+    target.set("nextBlockTemplateFeerateMax", &data.next_block_template_feerate_max.into())?;
+
+    Ok(target)
+});
+
+declare! {
+    IGetFeeEstimateExperimentalRequest,
+    // "ISubmitTransactionRequest | Transaction",
+    r#"
+    /**
+     * Get fee estimate from the node.
+     *
+     * @category Node RPC
+     */
+    export interface IGetFeeEstimateExperimentalRequest { }
+    "#,
+}
+
+try_from! ( args: IGetFeeEstimateExperimentalRequest, GetFeeEstimateExperimentalRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetFeeEstimateExperimentalResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetFeeEstimateExperimentalResponse {
+        estimate : IFeeEstimate;
+        verbose? : IFeeEstimateVerboseExperimentalData
+    }
+    "#,
+}
+
+try_from!( args: GetFeeEstimateExperimentalResponse, IGetFeeEstimateExperimentalResponse, {
+    let estimate = IFeeEstimate::try_from(args.estimate)?;
+    let response = IGetFeeEstimateExperimentalResponse::default();
+    response.set("estimate", &estimate)?;
+
+    if let Some(verbose) = args.verbose {
+        let verbose = IFeeEstimateVerboseExperimentalData::try_from(verbose)?;
+        response.set("verbose", &verbose)?;
+    }
+
+    Ok(response)
+});
+
+declare! {
+    IGetUtxoReturnAddressRequest,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxoReturnAddressRequest {
+        txid: HexString;
+        acceptingBlockDaaScore: bigint;
+    }
+    "#,
+}
+
+try_from!(args: IGetUtxoReturnAddressRequest, GetUtxoReturnAddressRequest, {
+   Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetUtxoReturnAddressResponse,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxoReturnAddressResponse {
+        returnAddress: Address;
+    }
+    "#,
+}
+
+try_from!(args: GetUtxoReturnAddressResponse, IGetUtxoReturnAddressResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---

@@ -5,6 +5,7 @@
 use kaspa_hashes::{Hash, PersonalMessageSigningHash};
 use secp256k1::{Error, XOnlyPublicKey};
 
+/// A personal message (text) that can be signed.
 #[derive(Clone)]
 pub struct PersonalMessage<'a>(pub &'a str);
 
@@ -14,13 +15,28 @@ impl AsRef<[u8]> for PersonalMessage<'_> {
     }
 }
 
+#[derive(Clone)]
+pub struct SignMessageOptions {
+    /// The auxiliary randomness exists only to mitigate specific kinds of power analysis
+    /// side-channel attacks. Providing it definitely improves security, but omitting it
+    /// should not be considered dangerous, as most legacy signature schemes don't provide
+    /// mitigations against such attacks. To read more about the relevant discussions that
+    /// arose in adding this randomness please see: <https://github.com/sipa/bips/issues/195>
+    pub no_aux_rand: bool,
+}
+
 /// Sign a message with the given private key
-pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>, Error> {
+pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32], options: &SignMessageOptions) -> Result<Vec<u8>, Error> {
     let hash = calc_personal_message_hash(msg);
 
     let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice())?;
     let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
-    let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
+
+    let sig: [u8; 64] = if options.no_aux_rand {
+        *secp256k1::SECP256K1.sign_schnorr_no_aux_rand(&msg, &schnorr_key).as_ref()
+    } else {
+        *schnorr_key.sign_schnorr(msg).as_ref()
+    };
 
     Ok(sig.to_vec())
 }
@@ -73,7 +89,26 @@ mod tests {
         ])
         .unwrap();
 
-        verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
+        let sign_with_aux_rand = SignMessageOptions { no_aux_rand: false };
+        let sign_with_no_aux_rand = SignMessageOptions { no_aux_rand: true };
+        verify_message(&pm, &sign_message(&pm, &privkey, &sign_with_aux_rand).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
+        verify_message(&pm, &sign_message(&pm, &privkey, &sign_with_no_aux_rand).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
+    }
+
+    #[test]
+    fn test_basic_sign_without_rand_twice_should_get_same_signature() {
+        let pm = PersonalMessage("Hello Kaspa!");
+        let privkey: [u8; 32] = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+        ];
+
+        let sign_with_no_aux_rand = SignMessageOptions { no_aux_rand: true };
+        let signature = sign_message(&pm, &privkey, &sign_with_no_aux_rand).expect("sign_message failed");
+        let signature_twice = sign_message(&pm, &privkey, &sign_with_no_aux_rand).expect("sign_message failed");
+        assert_eq!(signature, signature_twice);
     }
 
     #[test]
@@ -89,7 +124,12 @@ mod tests {
         ])
         .unwrap();
 
-        verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
+        let sign_with_aux_rand = SignMessageOptions { no_aux_rand: false };
+        let sign_with_no_aux_rand = SignMessageOptions { no_aux_rand: true };
+        verify_message(&pm, &sign_message(&pm, &privkey, &sign_with_aux_rand).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
+        verify_message(&pm, &sign_message(&pm, &privkey, &sign_with_no_aux_rand).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
     }
 
     #[test]
@@ -109,7 +149,12 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
         ])
         .unwrap();
 
-        verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
+        let sign_with_aux_rand = SignMessageOptions { no_aux_rand: false };
+        let sign_with_no_aux_rand = SignMessageOptions { no_aux_rand: true };
+        verify_message(&pm, &sign_message(&pm, &privkey, &sign_with_aux_rand).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
+        verify_message(&pm, &sign_message(&pm, &privkey, &sign_with_no_aux_rand).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use kaspa_consensus_core::blockhash::ORIGIN;
+use kaspa_consensus_core::blockhash::{BlockHashExtensions, ORIGIN};
 use kaspa_hashes::Hash;
 use std::sync::Arc;
 
@@ -7,21 +7,28 @@ use crate::model::{
     stores::{
         depth::DepthStoreReader,
         ghostdag::{GhostdagData, GhostdagStoreReader},
+        headers::HeaderStoreReader,
         reachability::ReachabilityStoreReader,
     },
 };
 
+enum BlockDepthType {
+    MergeRoot,
+    Finality,
+}
+
 #[derive(Clone)]
-pub struct BlockDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> {
+pub struct BlockDepthManager<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T: HeaderStoreReader> {
     merge_depth: u64,
     finality_depth: u64,
     genesis_hash: Hash,
     depth_store: Arc<S>,
     reachability_service: MTReachabilityService<U>,
     ghostdag_store: Arc<V>,
+    _headers_store: Arc<T>,
 }
 
-impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> BlockDepthManager<S, U, V> {
+impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader, T: HeaderStoreReader> BlockDepthManager<S, U, V, T> {
     pub fn new(
         merge_depth: u64,
         finality_depth: u64,
@@ -29,20 +36,34 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> Bl
         depth_store: Arc<S>,
         reachability_service: MTReachabilityService<U>,
         ghostdag_store: Arc<V>,
+        headers_store: Arc<T>,
     ) -> Self {
-        Self { merge_depth, finality_depth, genesis_hash, depth_store, reachability_service, ghostdag_store }
+        Self {
+            merge_depth,
+            finality_depth,
+            genesis_hash,
+            depth_store,
+            reachability_service,
+            ghostdag_store,
+            _headers_store: headers_store,
+        }
     }
     pub fn calc_merge_depth_root(&self, ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
-        self.calculate_block_at_depth(ghostdag_data, self.merge_depth, pruning_point)
+        self.calculate_block_at_depth(ghostdag_data, BlockDepthType::MergeRoot, pruning_point)
     }
 
     pub fn calc_finality_point(&self, ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
-        self.calculate_block_at_depth(ghostdag_data, self.finality_depth, pruning_point)
+        self.calculate_block_at_depth(ghostdag_data, BlockDepthType::Finality, pruning_point)
     }
 
-    fn calculate_block_at_depth(&self, ghostdag_data: &GhostdagData, depth: u64, pruning_point: Hash) -> Hash {
-        assert!(depth == self.merge_depth || depth == self.finality_depth);
-
+    fn calculate_block_at_depth(&self, ghostdag_data: &GhostdagData, depth_type: BlockDepthType, pruning_point: Hash) -> Hash {
+        if ghostdag_data.selected_parent.is_origin() {
+            return ORIGIN;
+        }
+        let depth = match depth_type {
+            BlockDepthType::MergeRoot => self.merge_depth,
+            BlockDepthType::Finality => self.finality_depth,
+        };
         if ghostdag_data.blue_score < depth {
             return self.genesis_hash;
         }
@@ -57,10 +78,10 @@ impl<S: DepthStoreReader, U: ReachabilityStoreReader, V: GhostdagStoreReader> Bl
             return ORIGIN;
         }
 
-        let mut current = if depth == self.merge_depth {
-            self.depth_store.merge_depth_root(ghostdag_data.selected_parent).unwrap()
-        } else {
-            self.depth_store.finality_point(ghostdag_data.selected_parent).unwrap()
+        // We start from the depth/finality point of the selected parent and then walk up the chain.
+        let mut current = match depth_type {
+            BlockDepthType::MergeRoot => self.depth_store.merge_depth_root(ghostdag_data.selected_parent).unwrap(),
+            BlockDepthType::Finality => self.depth_store.finality_point(ghostdag_data.selected_parent).unwrap(),
         };
 
         // In this case we expect the pruning point or a block above it to be the block at depth.

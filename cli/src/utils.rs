@@ -8,7 +8,7 @@ pub fn try_parse_required_nonzero_kaspa_as_sompi_u64<S: ToString + Display>(kasp
         let sompi_amount = kaspa_amount
             .to_string()
             .parse::<f64>()
-            .map_err(|_| Error::custom(format!("Supplied Kasapa amount is not valid: '{kaspa_amount}'")))?
+            .map_err(|_| Error::custom(format!("Supplied Kaspa amount is not valid: '{kaspa_amount}'")))?
             * SOMPI_PER_KASPA as f64;
         if sompi_amount < 0.0 {
             Err(Error::custom("Supplied Kaspa amount is not valid: '{kaspa_amount}'"))

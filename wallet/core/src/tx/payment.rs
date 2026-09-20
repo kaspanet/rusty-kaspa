@@ -3,7 +3,7 @@
 //!
 
 use crate::imports::*;
-use kaspa_consensus_client::{TransactionOutput, TransactionOutputInner};
+use kaspa_consensus_client::{CovenantBinding as ClientCovenantBinding, TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -30,12 +30,19 @@ export interface IPaymentOutput {
 
 #[wasm_bindgen]
 extern "C" {
+    /// WASM (TypeScript) type representing a single payment output (`IPaymentOutput`).
+    /// @category Wallet SDK
     #[wasm_bindgen(typescript_type = "IPaymentOutput")]
     pub type IPaymentOutput;
+    /// WASM (TypeScript) type representing multiple payment outputs (`IPaymentOutput[]`).
+    /// @category Wallet SDK
     #[wasm_bindgen(typescript_type = "IPaymentOutput[]")]
     pub type IPaymentOutputArray;
 }
 
+/// A Rust data structure representing a payment destination.
+/// A payment destination is used to signal Generator where to send the funds.
+/// The destination can be a change address or a set of [`PaymentOutput`].
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PaymentDestination {
     Change,
@@ -51,6 +58,9 @@ impl PaymentDestination {
     }
 }
 
+/// A Rust data structure representing a single payment
+/// output containing a destination address, amount and covenant.
+///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
@@ -58,12 +68,17 @@ pub struct PaymentOutput {
     #[wasm_bindgen(getter_with_clone)]
     pub address: Address,
     pub amount: u64,
+    #[wasm_bindgen(getter_with_clone)]
+    pub covenant: Option<ClientCovenantBinding>,
 }
 
 impl TryCastFromJs for PaymentOutput {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(array) = value.as_ref().dyn_ref::<Array>() {
                 let length = array.length();
                 if length != 2 {
@@ -71,12 +86,18 @@ impl TryCastFromJs for PaymentOutput {
                 } else {
                     let address = Address::try_owned_from(array.get(0))?;
                     let amount = array.get(1).try_as_u64()?;
-                    Ok(Self { address, amount })
+                    let covenant = array.get(2);
+                    let covenant = if covenant.is_undefined() || covenant.is_null() { None } else { Some(covenant.try_into_owned()?) };
+                    Ok(Self { address, amount, covenant })
                 }
             } else if let Some(object) = Object::try_from(value.as_ref()) {
-                let address = object.get_cast::<Address>("address")?.into_owned();
+                let address = object.cast_into::<Address>("address")?;
                 let amount = object.get_u64("amount")?;
-                Ok(Self { address, amount })
+                let covenant = object
+                    .try_get_value("covenant")?
+                    .map(|v| v.try_into_owned().map_err(|err| kaspa_consensus_client::error::Error::convert("covenant", err)))
+                    .transpose()?;
+                Ok(Self { address, amount, covenant })
             } else {
                 Err(Error::Custom("Invalid payment output".to_string()))
             }
@@ -86,15 +107,26 @@ impl TryCastFromJs for PaymentOutput {
 
 #[wasm_bindgen]
 impl PaymentOutput {
+    /// Main constructor (no covenant)
     #[wasm_bindgen(constructor)]
     pub fn new(address: Address, amount: u64) -> Self {
-        Self { address, amount }
+        Self { address, amount, covenant: None }
+    }
+
+    /// Factory method for covenant variant
+    #[wasm_bindgen(js_name = withCovenant)]
+    pub fn with_covenant(address: Address, amount: u64, covenant: ClientCovenantBinding) -> Self {
+        Self { address, amount, covenant: Some(covenant) }
     }
 }
 
 impl From<PaymentOutput> for TransactionOutput {
     fn from(value: PaymentOutput) -> Self {
-        Self::new_with_inner(TransactionOutputInner { script_public_key: pay_to_address_script(&value.address), value: value.amount })
+        Self::new_with_inner(TransactionOutputInner {
+            script_public_key: pay_to_address_script(&value.address),
+            value: value.amount,
+            covenant: value.covenant,
+        })
     }
 }
 
@@ -145,8 +177,11 @@ impl PaymentOutputs {
 
 impl TryCastFromJs for PaymentOutputs {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let outputs = if let Some(output_array) = value.as_ref().dyn_ref::<js_sys::Array>() {
                 let vec = output_array.to_vec();
                 vec.into_iter().map(PaymentOutput::try_owned_from).collect::<Result<Vec<_>, _>>()?

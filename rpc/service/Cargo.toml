@@ -22,10 +22,12 @@ kaspa-mining.workspace = true
 kaspa-notify.workspace = true
 kaspa-p2p-flows.workspace = true
 kaspa-p2p-lib.workspace = true
+kaspa-p2p-mining.workspace = true
 kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-system-info.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+kaspa-utils = { workspace = true, features = ["expiring-cache", "triggers"] }
 kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
 
@@ -34,3 +36,6 @@ log.workspace = true
 tokio.workspace = true
 triggered.workspace = true
 workflow-rpc.workspace = true
+
+[lints]
+workspace = true

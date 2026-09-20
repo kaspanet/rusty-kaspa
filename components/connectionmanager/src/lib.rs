@@ -7,21 +7,21 @@ use std::{
 };
 
 use duration_string::DurationString;
-use futures_util::future::join_all;
+use futures_util::future::{join_all, try_join_all};
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
 use kaspa_core::{debug, info, warn};
-use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer};
+use kaspa_p2p_lib::{ConnectionError, Peer, common::ProtocolError};
 use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
 use tokio::{
     select,
     sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
         Mutex as TokioMutex,
+        mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
     },
-    time::{interval, MissedTickBehavior},
+    time::{MissedTickBehavior, interval},
 };
 
 pub struct ConnectionManager {
@@ -71,7 +71,9 @@ impl ConnectionManager {
             default_port,
         });
         manager.clone().start_event_loop(rx);
-        manager.force_next_iteration.send(()).unwrap();
+        // Fire-and-forget wakeup: if the event loop is already gone the wakeup is moot, so ignore
+        // a send error rather than panicking (the receiver is dropped on shutdown).
+        let _ = manager.force_next_iteration.send(());
         manager
     }
 
@@ -106,7 +108,11 @@ impl ConnectionManager {
     pub async fn add_connection_request(&self, address: SocketAddr, is_permanent: bool) {
         // If the request already exists, it resets the attempts count and overrides the `is_permanent` setting.
         self.connection_requests.lock().await.insert(address, ConnectionRequest::new(is_permanent));
-        self.force_next_iteration.send(()).unwrap(); // We force the next iteration of the connection loop.
+        // Force the next iteration of the connection loop. This is a fire-and-forget wakeup, so if
+        // the event loop receiver was already dropped (e.g. during shutdown) the send is a no-op
+        // rather than a panic. add_connection_request is reachable from the AddPeer RPC handler,
+        // which can race with shutdown.
+        let _ = self.force_next_iteration.send(());
     }
 
     pub async fn stop(&self) {
@@ -168,7 +174,6 @@ impl ConnectionManager {
 
         let mut missing_connections = self.outbound_target - active_outbound.len();
         let mut addr_iter = self.address_manager.lock().iterate_prioritized_random_addresses(active_outbound);
-
         let mut progressing = true;
         let mut connecting = true;
         while connecting && missing_connections > 0 {
@@ -206,7 +211,6 @@ impl ConnectionManager {
                     addr_iter.len(),
                 );
             }
-
             for (res, net_addr) in (join_all(jobs).await).into_iter().zip(addrs_to_connect) {
                 match res {
                     Ok(_) => {
@@ -227,12 +231,14 @@ impl ConnectionManager {
         }
 
         if missing_connections > 0 && !self.dns_seeders.is_empty() {
-            let cmgr = self.clone();
-            // DNS lookup is a blocking i/o operation, so we spawn it as a blocking task
-            let _ = tokio::task::spawn_blocking(move || {
-                cmgr.dns_seed(missing_connections); //TODO: Consider putting a number higher than `missing_connections`.
-            })
-            .await;
+            if missing_connections > self.outbound_target / 2 {
+                // If we are missing more than half of our target, query all in parallel.
+                // This will always be the case on new node start-up and is the most resilient strategy in such a case.
+                self.dns_seed_many(self.dns_seeders.len()).await;
+            } else {
+                // Try to obtain at least twice the number of missing connections
+                self.dns_seed_with_address_target(2 * missing_connections).await;
+            }
         }
     }
 
@@ -251,32 +257,59 @@ impl ConnectionManager {
         join_all(futures).await;
     }
 
-    fn dns_seed(self: &Arc<Self>, mut min_addresses_to_fetch: usize) {
+    /// Queries DNS seeders in random order, one after the other, until obtaining `min_addresses_to_fetch` addresses
+    async fn dns_seed_with_address_target(self: &Arc<Self>, min_addresses_to_fetch: usize) {
+        let cmgr = self.clone();
+        tokio::task::spawn_blocking(move || cmgr.dns_seed_with_address_target_blocking(min_addresses_to_fetch)).await.unwrap();
+    }
+
+    fn dns_seed_with_address_target_blocking(self: &Arc<Self>, mut min_addresses_to_fetch: usize) {
         let shuffled_dns_seeders = self.dns_seeders.choose_multiple(&mut thread_rng(), self.dns_seeders.len());
         for &seeder in shuffled_dns_seeders {
-            info!("Querying DNS seeder {}", seeder);
-            // Since the DNS lookup protocol doesn't come with a port, we must assume that the default port is used.
-            let addrs = match (seeder, self.default_port).to_socket_addrs() {
-                Ok(addrs) => addrs,
-                Err(e) => {
-                    warn!("Error connecting to DNS seeder {}: {}", seeder, e);
-                    continue;
-                }
-            };
-
-            let addrs_len = addrs.len();
-            info!("Retrieved {} addresses from DNS seeder {}", addrs_len, seeder);
-            let mut amgr_lock = self.address_manager.lock();
-            for addr in addrs {
-                amgr_lock.add_address(NetAddress::new(addr.ip().into(), addr.port()));
-            }
-
+            // Query seeders sequentially until reaching the desired number of addresses
+            let addrs_len = self.dns_seed_single(seeder);
             if addrs_len >= min_addresses_to_fetch {
                 break;
             } else {
                 min_addresses_to_fetch -= addrs_len;
             }
         }
+    }
+
+    /// Queries `num_seeders_to_query` random DNS seeders in parallel
+    async fn dns_seed_many(self: &Arc<Self>, num_seeders_to_query: usize) -> usize {
+        info!("Querying {} DNS seeders", num_seeders_to_query);
+        let shuffled_dns_seeders = self.dns_seeders.choose_multiple(&mut thread_rng(), num_seeders_to_query);
+        let jobs = shuffled_dns_seeders.map(|seeder| {
+            let cmgr = self.clone();
+            tokio::task::spawn_blocking(move || cmgr.dns_seed_single(seeder))
+        });
+        try_join_all(jobs).await.unwrap().into_iter().sum()
+    }
+
+    /// Query a single DNS seeder and add the obtained addresses to the address manager.
+    ///
+    /// DNS lookup is a blocking i/o operation so this function is assumed to be called
+    /// from a blocking execution context.
+    fn dns_seed_single(self: &Arc<Self>, seeder: &str) -> usize {
+        info!("Querying DNS seeder {}", seeder);
+        // Since the DNS lookup protocol doesn't come with a port, we must assume that the default port is used.
+        let addrs = match (seeder, self.default_port).to_socket_addrs() {
+            Ok(addrs) => addrs,
+            Err(e) => {
+                warn!("Error connecting to DNS seeder {}: {}", seeder, e);
+                return 0;
+            }
+        };
+
+        let addrs_len = addrs.len();
+        info!("Retrieved {} addresses from DNS seeder {}", addrs_len, seeder);
+        let mut amgr_lock = self.address_manager.lock();
+        for addr in addrs {
+            amgr_lock.add_address(NetAddress::new(addr.ip().into(), addr.port()));
+        }
+
+        addrs_len
     }
 
     /// Bans the given IP and disconnects from all the peers with that IP.

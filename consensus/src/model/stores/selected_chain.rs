@@ -1,5 +1,5 @@
-use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::ChainPath;
+use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_database::registry::DatabaseStorePrefixes;
 use parking_lot::RwLockWriteGuard;
 use rocksdb::WriteBatch;
@@ -24,7 +24,7 @@ pub trait SelectedChainStoreReader {
 /// since chain index is not append-only and thus needs to be guarded.
 pub trait SelectedChainStore: SelectedChainStoreReader {
     fn apply_changes(&mut self, batch: &mut WriteBatch, changes: &ChainPath) -> StoreResult<()>;
-    fn prune_below_pruning_point(&mut self, writer: impl DbWriter, pruning_point: Hash) -> StoreResult<()>;
+    fn prune_below_point(&mut self, writer: impl DbWriter, block: Hash) -> StoreResult<()>;
     fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()>;
 }
 
@@ -58,7 +58,7 @@ pub trait SelectedChainStoreBatchExtensions {
         batch: &mut WriteBatch,
         hash: Hash,
         status: BlockStatus,
-    ) -> Result<RwLockWriteGuard<DbSelectedChainStore>, StoreError>;
+    ) -> Result<RwLockWriteGuard<'_, DbSelectedChainStore>, StoreError>;
 }
 
 impl SelectedChainStoreReader for DbSelectedChainStore {
@@ -99,8 +99,8 @@ impl SelectedChainStore for DbSelectedChainStore {
         Ok(())
     }
 
-    fn prune_below_pruning_point(&mut self, mut writer: impl DbWriter, pruning_point: Hash) -> StoreResult<()> {
-        let mut index = self.access_index_by_hash.read(pruning_point)?;
+    fn prune_below_point(&mut self, mut writer: impl DbWriter, block: Hash) -> StoreResult<()> {
+        let mut index = self.access_index_by_hash.read(block)?;
         while index > 0 {
             index -= 1;
             match self.access_hash_by_index.read(index.into()) {
@@ -116,6 +116,10 @@ impl SelectedChainStore for DbSelectedChainStore {
     }
 
     fn init_with_pruning_point(&mut self, batch: &mut WriteBatch, block: Hash) -> StoreResult<()> {
+        // remove potential leftover chain
+        let _ = self.access_index_by_hash.delete_all(BatchDbWriter::new(batch));
+        let _ = self.access_hash_by_index.delete_all(BatchDbWriter::new(batch));
+
         self.access_index_by_hash.write(BatchDbWriter::new(batch), block, 0)?;
         self.access_hash_by_index.write(BatchDbWriter::new(batch), 0.into(), block)?;
         self.access_highest_index.write(BatchDbWriter::new(batch), &0).unwrap();

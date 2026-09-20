@@ -98,8 +98,8 @@ impl SyncMonitor {
 
     async fn handle_event(&self, event: Box<Events>) -> Result<()> {
         match *event {
-            Events::UtxoProcStart { .. } => {}
-            Events::UtxoProcStop { .. } => {}
+            Events::UtxoProcStart => {}
+            Events::UtxoProcStop => {}
             _ => {}
         }
 
@@ -134,8 +134,8 @@ impl SyncMonitor {
                     _ = interval.next().fuse() => {
                         if this.is_synced() {
                             break;
-                        } else if let Ok(is_synced) = this.get_sync_status().await {
-                            if is_synced {
+                        } else if let Ok(is_synced) = this.get_sync_status().await
+                            && is_synced {
                                 if is_synced != this.is_synced() {
                                     this.inner.is_synced.store(true, Ordering::SeqCst);
                                     this.notify(Events::SyncState { sync_state : SyncState::Synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
@@ -143,7 +143,6 @@ impl SyncMonitor {
 
                                 break;
                             }
-                        }
                     }
 
                     msg = events.receiver.recv().fuse() => {
@@ -179,10 +178,10 @@ impl SyncMonitor {
 
         let mut state: Option<SyncState> = None;
         for line in lines {
-            if !line.is_empty() {
-                if let Some(new_state) = self.inner.state_observer.get(line) {
-                    state.replace(new_state);
-                }
+            if !line.is_empty()
+                && let Some(new_state) = self.inner.state_observer.get(line)
+            {
+                state.replace(new_state);
             }
         }
         if let Some(sync_state) = state {
@@ -202,6 +201,8 @@ pub struct StateObserver {
     utxo_resync: Regex,
     utxo_sync: Regex,
     trust_blocks: Regex,
+    smt_import_start: Regex,
+    smt_import: Regex,
     // accepted_block: Regex,
 }
 
@@ -214,6 +215,8 @@ impl Default for StateObserver {
             utxo_resync: Regex::new(r"Resyncing the utxoindex...").unwrap(),
             utxo_sync: Regex::new(r"Received (\d+) UTXO set chunks so far, totaling in (\d+) UTXOs").unwrap(),
             trust_blocks: Regex::new(r"Processed (\d) trusted blocks in the last .* (total (\d))").unwrap(),
+            smt_import_start: Regex::new(r"downloading the pruning point SMT state from").unwrap(),
+            smt_import: Regex::new(r"SMT import (\d+) of (\d+)").unwrap(),
             // accepted_block: Regex::new(r"Accepted block .* via").unwrap(),
         }
     }
@@ -224,34 +227,42 @@ impl StateObserver {
         let mut state: Option<SyncState> = None;
 
         if let Some(captures) = self.ibd_headers.captures(line) {
-            if let (Some(headers), Some(progress)) = (captures.get(1), captures.get(2)) {
-                if let (Ok(headers), Ok(progress)) = (headers.as_str().parse::<u64>(), progress.as_str().parse::<u64>()) {
-                    state = Some(SyncState::Headers { headers, progress });
-                }
+            if let (Some(headers), Some(progress)) = (captures.get(1), captures.get(2))
+                && let (Ok(headers), Ok(progress)) = (headers.as_str().parse::<u64>(), progress.as_str().parse::<u64>())
+            {
+                state = Some(SyncState::Headers { headers, progress });
             }
         } else if let Some(captures) = self.ibd_blocks.captures(line) {
-            if let (Some(blocks), Some(progress)) = (captures.get(1), captures.get(2)) {
-                if let (Ok(blocks), Ok(progress)) = (blocks.as_str().parse::<u64>(), progress.as_str().parse::<u64>()) {
-                    state = Some(SyncState::Blocks { blocks, progress });
-                }
+            if let (Some(blocks), Some(progress)) = (captures.get(1), captures.get(2))
+                && let (Ok(blocks), Ok(progress)) = (blocks.as_str().parse::<u64>(), progress.as_str().parse::<u64>())
+            {
+                state = Some(SyncState::Blocks { blocks, progress });
             }
         } else if let Some(captures) = self.utxo_sync.captures(line) {
-            if let (Some(chunks), Some(total)) = (captures.get(1), captures.get(2)) {
-                if let (Ok(chunks), Ok(total)) = (chunks.as_str().parse::<u64>(), total.as_str().parse::<u64>()) {
-                    state = Some(SyncState::UtxoSync { chunks, total });
-                }
+            if let (Some(chunks), Some(total)) = (captures.get(1), captures.get(2))
+                && let (Ok(chunks), Ok(total)) = (chunks.as_str().parse::<u64>(), total.as_str().parse::<u64>())
+            {
+                state = Some(SyncState::UtxoSync { chunks, total });
             }
         } else if let Some(captures) = self.trust_blocks.captures(line) {
-            if let (Some(processed), Some(total)) = (captures.get(1), captures.get(2)) {
-                if let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>()) {
-                    state = Some(SyncState::TrustSync { processed, total });
-                }
+            if let (Some(processed), Some(total)) = (captures.get(1), captures.get(2))
+                && let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>())
+            {
+                state = Some(SyncState::TrustSync { processed, total });
+            }
+        } else if self.smt_import_start.is_match(line) {
+            state = Some(SyncState::SmtSync { processed: 0, total: 0 });
+        } else if let Some(captures) = self.smt_import.captures(line) {
+            if let (Some(processed), Some(total)) = (captures.get(1), captures.get(2))
+                && let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>())
+            {
+                state = Some(SyncState::SmtSync { processed, total });
             }
         } else if let Some(captures) = self.proof.captures(line) {
-            if let Some(level) = captures.get(1) {
-                if let Ok(level) = level.as_str().parse::<u64>() {
-                    state = Some(SyncState::Proof { level });
-                }
+            if let Some(level) = captures.get(1)
+                && let Ok(level) = level.as_str().parse::<u64>()
+            {
+                state = Some(SyncState::Proof { level });
             }
         } else if self.utxo_resync.is_match(line) {
             state = Some(SyncState::UtxoResync);

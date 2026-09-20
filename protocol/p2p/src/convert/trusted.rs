@@ -1,4 +1,8 @@
-use kaspa_consensus_core::trusted::{TrustedGhostdagData, TrustedHeader};
+use kaspa_consensus_core::{
+    header::Header,
+    trusted::{TrustedGhostdagData, TrustedHeader},
+};
+use std::sync::Arc;
 
 use crate::pb as protowire;
 
@@ -9,6 +13,12 @@ use crate::pb as protowire;
 impl From<&TrustedHeader> for protowire::DaaBlockV4 {
     fn from(item: &TrustedHeader) -> Self {
         Self { header: Some((&*item.header).into()), ghostdag_data: Some((&item.ghostdag).into()) }
+    }
+}
+
+impl From<&Arc<Header>> for protowire::DaaBlockV4 {
+    fn from(header: &Arc<Header>) -> Self {
+        Self { header: Some((&**header).into()), ghostdag_data: None }
     }
 }
 

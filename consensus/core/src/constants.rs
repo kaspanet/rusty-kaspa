@@ -1,8 +1,18 @@
-/// BLOCK_VERSION represents the current block version
-pub const BLOCK_VERSION: u16 = 1;
+/// BLOCK_VERSION represents the current block version. This denotes the use of
+/// the new sequencing commit described in KIP-21.
+pub const BLOCK_VERSION: u16 = 2;
 
 /// TX_VERSION is the current latest supported transaction version.
 pub const TX_VERSION: u16 = 0;
+
+/// The transaction version activated by the Toccata hardfork.
+///
+/// Main changes enabled relative to [`TX_VERSION`] (0):
+/// - output covenant bindings,
+/// - input compute-budget mass,
+/// - non-native/non-coinbase subnetworks (user lanes),
+/// - gas commitments.
+pub const TX_VERSION_TOCCATA: u16 = 1;
 
 pub const LOCK_TIME_THRESHOLD: u64 = 500_000_000_000;
 
@@ -14,6 +24,11 @@ pub const SOMPI_PER_KASPA: u64 = 100_000_000;
 
 /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
 pub const STORAGE_MASS_PARAMETER: u64 = SOMPI_PER_KASPA * 10_000;
+
+/// The parameter defining how much mass per byte to charge for when calculating
+/// transient storage mass. Since normally the block mass limit is 500_000, this limits
+/// block body byte size to 125_000 (KIP-0013).
+pub const TRANSIENT_BYTE_TO_MASS_FACTOR: u64 = 4;
 
 /// MaxSompi is the maximum transaction amount allowed in sompi.
 pub const MAX_SOMPI: u64 = 29_000_000_000 * SOMPI_PER_KASPA;

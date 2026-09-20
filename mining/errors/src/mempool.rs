@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
 };
 use thiserror::Error;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum RuleError {
     /// A consensus transaction rule error
     ///
@@ -15,8 +15,11 @@ pub enum RuleError {
     #[error(transparent)]
     RejectTxRule(TxRuleError),
 
-    #[error("at least one outpoint of transaction is lacking a matching UTXO entry")]
+    #[error("at least one outpoint of the transaction is lacking a matching UTXO entry")]
     RejectMissingOutpoint,
+
+    #[error("at least one outpoint of the transaction is impossible to have a matching UTXO entry")]
+    RejectImpossibleOutpoint,
 
     #[error("transaction {0} was already accepted by the consensus")]
     RejectAlreadyAccepted(TransactionId),
@@ -24,16 +27,37 @@ pub enum RuleError {
     #[error("transaction {0} is already in the mempool")]
     RejectDuplicate(TransactionId),
 
-    #[error("output {0} already spent by transaction {1} in the memory pool")]
+    #[error("coinbase transaction {0} cannot be added to the mempool")]
+    RejectCoinbase(TransactionId),
+
+    #[error("output {0} already spent by transaction {1} in the mempool")]
     RejectDoubleSpendInMempool(TransactionOutpoint, TransactionId),
 
-    /// New behavior: a transaction is rejected if the mempool is full
-    #[error("number of high-priority transactions in mempool ({0}) has reached the maximum allowed ({1})")]
-    RejectMempoolIsFull(usize, u64),
+    #[error("replace by fee found no double spending transaction in the mempool")]
+    RejectRbfNoDoubleSpend,
+
+    #[error("replace by fee found more than one double spending transaction in the mempool")]
+    RejectRbfTooManyDoubleSpendingTransactions,
+
+    /// a transaction is rejected if the mempool is full
+    #[error("transaction could not be added to the mempool because it's full with transactions with higher priority")]
+    RejectMempoolIsFull,
 
     /// An error emitted by mining\src\mempool\check_transaction_standard.rs
     #[error("transaction {0} is not standard: {1}")]
     RejectNonStandard(TransactionId, String),
+
+    #[error("transaction compute mass of {1} is larger than max allowed size of {2}")]
+    RejectComputeMass(TransactionId, u64, u64),
+
+    #[error("transaction transient (storage) mass of {1} is larger than max allowed size of {2}")]
+    RejectTransientMass(TransactionId, u64, u64),
+
+    #[error("transaction storage mass of {1} is larger than max allowed size of {2}")]
+    RejectStorageMass(TransactionId, u64, u64),
+
+    #[error("transaction gas of {1} is larger than max allowed per-lane gas of {2}")]
+    RejectGas(TransactionId, u64, u64),
 
     #[error("one of the transaction inputs spends an immature UTXO: {0}")]
     RejectImmatureSpend(TxRuleError),
@@ -70,9 +94,6 @@ pub enum RuleError {
     #[error("transaction {0} is invalid")]
     RejectInvalid(TransactionId),
 
-    #[error("Rejected spam tx {0} from mempool")]
-    RejectSpamTransaction(TransactionId),
-
     #[error("Rejected tx {0} from mempool due to incomputable storage mass")]
     RejectStorageMassIncomputable(TransactionId),
 }
@@ -95,16 +116,18 @@ impl From<TxRuleError> for RuleError {
 
 pub type RuleResult<T> = std::result::Result<T, RuleError>;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum NonStandardError {
+    // TODO: the three variants below are unreachable, nothing constructs them. Each corresponds to a
+    // rule that is now enforced elsewhere: transaction version, signature script length, per-lane
+    // gas and the zero-gas requirement for native and system subnetworks are all consensus rules,
+    // with per-lane gas additionally checked at mempool admission. Remove all three together with
+    // their `transaction_id` arms once no external consumer matches on them.
     #[error("transaction version {1} is not in the valid range of {2}-{3}")]
     RejectVersion(TransactionId, u16, u16, u16),
 
-    #[error("transaction mass of {1} is larger than max allowed size of {2}")]
-    RejectMass(TransactionId, u64, u64),
-
-    #[error("transaction mass in context (including storage mass) of {1} is larger than max allowed size of {2}")]
-    RejectContextualMass(TransactionId, u64, u64),
+    #[error("transaction gas of {1} is larger than max allowed per-lane gas of {2}")]
+    RejectGas(TransactionId, u64, u64),
 
     #[error("transaction input #{1}: signature script size of {2} bytes is larger than the maximum allowed size of {3} bytes")]
     RejectSignatureScriptSize(TransactionId, usize, u64, u64),
@@ -115,31 +138,32 @@ pub enum NonStandardError {
     #[error("transaction output #{1}: non-standard script form")]
     RejectOutputScriptClass(TransactionId, usize),
 
-    #[error("transaction output #{1}: payment of {2} is dust")]
-    RejectDust(TransactionId, usize, u64),
-
     #[error("transaction input {1}: non-standard script form")]
     RejectInputScriptClass(TransactionId, usize),
 
-    #[error("transaction has {1} fees which is under the required amount of {2}")]
-    RejectInsufficientFee(TransactionId, u64, u64),
+    #[error("transaction has {1} fees which is under the required amount of {2} for compute mass {3}")]
+    RejectInsufficientComputeFee(TransactionId, u64, u64, u64),
+
+    #[error(
+        "transaction has {1} fees which is under the required amount of {2} for normalized transient mass {3} (proportional to transaction byte size)"
+    )]
+    RejectInsufficientTransientFee(TransactionId, u64, u64, u64),
 
     #[error("transaction input #{1} has {2} signature operations which is more than the allowed max amount of {3}")]
-    RejectSignatureCount(TransactionId, usize, u8, u8),
+    RejectSignatureCount(TransactionId, usize, u64, u16),
 }
 
 impl NonStandardError {
     pub fn transaction_id(&self) -> &TransactionId {
         match self {
             NonStandardError::RejectVersion(id, _, _, _) => id,
-            NonStandardError::RejectMass(id, _, _) => id,
-            NonStandardError::RejectContextualMass(id, _, _) => id,
+            NonStandardError::RejectGas(id, _, _) => id,
             NonStandardError::RejectSignatureScriptSize(id, _, _, _) => id,
             NonStandardError::RejectScriptPublicKeyVersion(id, _) => id,
             NonStandardError::RejectOutputScriptClass(id, _) => id,
-            NonStandardError::RejectDust(id, _, _) => id,
             NonStandardError::RejectInputScriptClass(id, _) => id,
-            NonStandardError::RejectInsufficientFee(id, _, _) => id,
+            NonStandardError::RejectInsufficientComputeFee(id, _, _, _) => id,
+            NonStandardError::RejectInsufficientTransientFee(id, _, _, _) => id,
             NonStandardError::RejectSignatureCount(id, _, _, _) => id,
         }
     }

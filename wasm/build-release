@@ -4,6 +4,10 @@
 # make the script fail for any failed command
 set -e
 
+# Workaround for Rust 1.87.0
+# https://github.com/rust-lang/rust/issues/141048
+export RUSTFLAGS=-Ctarget-cpu=mvp
+
 rm -rf release/*
 rm -rf web/*
 rm -rf nodejs/*
@@ -83,8 +87,3 @@ cp LICENSE release/kaspa-wasm32-sdk/LICENSE
 
 node build/package-sizes.js
 cp package-sizes.js release/kaspa-wasm32-sdk/package-sizes.js
-
-pushd .
-cd release
-zip -q -r kaspa-wasm32-sdk.zip kaspa-wasm32-sdk
-popd

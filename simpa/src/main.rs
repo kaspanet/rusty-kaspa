@@ -1,6 +1,6 @@
 use async_channel::unbounded;
 use clap::Parser;
-use futures::{future::try_join_all, Future};
+use futures::{Future, future::try_join_all};
 use itertools::Itertools;
 use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::{
@@ -13,23 +13,28 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{Params, Testnet11Bps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, TESTNET11_PARAMS},
+    params::{DEVNET_PARAMS, ForkActivation, NETWORK_DELAY_BOUND, OverrideParams, Params, SIMNET_PARAMS, TenBps},
 };
 use kaspa_consensus_core::{
-    api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
-    BlockHashSet, BlockLevel, HashMapCustomHasher,
+    BlockHashSet, BlockLevel, HashMapCustomHasher, api::ConsensusApi, block::Block, blockstatus::BlockStatus,
+    config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult, mining_rules::MiningRules, tx::TransactionType,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, time::unix_now, trace, warn};
+use kaspa_core::{
+    info,
+    task::{service::AsyncService, tick::TickService},
+    time::unix_now,
+    trace, warn,
+};
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
 use kaspa_perf_monitor::{builder::Builder, counters::CountersSnapshot};
 use kaspa_utils::fd_budget;
-use simulator::network::KaspaNetworkSimulator;
+use simpa::simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
-pub mod simulator;
+mod blocks_json;
 
 /// Kaspa Network Simulator
 #[derive(Parser, Debug)]
@@ -78,7 +83,7 @@ struct Args {
     ram_scale: f64,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
-    ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
+    ///  -- You may also specify `<subsystem>=<level>,<subsystem2>=<level>,...` to set the log level for individual subsystems
     #[arg(long = "loglevel", default_value = format!("info,{}=trace", env!("CARGO_PKG_NAME")))]
     log_level: String,
 
@@ -117,6 +122,16 @@ struct Args {
     rocksdb_files_limit: Option<i32>,
     #[arg(long)]
     rocksdb_mem_budget: Option<usize>,
+    #[arg(long, default_value_t = false)]
+    long_payload: bool,
+    #[arg(long)]
+    retention_period_days: Option<f64>,
+
+    #[arg(long)]
+    override_params_output: Option<String>,
+
+    #[arg(long)]
+    blocks_json_gz_output_path: Option<String>,
 }
 
 #[cfg(feature = "heap")]
@@ -133,7 +148,13 @@ fn main() {
     let args = Args::parse();
 
     // Initialize the logger
-    kaspa_core::log::init_logger(None, &args.log_level);
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "semaphore-trace")] {
+            kaspa_core::log::init_logger(None, &format!("{},{}=debug", args.log_level, kaspa_utils::sync::semaphore_module_path()));
+        } else {
+            kaspa_core::log::init_logger(None, &args.log_level);
+        }
+    };
 
     // Configure the panic behavior
     // As we log the panic, we want to set it up after the logger
@@ -176,15 +197,19 @@ fn main_impl(mut args: Args) {
             args.miners
         );
     }
-    args.bps = if args.testnet11 { Testnet11Bps::bps() as f64 } else { args.bps };
-    let mut params = if args.testnet11 { TESTNET11_PARAMS } else { DEVNET_PARAMS };
-    params.storage_mass_activation_daa_score = 400;
+    args.bps = if args.testnet11 { TenBps::bps() as f64 } else { args.bps };
+    let mut params = if args.testnet11 { SIMNET_PARAMS } else { DEVNET_PARAMS };
+    params.crescendo_activation = ForkActivation::always();
+    params.coinbase_maturity = 200;
     params.storage_mass_parameter = 10_000;
     let mut builder = ConfigBuilder::new(params)
         .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
         .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
         .adjust_perf_params_to_consensus_params()
-        .apply_args(|config| config.ram_scale = args.ram_scale)
+        .apply_args(|config| {
+            config.ram_scale = args.ram_scale;
+            config.retention_period_days = args.retention_period_days;
+        })
         .skip_proof_of_work()
         .enable_sanity_checks();
     if !args.test_pruning {
@@ -199,6 +224,13 @@ fn main_impl(mut args: Args) {
     if let Some(rocksdb_mem_budget) = args.rocksdb_mem_budget {
         conn_builder = conn_builder.with_mem_budget(rocksdb_mem_budget);
     }
+
+    if let Some(output_path) = args.override_params_output {
+        let override_params: OverrideParams = config.params.clone().into();
+        let override_params_json = serde_json::to_string_pretty(&override_params).unwrap();
+        std::fs::write(output_path, override_params_json).expect("Unable to write override_params to file");
+    }
+
     // Load an existing consensus or run the simulation
     let (consensus, _lifetime) = if let Some(input_dir) = args.input_dir {
         let mut config = (*config).clone();
@@ -221,6 +253,7 @@ fn main_impl(mut args: Args) {
             Default::default(),
             Default::default(),
             unix_now(),
+            Arc::new(MiningRules::default()),
         ));
         (consensus, lifetime)
     } else {
@@ -234,13 +267,58 @@ fn main_impl(mut args: Args) {
                 args.rocksdb_stats_period_sec,
                 args.rocksdb_files_limit,
                 args.rocksdb_mem_budget,
+                args.long_payload,
             )
             .run(until);
         consensus.shutdown(handles);
         (consensus, lifetime)
     };
 
+    if let Some(blocks_json_output_path) = args.blocks_json_gz_output_path {
+        blocks_json::write_blocks_json(&config.params, &consensus, &blocks_json_output_path);
+    }
+
     if args.test_pruning {
+        let hashes = topologically_ordered_hashes(&consensus, consensus.pruning_point(), false);
+        let num_blocks = hashes.len();
+        let num_txs = print_stats(&consensus, &hashes, args.delay, args.bps, config.ghostdag_k());
+        info!("There are {num_blocks} blocks with {num_txs} transactions overall above the current pruning point");
+
+        if args.retention_period_days.is_some() {
+            let hashes_retention = topologically_ordered_hashes(&consensus, consensus.get_retention_period_root(), false);
+            info!("There are {} blocks above the retention period root", hashes_retention.len());
+        }
+
+        consensus.validate_pruning_points(consensus.get_sink()).unwrap();
+
+        // Test whether we can still retrieve a populated transaction given a txid and the accepting block daa score.
+        for hash in hashes.iter().cloned() {
+            if !consensus.is_chain_block(hash).unwrap() {
+                // only chain blocks are worth checking the acceptance data of
+                continue;
+            }
+
+            if let Ok(block_acceptance_data) = consensus.get_block_acceptance_data(hash) {
+                block_acceptance_data.iter().for_each(|cbad| {
+                    let block = consensus.get_block(hash).unwrap();
+                    cbad.accepted_transactions.iter().for_each(|ate| {
+                        assert!(
+                            consensus
+                                .get_transactions_by_accepting_daa_score(
+                                    block.header.daa_score,
+                                    Some(vec![ate.transaction_id]),
+                                    TransactionType::SignableTransaction
+                                )
+                                .is_ok(),
+                            "Expected to find find tx {} at accepted daa {} via get_populated_transaction",
+                            ate.transaction_id,
+                            block.header.daa_score
+                        );
+                    });
+                });
+            }
+        }
+
         drop(consensus);
         return;
     }
@@ -257,6 +335,7 @@ fn main_impl(mut args: Args) {
         Default::default(),
         Default::default(),
         unix_now(),
+        Arc::new(MiningRules::default()),
     ));
     let handles2 = consensus2.run_processors();
     if args.headers_first {
@@ -274,17 +353,17 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
     // We have no actual PoW in the simulation, so the true max is most reflective,
     // however we avoid the actual max since it is reserved for the DB prefix scheme
     params.max_block_level = BlockLevel::MAX - 1;
-    params.genesis.timestamp = 0;
+    // params.genesis.timestamp = 0;
     if args.testnet11 {
         info!(
             "Using kaspa-testnet-11 configuration (GHOSTDAG K={}, DAA window size={}, Median time window size={})",
-            params.ghostdag_k,
-            params.difficulty_window_size(0),
-            params.past_median_time_window_size(0),
+            params.ghostdag_k(),
+            params.difficulty_window_size,
+            params.past_median_time_window_size,
         );
     } else {
         let max_delay = args.delay.max(NETWORK_DELAY_BOUND as f64);
-        let k = u64::max(calculate_ghostdag_k(2.0 * max_delay * args.bps, 0.05), params.ghostdag_k as u64);
+        let k = u64::max(calculate_ghostdag_k(2.0 * max_delay * args.bps, 0.05), params.ghostdag_k() as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
         params.ghostdag_k = k;
         params.mergeset_size_limit = k as u64 * 10;
@@ -295,30 +374,32 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
 
         if args.daa_legacy {
             // Scale DAA and median-time windows linearly with BPS
-            params.sampling_activation_daa_score = u64::MAX;
-            params.legacy_timestamp_deviation_tolerance = (params.legacy_timestamp_deviation_tolerance as f64 * args.bps) as u64;
-            params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
+            params.crescendo_activation = ForkActivation::never();
+            params.timestamp_deviation_tolerance = (params.timestamp_deviation_tolerance as f64 * args.bps) as u64;
+            params.difficulty_window_size = (params.difficulty_window_size as f64 * args.bps) as usize;
         } else {
             // Use the new sampling algorithms
-            params.sampling_activation_daa_score = 0;
+            params.crescendo_activation = ForkActivation::always();
+            params.timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
             params.past_median_time_sample_rate = (10.0 * args.bps) as u64;
-            params.new_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
             params.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
-        info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size(0));
+        info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size);
     }
     if args.test_pruning {
         params.pruning_proof_m = 16;
-        params.legacy_difficulty_window_size = 64;
-        params.legacy_timestamp_deviation_tolerance = 16;
-        params.new_timestamp_deviation_tolerance = 16;
-        params.sampled_difficulty_window_size = params.sampled_difficulty_window_size.min(32);
-        params.finality_depth = 128;
-        params.merge_depth = 128;
-        params.mergeset_size_limit = 32;
-        params.pruning_depth = params.anticone_finalization_depth();
-        info!("Setting pruning depth to {}", params.pruning_depth);
+        params.min_difficulty_window_size = 16;
+        params.timestamp_deviation_tolerance = 16;
+        params.difficulty_window_size = params.difficulty_window_size.min(32);
+
+        params.ghostdag_k = 20;
+        params.finality_depth = 100 * 2;
+        params.merge_depth = 64 * 2;
+        params.mergeset_size_limit = 32 * 2;
+        params.pruning_depth = 100 * 2 * 2 + 50;
+
+        info!("Setting pruning depth to {:?}", params.pruning_depth());
     }
 }
 
@@ -332,9 +413,9 @@ fn apply_args_to_perf_params(args: &Args, perf_params: &mut PerfParams) {
 }
 
 async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: &Params, delay: f64, bps: f64, header_only: bool) {
-    let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash);
+    let hashes = topologically_ordered_hashes(src_consensus, params.genesis.hash, false);
     let num_blocks = hashes.len();
-    let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k);
+    let num_txs = print_stats(src_consensus, &hashes, delay, bps, params.ghostdag_k());
     if header_only {
         info!("Validating {num_blocks} headers...");
     } else {
@@ -383,7 +464,7 @@ fn submit_chunk(
     dst_consensus: &Consensus,
     chunk: &mut impl Iterator<Item = Hash>,
     header_only: bool,
-) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>>> {
+) -> Vec<impl Future<Output = BlockProcessResult<BlockStatus>> + 'static> {
     let mut futures = Vec::new();
     for hash in chunk {
         let block = Block::from_arcs(
@@ -396,13 +477,13 @@ fn submit_chunk(
     futures
 }
 
-fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -> Vec<Hash> {
+pub(crate) fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash, include_genesis: bool) -> Vec<Hash> {
     let mut queue: VecDeque<Hash> = std::iter::once(genesis_hash).collect();
     let mut visited = BlockHashSet::new();
-    let mut vec = Vec::new();
-    let relations = src_consensus.relations_stores.read();
+    let mut vec = if include_genesis { vec![genesis_hash] } else { Vec::new() };
+    let relations = src_consensus.relations_store.read();
     while let Some(current) = queue.pop_front() {
-        for child in relations[0].get_children(current).unwrap().read().iter() {
+        for child in relations.get_children(current).unwrap().read().iter() {
             if visited.insert(*child) {
                 queue.push_back(*child);
                 vec.push(*child);
@@ -414,12 +495,12 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
 }
 
 fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64, k: KType) -> usize {
-    let blues_mean =
-        hashes.iter().map(|&h| src_consensus.ghostdag_primary_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>() as f64
-            / hashes.len() as f64;
-    let reds_mean =
-        hashes.iter().map(|&h| src_consensus.ghostdag_primary_store.get_data(h).unwrap().mergeset_reds.len()).sum::<usize>() as f64
-            / hashes.len() as f64;
+    let blues_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>()
+        as f64
+        / hashes.len() as f64;
+    let reds_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_reds.len()).sum::<usize>()
+        as f64
+        / hashes.len() as f64;
     let parents_mean = hashes.iter().map(|&h| src_consensus.headers_store.get_header(h).unwrap().direct_parents().len()).sum::<usize>()
         as f64
         / hashes.len() as f64;

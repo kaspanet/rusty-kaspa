@@ -1,0 +1,21 @@
+[package]
+name = "kaspa-grpc-simple-client-example"
+description = "Kaspa GRPC simple client example"
+publish = false
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+futures.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-grpc-client.workspace = true
+tokio.workspace = true
+
+
+[lints]
+workspace = true

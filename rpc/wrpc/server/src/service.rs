@@ -9,7 +9,7 @@ use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
+use tokio::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use workflow_rpc::server::prelude::*;
 pub use workflow_rpc::server::{Encoding as WrpcEncoding, WebSocketConfig, WebSocketCounters};
 
@@ -123,6 +123,7 @@ impl WrpcService {
             rpc_handler.clone(),
             router.interface.clone(),
             Some(counters),
+            false,
         );
 
         WrpcService { options, server, rpc_handler, shutdown: SingleTrigger::default() }
@@ -146,10 +147,15 @@ impl WrpcService {
         info!("WRPC Server starting on: {}", listen_address);
         tokio::spawn(async move {
             let config = WebSocketConfig { max_message_size: Some(MAX_WRPC_MESSAGE_SIZE), ..Default::default() };
-            let serve_result = self.server.listen(&listen_address, Some(config)).await;
-            match serve_result {
-                Ok(_) => info!("WRPC Server stopped on: {}", listen_address),
-                Err(err) => panic!("WRPC Server {listen_address} stopped with error: {err:?}"),
+            match self.server.bind(&listen_address).await {
+                Ok(listener) => {
+                    let serve_result = self.server.listen(listener, Some(config)).await;
+                    match serve_result {
+                        Ok(_) => info!("WRPC Server stopped on: {}", listen_address),
+                        Err(err) => panic!("WRPC Server {listen_address} stopped with error: {err:?}"),
+                    }
+                }
+                Err(err) => panic!("WRPC Server bind error on {listen_address}: {err:?}"),
             }
         });
 

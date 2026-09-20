@@ -1,3 +1,5 @@
+//! The [`Error`](enum@Error) enum used by this crate
+
 use thiserror::Error;
 use wasm_bindgen::{JsError, JsValue};
 use workflow_wasm::jserror::JsErrorData;
@@ -40,6 +42,9 @@ pub enum Error {
     #[error(transparent)]
     NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
+    #[error(transparent)]
+    CompressedParents(#[from] kaspa_consensus_core::errors::header::CompressedParentsError),
+
     #[error("Error converting property `{0}`: {1}")]
     Convert(&'static str, String),
 
@@ -48,6 +53,9 @@ pub enum Error {
 
     #[error("Transaction input is missing UTXO entry")]
     MissingUtxoEntry,
+
+    #[error(transparent)]
+    PopulateGenesisCovenants(#[from] kaspa_consensus_core::errors::tx::PopulateGenesisCovenantsError),
 }
 
 impl Error {

@@ -6,9 +6,9 @@ use crate::model::{
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
+    BlockHashSet, ChainPath,
     blockhash::BlockHashExtensions,
     errors::traversal::{TraversalError, TraversalResult},
-    BlockHashSet, ChainPath,
 };
 use kaspa_core::trace;
 use kaspa_hashes::Hash;
@@ -31,7 +31,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         Self { genesis_hash, ghostdag_store, relations_store, reachability_service }
     }
 
-    pub fn calculate_chain_path(&self, from: Hash, to: Hash) -> ChainPath {
+    pub fn calculate_chain_path(&self, from: Hash, to: Hash, chain_path_added_limit: Option<usize>) -> ChainPath {
         let mut removed = Vec::new();
         let mut common_ancestor = from;
         for current in self.reachability_service.default_backward_chain_iterator(from) {
@@ -42,9 +42,20 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
                 break;
             }
         }
-        // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
-        let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec();
-        added.reverse();
+        if chain_path_added_limit.is_none() {
+            // Use backward chain iterator
+            // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
+            let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec();
+            added.reverse();
+            return ChainPath { added, removed };
+        }
+        // Use forward chain iterator, to ascertain a path from the common ancestor to the target.
+        let added = self
+            .reachability_service
+            .forward_chain_iterator(common_ancestor, to, true)
+            .skip(1)
+            .take(chain_path_added_limit.unwrap()) // we handle is_none so we may unwrap. 
+            .collect_vec();
         ChainPath { added, removed }
     }
 
@@ -94,10 +105,10 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
             // We count the number of blocks in past(tips) \setminus past(block).
             // We don't use `visited.len()` since it includes some maximal blocks in past(block) as well.
             traversal_count += 1;
-            if let Some(max_traversal_allowed) = max_traversal_allowed {
-                if traversal_count > max_traversal_allowed {
-                    return Err(TraversalError::ReachedMaxTraversalAllowed(traversal_count, max_traversal_allowed));
-                }
+            if let Some(max_traversal_allowed) = max_traversal_allowed
+                && traversal_count > max_traversal_allowed
+            {
+                return Err(TraversalError::ReachedMaxTraversalAllowed(traversal_count, max_traversal_allowed));
             }
 
             if traversal_count % 10000 == 0 {

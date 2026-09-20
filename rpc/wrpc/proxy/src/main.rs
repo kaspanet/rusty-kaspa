@@ -13,8 +13,8 @@ use kaspa_wrpc_server::{
 use result::Result;
 use std::sync::Arc;
 use workflow_log::*;
-use workflow_rpc::server::prelude::*;
 use workflow_rpc::server::WebSocketCounters;
+use workflow_rpc::server::prelude::*;
 
 #[derive(Debug, Parser)]
 #[clap(name = "proxy")]
@@ -90,13 +90,15 @@ async fn main() -> Result<()> {
         rpc_handler.clone(),
         router.interface.clone(),
         Some(counters),
+        false,
     );
 
     log_info!("Kaspa wRPC server is listening on {}", options.listen_address);
     log_info!("Using `{encoding}` protocol encoding");
 
     let config = WebSocketConfig { max_message_size: Some(1024 * 1024 * 1024), ..Default::default() };
-    server.listen(&options.listen_address, Some(config)).await?;
+    let listener = server.bind(&options.listen_address).await?;
+    server.listen(listener, Some(config)).await?;
 
     Ok(())
 }

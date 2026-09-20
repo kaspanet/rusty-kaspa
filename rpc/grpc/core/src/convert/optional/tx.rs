@@ -1,0 +1,228 @@
+use crate::protowire;
+use crate::{from, try_from};
+use kaspa_consensus_core::Hash;
+use kaspa_rpc_core::{FromRpcHex, RpcAddress, RpcError, RpcResult, RpcScriptClass, RpcSubnetworkId, ToRpcHex};
+use std::str::FromStr;
+
+// ----------------------------------------------------------------------------
+// rpc_core to protowire
+// ----------------------------------------------------------------------------
+
+from!(item: &kaspa_rpc_core::RpcOptionalTransaction, protowire::RpcOptionalTransaction, {
+    Self {
+        version: item.version.map(|x| x.into()),
+        inputs: item.inputs.iter().map(protowire::RpcOptionalTransactionInput::from).collect(),
+        outputs: item.outputs.iter().map(protowire::RpcOptionalTransactionOutput::from).collect(),
+        lock_time: item.lock_time,
+        subnetwork_id: item.subnetwork_id.as_ref().map(|x| x.to_string()),
+        gas: item.gas,
+        payload: item.payload.as_ref().map(|x| x.to_rpc_hex()),
+        mass: item.storage_mass,
+        verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcOptionalTransactionInput, protowire::RpcOptionalTransactionInput, {
+    Self {
+        previous_outpoint: item.previous_outpoint.as_ref().map(|x| x.into()),
+        signature_script: item.signature_script.as_ref().map(|x| x.to_rpc_hex()),
+        sequence: item.sequence,
+        sig_op_count: item.sig_op_count.map(|x| x.into()),
+        compute_budget: item.compute_budget.map(|x| x.into()),
+        verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcOptionalTransactionOutput, protowire::RpcOptionalTransactionOutput, {
+    Self {
+        value: item.value,
+        script_public_key: item.script_public_key.as_ref().map(|x| x.into()),
+        verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
+        covenant: item.covenant.as_ref().map(|x| x.into()),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcNullableCovenantBinding, protowire::RpcNullableCovenantBinding, {
+    Self{covenant: item.0.as_ref().map(Into::into)}
+});
+
+from!(item: &kaspa_rpc_core::RpcOptionalTransactionOutpoint, protowire::RpcOptionalTransactionOutpoint, {
+    Self {
+        transaction_id: item.transaction_id.map(|x| x.to_string()),
+        index: item.index,
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcOptionalTransactionVerboseData, protowire::RpcOptionalTransactionVerboseData, {
+    Self {
+        transaction_id: item.transaction_id.map(|v| v.to_string()),
+        hash: item.hash.map(|v| v.to_string()),
+        compute_mass: item.compute_mass,
+        block_hash: item.block_hash.map(|v| v.to_string()),
+        block_time: item.block_time,
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcOptionalTransactionInputVerboseData, protowire::RpcOptionalTransactionInputVerboseData, {
+    Self {
+        utxo_entry: item.utxo_entry.as_ref().map(|x| x.into()),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcOptionalTransactionOutputVerboseData, protowire::RpcOptionalTransactionOutputVerboseData, {
+    Self {
+        script_public_key_type: item.script_public_key_type.as_ref().map(|x| x.to_string()),
+        script_public_key_address: item.script_public_key_address.as_ref().map(|x| x.to_string()),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcOptionalUtxoEntry, protowire::RpcOptionalUtxoEntry, {
+    Self {
+        amount: item.amount,
+        script_public_key: item.script_public_key.as_ref().map(|x| x.into()),
+        block_daa_score: item.block_daa_score,
+        is_coinbase: item.is_coinbase,
+        verbose_data: item.verbose_data.as_ref().map(|x| x.into()),
+        covenant_id: item.covenant_id.as_ref().map(|x| x.to_string()),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcOptionalUtxoEntryVerboseData, protowire::RpcOptionalUtxoEntryVerboseData, {
+    Self {
+        script_public_key_type: item.script_public_key_type.as_ref().map(|x| x.to_string()),
+        script_public_key_address: item.script_public_key_address.as_ref().map(|x| x.to_string()),
+    }
+});
+
+// ----------------------------------------------------------------------------
+// protowire to rpc_core
+// ----------------------------------------------------------------------------
+
+try_from!(item: &protowire::RpcOptionalTransaction, kaspa_rpc_core::RpcOptionalTransaction, {
+    Self {
+        version: item.version.map(|x| x as u16),
+        inputs: item.inputs.iter().map(kaspa_rpc_core::RpcOptionalTransactionInput::try_from).collect::<RpcResult<_>>()?,
+        outputs: item.outputs.iter().map(kaspa_rpc_core::RpcOptionalTransactionOutput::try_from).collect::<RpcResult<_>>()?,
+        lock_time: item.lock_time,
+        subnetwork_id: item.subnetwork_id.as_ref().map(|x| RpcSubnetworkId::from_str(x)).transpose()?,
+        gas: item.gas,
+        payload: item.payload.as_ref().map(|x| Vec::from_rpc_hex(x)).transpose()?,
+        storage_mass: item.mass,
+        verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionVerboseData::try_from).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcOptionalTransactionInput, kaspa_rpc_core::RpcOptionalTransactionInput, {
+    Self {
+        previous_outpoint: item.previous_outpoint.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionOutpoint::try_from).transpose()?,
+        signature_script: item.signature_script.as_ref().map(|x| Vec::from_rpc_hex(x)).transpose()?,
+        sequence: item.sequence,
+        sig_op_count: item.sig_op_count.map(|x| x as u8),
+        compute_budget: item.compute_budget.map(|x| x as u16),
+        verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionInputVerboseData::try_from).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcOptionalTransactionOutput, kaspa_rpc_core::RpcOptionalTransactionOutput, {
+    Self {
+        value: item.value,
+        script_public_key: item.script_public_key.as_ref().map(kaspa_rpc_core::RpcScriptPublicKey::try_from).transpose()?,
+        verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcOptionalTransactionOutputVerboseData::try_from).transpose()?,
+        covenant: item.covenant.as_ref().map(kaspa_rpc_core::RpcNullableCovenantBinding::try_from).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcNullableCovenantBinding, kaspa_rpc_core::RpcNullableCovenantBinding, {
+    Self(item.covenant.as_ref().map(kaspa_rpc_core::RpcCovenantBinding::try_from).transpose()?)
+});
+
+try_from!(item: &protowire::RpcOptionalTransactionOutpoint, kaspa_rpc_core::RpcOptionalTransactionOutpoint, {
+    Self {
+        transaction_id: item.transaction_id.as_ref().map(|x| kaspa_rpc_core::RpcHash::from_str(x)).transpose()?,
+        index: item.index,
+    }
+});
+
+try_from!(item: &protowire::RpcOptionalTransactionVerboseData, kaspa_rpc_core::RpcOptionalTransactionVerboseData, {
+    Self {
+        transaction_id: item.transaction_id.as_ref().map(|x| kaspa_rpc_core::RpcHash::from_str(x)).transpose()?,
+        hash: item.hash.as_ref().map(|x| kaspa_rpc_core::RpcHash::from_str(x)).transpose()?,
+        compute_mass: item.compute_mass,
+        block_hash: item.block_hash.as_ref().map(|x| kaspa_rpc_core::RpcHash::from_str(x)).transpose()?,
+        block_time: item.block_time,
+    }
+});
+
+try_from!(item: &protowire::RpcOptionalTransactionInputVerboseData, kaspa_rpc_core::RpcOptionalTransactionInputVerboseData, {
+    Self {
+        utxo_entry: item.utxo_entry.as_ref().map(kaspa_rpc_core::RpcOptionalUtxoEntry::try_from).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcOptionalTransactionOutputVerboseData, kaspa_rpc_core::RpcOptionalTransactionOutputVerboseData, {
+    Self {
+        script_public_key_type: item.script_public_key_type.as_ref().map(|x| RpcScriptClass::from_str(x)).transpose()?,
+        script_public_key_address: item.script_public_key_address.as_ref().map(|x| RpcAddress::try_from(x.as_str())).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcCovenantBinding, kaspa_rpc_core::RpcCovenantBinding, {
+   Self::new(item.authorizing_input.try_into()?, Hash::from_str(item.covenant_id.as_str())?)
+});
+
+try_from!(item: &protowire::RpcOptionalUtxoEntry, kaspa_rpc_core::RpcOptionalUtxoEntry, {
+    Self {
+        amount: item.amount,
+        script_public_key: item.script_public_key.as_ref().map(|x| x.try_into()).transpose()?,
+        block_daa_score: item.block_daa_score,
+        is_coinbase: item.is_coinbase,
+        verbose_data: item.verbose_data.as_ref().map(|x| x.try_into()).transpose()?,
+        covenant_id: item.covenant_id.as_ref().map(|x| Hash::from_str(x)).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcOptionalUtxoEntryVerboseData, kaspa_rpc_core::RpcOptionalUtxoEntryVerboseData, {
+    Self {
+        script_public_key_type: item.script_public_key_type.as_ref().map(|x| RpcScriptClass::from_str(x)).transpose()?,
+        script_public_key_address: item.script_public_key_address.as_ref().map(|x| RpcAddress::try_from(x.as_str())).transpose()?,
+    }
+});
+
+#[cfg(test)]
+mod tests {
+    use crate::protowire;
+    use kaspa_consensus_core::subnets::SubnetworkId;
+    use kaspa_rpc_core::RpcOptionalTransaction;
+
+    #[test]
+    fn test_rpc_optional_transaction_compute_budget_roundtrip() {
+        let tx = RpcOptionalTransaction {
+            version: Some(1),
+            inputs: vec![kaspa_rpc_core::RpcOptionalTransactionInput {
+                previous_outpoint: Some(kaspa_rpc_core::RpcOptionalTransactionOutpoint {
+                    transaction_id: Some(kaspa_consensus_core::Hash::from_bytes([2; 32])),
+                    index: Some(0),
+                }),
+                signature_script: Some(vec![]),
+                sequence: Some(0),
+                sig_op_count: Some(0),
+                compute_budget: Some(444),
+                verbose_data: None,
+            }],
+            outputs: vec![],
+            lock_time: Some(1),
+            subnetwork_id: Some(SubnetworkId::from_bytes([5; 20])),
+            gas: Some(0),
+            payload: Some(vec![0x01, 0x02]),
+            storage_mass: Some(333),
+            verbose_data: None,
+        };
+
+        let wire: protowire::RpcOptionalTransaction = (&tx).into();
+        assert_eq!(wire.inputs[0].compute_budget, Some(444));
+
+        let decoded = RpcOptionalTransaction::try_from(&wire).unwrap();
+        assert_eq!(decoded.inputs[0].compute_budget, Some(444));
+        assert_eq!(decoded.storage_mass, Some(333));
+    }
+}

@@ -1,3 +1,5 @@
+//! wRPC URL parsing and validation utilities.
+
 use std::fmt::Display;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::num::ParseIntError;
@@ -57,7 +59,7 @@ pub enum ParseHostError {
 /// IPv6 addresses are optionally enclosed in square brackets, and required if specifying a port.
 ///
 /// If a path is attached to the host string, it will not be discarded.
-pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
+pub fn parse_host(input: &str) -> Result<ParseHostOutput<'_>, ParseHostError> {
     // Attempt to split the input into scheme, host, and port.
     let (scheme, input) = match input.find("://") {
         Some(pos) => {
@@ -137,7 +139,7 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput, ParseHostError> {
     let has_at_least_one_hyphen = host.contains('-');
     let hyphens_are_separated_by_valid_chars =
         has_at_least_one_hyphen.then(|| host.split('-').all(|part| part.chars().all(|c| c == '.' || c.is_ascii_alphanumeric())));
-    let tld = host.split('.').last();
+    let tld = host.split('.').next_back();
     // Prevents e.g. numbers being used as TLDs (which in turn prevents e.g. mistakes in IPv4 addresses as being detected as a domain).
     let tld_exists_and_is_not_number = tld.map(|tld| tld.parse::<i32>().is_err()).unwrap_or(false);
 

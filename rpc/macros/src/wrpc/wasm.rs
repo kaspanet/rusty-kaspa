@@ -1,14 +1,14 @@
 use crate::handler::*;
 use convert_case::{Case, Casing};
 use proc_macro2::{Ident, Literal, Span, TokenStream};
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use regex::Regex;
 use std::convert::Into;
 use syn::{
+    Error, Expr, ExprArray, ExprLit, Lit, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, ExprArray, ExprLit, Lit, Result, Token,
 };
 
 #[derive(Debug)]
@@ -59,7 +59,7 @@ impl ToTokens for RpcHandlers {
                 pub async fn #fn_no_suffix(&self, request : Option<#ts_request_type>) -> Result<#ts_response_type> {
                     let request: #request_type = request.unwrap_or_default().try_into()?;
                     // log_info!("request: {:#?}",request);
-                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(request).await;
+                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(None, request).await;
                     // log_info!("result: {:#?}",result);
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     //log_info!("response: {:#?}",response);
@@ -83,7 +83,7 @@ impl ToTokens for RpcHandlers {
                 #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request: #ts_request_type) -> Result<#ts_response_type> {
                     let request: #request_type = request.try_into()?;
-                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(request).await;
+                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(None, request).await;
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     Ok(response.try_into()?)
                 }
@@ -136,6 +136,7 @@ impl Parse for RpcSubscriptions {
 impl ToTokens for RpcSubscriptions {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let mut targets = Vec::new();
+        let regex = Regex::new(r"^Notify").unwrap();
 
         for handler in self.handlers.elems.iter() {
             let (name, docs) = match handler {
@@ -146,7 +147,6 @@ impl ToTokens for RpcSubscriptions {
             };
 
             let name = format!("Notify{}", name.as_str());
-            let regex = Regex::new(r"^Notify").unwrap();
             let blank = regex.replace(&name, "");
             let subscribe = regex.replace(&name, "Subscribe");
             let unsubscribe = regex.replace(&name, "Unsubscribe");
@@ -229,10 +229,10 @@ impl Parse for TsInterface {
             let declaration = extract_literal(&iter.next().unwrap().clone())?;
             Ok(TsInterface { handler, alias, declaration })
         } else {
-            return Err(Error::new_spanned(
+            Err(Error::new_spanned(
                 parsed,
                 "usage: declare_wasm_interface!(typescript_type, [alias], typescript declaration)".to_string(),
-            ));
+            ))
         }
     }
 }
@@ -317,20 +317,14 @@ fn insert_typedoc(text: &str, insertion: &str) -> String {
         result.push_str(&insertion);
         result.push_str(&text[index..]);
 
-        let lines = result
+        result
             .split('\n')
             .map(|line| {
                 let trimmed = line.trim();
-                if trimmed.starts_with("/**") || trimmed.starts_with('*') {
-                    trimmed
-                } else {
-                    line
-                }
+                if trimmed.starts_with("/**") || trimmed.starts_with('*') { trimmed } else { line }
             })
             .collect::<Vec<&str>>()
-            .join("\n");
-
-        lines
+            .join("\n")
     } else {
         text.to_string()
     }

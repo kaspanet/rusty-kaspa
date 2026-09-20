@@ -4,26 +4,26 @@ use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
 };
 use kaspa_core::debug;
-use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DirectDbWriter, StoreResult, DB};
+use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DirectDbWriter, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::mem::size_of;
 use std::sync::Arc;
 
 pub const VERSION_TYPE_SIZE: usize = size_of::<ScriptPublicKeyVersion>(); // Const since we need to re-use this a few times.
 
 /// [`ScriptPublicKeyBucket`].
-/// Consists of 2 bytes of little endian [VersionType] bytes, followed by a variable size of [ScriptVec].
+/// Consists of 2 bytes of little endian [VersionType] bytes, followed by the script length (8) and by a variable size of [ScriptVec].
 #[derive(Eq, Hash, PartialEq, Debug, Clone)]
 struct ScriptPublicKeyBucket(Vec<u8>);
 
 impl From<&ScriptPublicKey> for ScriptPublicKeyBucket {
     fn from(script_public_key: &ScriptPublicKey) -> Self {
-        let mut bytes: Vec<u8> = Vec::with_capacity(VERSION_TYPE_SIZE + script_public_key.script().len());
+        // version (2) + length (8) + dynamic script
+        let mut bytes: Vec<u8> = Vec::with_capacity(VERSION_TYPE_SIZE + size_of::<u64>() + script_public_key.script().len());
         bytes.extend_from_slice(&script_public_key.version().to_le_bytes());
         bytes.extend_from_slice(&(script_public_key.script().len() as u64).to_le_bytes()); // TODO: Consider using a smaller integer
         bytes.extend_from_slice(script_public_key.script());
@@ -67,8 +67,7 @@ impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
         let transaction_id = Hash::from_slice(&key.0[..kaspa_hashes::HASH_SIZE]);
         let index = TransactionIndexType::from_le_bytes(
-            <[u8; std::mem::size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..])
-                .expect("expected index size"),
+            <[u8; size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..]).expect("expected index size"),
         );
         Self::new(transaction_id, index)
     }
@@ -103,7 +102,7 @@ impl Display for UtxoEntryFullAccessKey {
 impl UtxoEntryFullAccessKey {
     /// Creates a new [UtxoEntryFullAccessKey] from a [ScriptPublicKeyBucket] and [TransactionOutpointKey].
     pub fn new(script_public_key_bucket: ScriptPublicKeyBucket, transaction_outpoint_key: TransactionOutpointKey) -> Self {
-        let mut bytes = Vec::with_capacity(TRANSACTION_OUTPOINT_KEY_SIZE + script_public_key_bucket.as_ref().len());
+        let mut bytes = Vec::with_capacity(script_public_key_bucket.as_ref().len() + TRANSACTION_OUTPOINT_KEY_SIZE);
         bytes.extend_from_slice(script_public_key_bucket.as_ref());
         bytes.extend_from_slice(transaction_outpoint_key.as_ref());
         Self(Arc::new(bytes))
@@ -215,7 +214,7 @@ impl UtxoSetByScriptPublicKeyStore for DbUtxoSetByScriptPublicKeyStore {
         let mut writer = DirectDbWriter::new(&self.db);
 
         let mut to_remove = utxo_entries.iter().flat_map(move |(script_public_key, compact_utxo_collection)| {
-            compact_utxo_collection.iter().map(move |(transaction_outpoint, _)| {
+            compact_utxo_collection.keys().map(move |transaction_outpoint| {
                 UtxoEntryFullAccessKey::new(
                     ScriptPublicKeyBucket::from(script_public_key),
                     TransactionOutpointKey::from(transaction_outpoint),

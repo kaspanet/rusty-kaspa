@@ -11,9 +11,8 @@ impl HeaderProcessor {
         self.check_blue_score(ctx, header)?;
         self.check_blue_work(ctx, header)?;
         self.check_median_timestamp(ctx, header)?;
-        self.check_merge_size_limit(ctx)?;
+        self.check_mergeset_size_limit(ctx)?;
         self.check_bounded_merge_depth(ctx)?;
-        self.check_pruning_point(ctx, header)?;
         self.check_indirect_parents(ctx, header)
     }
 
@@ -28,10 +27,11 @@ impl HeaderProcessor {
         Ok(())
     }
 
-    pub fn check_merge_size_limit(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
+    pub fn check_mergeset_size_limit(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let mergeset_size = ctx.ghostdag_data().mergeset_size() as u64;
-        if mergeset_size > self.mergeset_size_limit {
-            return Err(RuleError::MergeSetTooBig(mergeset_size, self.mergeset_size_limit));
+        let mergeset_size_limit = self.mergeset_size_limit;
+        if mergeset_size > mergeset_size_limit {
+            return Err(RuleError::MergeSetTooBig(mergeset_size, mergeset_size_limit));
         }
         Ok(())
     }
@@ -53,38 +53,33 @@ impl HeaderProcessor {
     }
 
     pub fn check_indirect_parents(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point(), header.direct_parents());
-        if header.parents_by_level.len() != expected_block_parents.len()
-            || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
-                let header_level_parents = &header.parents_by_level[block_level];
-                if header_level_parents.len() != expected_level_parents.len() {
-                    return false;
-                }
-
-                let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
-                header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
-            })
+        let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point, header.direct_parents());
+        if header.parents_by_level.expanded_len() != expected_block_parents.expanded_len()
+            || !expected_block_parents.expanded_iter().zip(header.parents_by_level.expanded_iter()).all(
+                |(expected_level_parents, header_level_parents)| {
+                    if header_level_parents.len() != expected_level_parents.len() {
+                        return false;
+                    }
+                    // Optimistic path where both arrays are identical also in terms of order
+                    if header_level_parents == expected_level_parents {
+                        return true;
+                    }
+                    HashSet::<&Hash>::from_iter(header_level_parents) == HashSet::<&Hash>::from_iter(expected_level_parents)
+                },
+            )
         {
             return Err(RuleError::UnexpectedIndirectParents(
-                TwoDimVecDisplay(expected_block_parents),
-                TwoDimVecDisplay(header.parents_by_level.clone()),
+                TwoDimVecDisplay(expected_block_parents.into()),
+                TwoDimVecDisplay((&header.parents_by_level).into()),
             ));
         };
         Ok(())
     }
 
-    pub fn check_pruning_point(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let expected = self.pruning_point_manager.expected_header_pruning_point(ctx.ghostdag_data().to_compact(), ctx.pruning_info);
-        if expected != header.pruning_point {
-            return Err(RuleError::WrongHeaderPruningPoint(expected, header.pruning_point));
-        }
-        Ok(())
-    }
-
     pub fn check_bounded_merge_depth(&self, ctx: &mut HeaderProcessingContext) -> BlockProcessResult<()> {
         let ghostdag_data = ctx.ghostdag_data();
-        let merge_depth_root = self.depth_manager.calc_merge_depth_root(ghostdag_data, ctx.pruning_point());
-        let finality_point = self.depth_manager.calc_finality_point(ghostdag_data, ctx.pruning_point());
+        let merge_depth_root = self.depth_manager.calc_merge_depth_root(ghostdag_data, ctx.pruning_point);
+        let finality_point = self.depth_manager.calc_finality_point(ghostdag_data, ctx.pruning_point);
         let mut kosherizing_blues: Option<Vec<Hash>> = None;
 
         for red in ghostdag_data.mergeset_reds.iter().copied() {

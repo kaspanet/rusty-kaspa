@@ -50,25 +50,26 @@ impl AsyncRuntime {
     }
 
     /// Launch a tokio Runtime and run the top-level async objects
-
     pub fn worker(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
-        return tokio::runtime::Builder::new_multi_thread()
+        tokio::runtime::Builder::new_multi_thread()
             .worker_threads(self.threads)
             .enable_all()
             .build()
             .expect("Failed building the Runtime")
-            .block_on(async { self.worker_impl(core).await });
+            .block_on(async { self.worker_impl(core).await })
     }
 
     pub async fn worker_impl(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
         let rt_handle = tokio::runtime::Handle::current();
-        std::thread::spawn(move || loop {
-            // See https://github.com/tokio-rs/tokio/issues/4730 and comment therein referring to
-            // https://gist.github.com/Darksonn/330f2aa771f95b5008ddd4864f5eb9e9#file-main-rs-L6
-            // In our case it's hard to avoid some short blocking i/o calls to the DB so we place this
-            // workaround for now to avoid any rare yet possible system freeze.
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            rt_handle.spawn(std::future::ready(()));
+        std::thread::spawn(move || {
+            loop {
+                // See https://github.com/tokio-rs/tokio/issues/4730 and comment therein referring to
+                // https://gist.github.com/Darksonn/330f2aa771f95b5008ddd4864f5eb9e9#file-main-rs-L6
+                // In our case it's hard to avoid some short blocking i/o calls to the DB so we place this
+                // workaround for now to avoid any rare yet possible system freeze.
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                rt_handle.spawn(std::future::ready(()));
+            }
         });
 
         // Start all async services

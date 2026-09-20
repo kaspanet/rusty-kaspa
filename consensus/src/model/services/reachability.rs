@@ -5,42 +5,65 @@ use kaspa_consensus_core::blockhash;
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
-use crate::processes::reachability::{inquirer, Result};
+use crate::processes::reachability::{Result, inquirer};
 use kaspa_hashes::Hash;
 
 pub trait ReachabilityService {
-    fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
-    fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool>;
-    fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
+    /// Checks if `this` block is a chain ancestor of `queried` block (i.e., `this ∈ chain(queried) ∪ {queried}`).
+    /// Note that we use the graph theory convention here which defines that a block is also an ancestor of itself.
+    fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
+        self.try_is_chain_ancestor_of(this, queried).unwrap()
+    }
+
+    /// Result version of [`Self::is_chain_ancestor_of`] (avoids unwrapping internally)
+    fn try_is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool>;
+
+    /// Result version of [`Self::is_dag_ancestor_of`] (avoids unwrapping internally)
+    fn try_is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool>;
+
+    /// Returns true if `this` is a DAG ancestor of `queried` (i.e., `queried ∈ future(this) ∪ {this}`).
+    /// Note: this method will return true if `this == queried`.
+    /// The complexity of this method is `O(log(|future_covering_set(this)|))`
+    fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
+        self.try_is_dag_ancestor_of(this, queried).unwrap()
+    }
+
+    /// Checks if `this` is DAG ancestor of any of the blocks in `queried`. See [`Self::is_dag_ancestor_of`] as well.
     fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool;
-    fn is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> bool;
-    fn is_any_dag_ancestor_result(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> Result<bool>;
+
+    /// Checks if any of the blocks in `list` is DAG ancestor of `queried`. See [`Self::is_dag_ancestor_of`] as well.
+    fn is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> bool {
+        self.try_is_any_dag_ancestor(list, queried).unwrap()
+    }
+
+    /// Result version of [`Self::is_any_dag_ancestor`] (avoids unwrapping internally)
+    fn try_is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> Result<bool>;
+
+    /// Finds the tree child of `ancestor` which is also a chain ancestor of `descendant`.
+    /// (A "tree child of X" is a block which X is its chain parent)
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash;
+
+    /// Returns the chain parent of `this`
     fn get_chain_parent(&self, this: Hash) -> Hash;
+
+    /// Checks whether `this` has reachability data
+    fn has_reachability_data(&self, this: Hash) -> bool;
 }
 
 impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for T {
-    fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
-        inquirer::is_chain_ancestor_of(self, this, queried).unwrap()
+    fn try_is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool> {
+        inquirer::is_chain_ancestor_of(self, this, queried)
     }
 
-    fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool> {
+    fn try_is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool> {
         inquirer::is_dag_ancestor_of(self, this, queried)
-    }
-
-    fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
-        inquirer::is_dag_ancestor_of(self, this, queried).unwrap()
     }
 
     fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool {
         queried.any(|hash| inquirer::is_dag_ancestor_of(self, this, hash).unwrap())
     }
 
-    fn is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> bool {
-        list.any(|hash| inquirer::is_dag_ancestor_of(self, hash, queried).unwrap())
-    }
-
-    fn is_any_dag_ancestor_result(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> Result<bool> {
+    fn try_is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> Result<bool> {
         for hash in list {
             if inquirer::is_dag_ancestor_of(self, hash, queried)? {
                 return Ok(true);
@@ -55,6 +78,10 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for T {
 
     fn get_chain_parent(&self, this: Hash) -> Hash {
         self.get_parent(this).unwrap()
+    }
+
+    fn has_reachability_data(&self, this: Hash) -> bool {
+        self.has(this).unwrap()
     }
 }
 
@@ -71,33 +98,23 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
 }
 
 impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for MTReachabilityService<T> {
-    fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
+    fn try_is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool> {
         let read_guard = self.store.read();
-        inquirer::is_chain_ancestor_of(read_guard.deref(), this, queried).unwrap()
+        inquirer::is_chain_ancestor_of(read_guard.deref(), this, queried)
     }
 
-    fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool> {
+    fn try_is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> Result<bool> {
         let read_guard = self.store.read();
         inquirer::is_dag_ancestor_of(read_guard.deref(), this, queried)
-    }
-
-    fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool {
-        let read_guard = self.store.read();
-        inquirer::is_dag_ancestor_of(read_guard.deref(), this, queried).unwrap()
-    }
-
-    fn is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> bool {
-        let read_guard = self.store.read();
-        list.any(|hash| inquirer::is_dag_ancestor_of(read_guard.deref(), hash, queried).unwrap())
-    }
-
-    fn is_any_dag_ancestor_result(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> Result<bool> {
-        self.store.read().is_any_dag_ancestor_result(list, queried)
     }
 
     fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool {
         let read_guard = self.store.read();
         queried.any(|hash| inquirer::is_dag_ancestor_of(read_guard.deref(), this, hash).unwrap())
+    }
+
+    fn try_is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> Result<bool> {
+        self.store.read().try_is_any_dag_ancestor(list, queried)
     }
 
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash {
@@ -107,6 +124,10 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for MTReachability
 
     fn get_chain_parent(&self, this: Hash) -> Hash {
         self.store.read().get_parent(this).unwrap()
+    }
+
+    fn has_reachability_data(&self, this: Hash) -> bool {
+        self.store.read().has(this).unwrap()
     }
 }
 
@@ -145,7 +166,6 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
 /// a compromise where the lock is released every constant number of items.
 ///
 /// TODO: decide if these alternatives require overall system benchmarking
-
 struct BackwardChainIterator<T: ReachabilityStoreReader + ?Sized> {
     store: Arc<RwLock<T>>,
     current: Option<Hash>,

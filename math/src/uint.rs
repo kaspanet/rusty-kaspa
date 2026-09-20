@@ -15,7 +15,7 @@ macro_rules! construct_uint {
             pub const MIN: Self = Self::ZERO;
             pub const MAX: Self = $name([u64::MAX; $n_words]);
             pub const BITS: u32 = $n_words * u64::BITS;
-            pub const BYTES: usize = $n_words * core::mem::size_of::<u64>();
+            pub const BYTES: usize = $n_words * size_of::<u64>();
             pub const LIMBS: usize = $n_words;
 
             #[inline]
@@ -156,6 +156,18 @@ macro_rules! construct_uint {
                     carry = carry_out;
                 }
                 (self, carry)
+            }
+
+            #[inline]
+            pub fn saturating_sub(self, other: Self) -> Self {
+                let (sum, carry) = self.overflowing_sub(other);
+                if carry { Self::ZERO } else { sum }
+            }
+
+            #[inline]
+            pub fn saturating_add(self, other: Self) -> Self {
+                let (sum, carry) = self.overflowing_add(other);
+                if carry { Self::MAX } else { sum }
             }
 
             /// Multiplication by u64
@@ -892,7 +904,7 @@ macro_rules! construct_uint {
                         type Value = ();
                         #[inline]
                         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                            formatter.write_str(concat!("a hex string"))
+                            formatter.write_str("a hex string")
                         }
                         #[inline]
                         fn visit_str<E>(self, hex: &str) -> Result<Self::Value, E>
@@ -1026,8 +1038,8 @@ impl From<core::convert::Infallible> for TryFromSliceError {
 #[cfg(test)]
 mod tests {
     use rand_chacha::{
-        rand_core::{RngCore, SeedableRng},
         ChaCha8Rng,
+        rand_core::{RngCore, SeedableRng},
     };
     use std::fmt::Write;
     construct_uint!(Uint128, 2);
@@ -1057,7 +1069,7 @@ mod tests {
             assert_equal_args(format_args!("{a:0128b}"), format_args!("{b:0128b}")); // Test binary with length
             assert_equal_args(format_args!("{a:x}"), format_args!("{b:x}")); // Test LowerHex
             assert_equal_args(format_args!("{a:#x}"), format_args!("{b:#x}")); // Test LowerHex with prefix
-                                                                               // Test LowerHex with padding
+            // Test LowerHex with padding
             assert_equal_args(format_args!("{a:032x}"), format_args!("{b:032x}"));
         };
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
@@ -1151,6 +1163,19 @@ mod tests {
     }
 
     #[test]
+    fn test_saturating_ops() {
+        let u1 = Uint128::from_u128(u128::MAX);
+        let u2 = Uint128::from_u64(u64::MAX);
+        // Sub
+        assert_eq!(u1.saturating_sub(u2), Uint128::from_u128(u128::MAX - u64::MAX as u128));
+        assert_eq!(u1.saturating_sub(u2).as_u128(), u128::MAX - u64::MAX as u128);
+        assert_eq!(u2.saturating_sub(u1), Uint128::ZERO);
+        // Add
+        assert_eq!(u1.saturating_add(Uint128::from_u64(1)), Uint128::MAX);
+        assert_eq!(u2.saturating_add(Uint128::from_u64(1)), Uint128::from_u128(u64::MAX as u128 + 1));
+    }
+
+    #[test]
     fn test_mod_inv() {
         use core::cmp::Ordering;
         let mut rng = ChaCha8Rng::from_seed([0; 32]);
@@ -1173,11 +1198,7 @@ mod tests {
 
         fn sum(x: Uint128, y: Uint128, m: Uint128) -> Uint128 {
             let res = x.overflowing_add(y).0;
-            if res < x || res >= m {
-                res.overflowing_sub(m).0
-            } else {
-                res
-            }
+            if res < x || res >= m { res.overflowing_sub(m).0 } else { res }
         }
         fn prod_bin(x: Uint128, y: Uint128, m: Uint128) -> Uint128 {
             if y == 1u64 {

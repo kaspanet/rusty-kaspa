@@ -1,18 +1,25 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet, hash_map::Entry},
+    sync::Arc,
+};
 
 use super::BlockBodyProcessor;
 use crate::errors::{BlockProcessResult, RuleError};
-use kaspa_consensus_core::{block::Block, merkle::calc_hash_merkle_root_with_options, tx::TransactionOutpoint};
+use kaspa_consensus_core::{
+    block::Block,
+    mass::{ContextualMasses, Mass, NonContextualMasses},
+    merkle::calc_hash_merkle_root,
+    subnets::SubnetworkId,
+    tx::TransactionOutpoint,
+};
 
 impl BlockBodyProcessor {
-    pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<u64> {
-        let storage_mass_activated = block.header.daa_score > self.storage_mass_activation_daa_score;
-
+    pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<Mass> {
         Self::check_has_transactions(block)?;
-        Self::check_hash_merkle_root(block, storage_mass_activated)?;
+        Self::check_hash_merkle_root(block)?;
         Self::check_only_one_coinbase(block)?;
         self.check_transactions_in_isolation(block)?;
-        let mass = self.check_block_mass(block, storage_mass_activated)?;
+        let mass = self.check_block_mass(block)?;
         self.check_duplicate_transactions(block)?;
         self.check_block_double_spends(block)?;
         self.check_no_chained_transactions(block)?;
@@ -28,8 +35,8 @@ impl BlockBodyProcessor {
         Ok(())
     }
 
-    fn check_hash_merkle_root(block: &Block, storage_mass_activated: bool) -> BlockProcessResult<()> {
-        let calculated = calc_hash_merkle_root_with_options(block.transactions.iter(), storage_mass_activated);
+    fn check_hash_merkle_root(block: &Block) -> BlockProcessResult<()> {
+        let calculated = calc_hash_merkle_root(block.transactions.iter());
         if calculated != block.header.hash_merkle_root {
             return Err(RuleError::BadMerkleRoot(block.header.hash_merkle_root, calculated));
         }
@@ -57,34 +64,63 @@ impl BlockBodyProcessor {
         Ok(())
     }
 
-    fn check_block_mass(self: &Arc<Self>, block: &Block, storage_mass_activated: bool) -> BlockProcessResult<u64> {
-        let mut total_mass: u64 = 0;
-        if storage_mass_activated {
-            for tx in block.transactions.iter() {
-                // This is only the compute part of the mass, the storage part cannot be computed here
-                let calculated_tx_compute_mass = self.mass_calculator.calc_tx_compute_mass(tx);
-                let committed_contextual_mass = tx.mass();
-                // We only check the lower-bound here, a precise check of the mass commitment
-                // is done when validating the tx in context
-                if committed_contextual_mass < calculated_tx_compute_mass {
-                    return Err(RuleError::MassFieldTooLow(tx.id(), committed_contextual_mass, calculated_tx_compute_mass));
-                }
-                // Sum over the committed masses
-                total_mass = total_mass.saturating_add(committed_contextual_mass);
-                if total_mass > self.max_block_mass {
-                    return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
-                }
+    fn check_block_mass(self: &Arc<Self>, block: &Block) -> BlockProcessResult<Mass> {
+        let block_mass_limits = self.block_mass_limits;
+        let mut total_compute_mass: u64 = 0;
+        let mut total_transient_mass: u64 = 0;
+        let mut total_storage_mass: u64 = 0;
+        let mut lanes = HashMap::<SubnetworkId, u64>::new();
+        for tx in block.transactions.iter() {
+            // Calculate the non-contextual masses
+            let NonContextualMasses { compute_mass, transient_mass } = self.mass_calculator.calc_non_contextual_masses(tx);
+
+            // Read the storage mass commitment. This value cannot be computed here w/o UTXO context
+            // so we use the commitment. Later on, when the transaction is verified in context, we use
+            // the context to calculate the expected storage mass and verify it matches this commitment
+            let storage_mass_commitment = tx.storage_mass();
+
+            // Sum over the various masses separately
+            total_compute_mass = total_compute_mass.saturating_add(compute_mass);
+            total_transient_mass = total_transient_mass.saturating_add(transient_mass);
+            total_storage_mass = total_storage_mass.saturating_add(storage_mass_commitment);
+
+            // Verify each dimension against its own limit
+            if total_compute_mass > block_mass_limits.compute {
+                return Err(RuleError::ExceedsComputeMassLimit(total_compute_mass, block_mass_limits.compute));
             }
-        } else {
-            for tx in block.transactions.iter() {
-                let calculated_tx_mass = self.mass_calculator.calc_tx_compute_mass(tx);
-                total_mass = total_mass.saturating_add(calculated_tx_mass);
-                if total_mass > self.max_block_mass {
-                    return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
+            if total_transient_mass > block_mass_limits.transient {
+                return Err(RuleError::ExceedsTransientMassLimit(total_transient_mass, block_mass_limits.transient));
+            }
+            if total_storage_mass > block_mass_limits.storage {
+                return Err(RuleError::ExceedsStorageMassLimit(total_storage_mass, block_mass_limits.storage));
+            }
+
+            // Pre-Toccata valid blocks contain only native non-coinbase txs with zero gas,
+            // so applying these lane/gas limits unconditionally is harmless before activation.
+            if !tx.is_coinbase() {
+                let occupied_lanes = lanes.len();
+                let gas = match lanes.entry(tx.subnetwork_id) {
+                    Entry::Occupied(mut entry) => {
+                        let gas = entry.get_mut();
+                        *gas = gas.saturating_add(tx.gas);
+                        *gas
+                    }
+                    Entry::Vacant(entry) => {
+                        if occupied_lanes >= self.block_lane_limits.lanes_per_block {
+                            return Err(RuleError::ExceedsLanesPerBlockLimit(
+                                occupied_lanes + 1,
+                                self.block_lane_limits.lanes_per_block,
+                            ));
+                        }
+                        *entry.insert(tx.gas)
+                    }
+                };
+                if gas > self.block_lane_limits.gas_per_lane {
+                    return Err(RuleError::ExceedsGasPerLaneLimit(tx.subnetwork_id, gas, self.block_lane_limits.gas_per_lane));
                 }
             }
         }
-        Ok(total_mass)
+        Ok(Mass::new(NonContextualMasses::new(total_compute_mass, total_transient_mass), ContextualMasses::new(total_storage_mass)))
     }
 
     fn check_block_double_spends(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
@@ -136,13 +172,32 @@ mod tests {
     use kaspa_consensus_core::{
         api::{BlockValidationFutures, ConsensusApi},
         block::MutableBlock,
+        constants::TX_VERSION_TOCCATA,
         header::Header,
         merkle::calc_hash_merkle_root,
-        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
+        tx::{
+            ComputeCommit, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+            scriptvec,
+        },
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
+
+    fn lane(index: u8) -> SubnetworkId {
+        SubnetworkId::from_namespace([0, 0, 0, index])
+    }
+
+    fn toccata_lane_tx(index: u8, lane: SubnetworkId, gas: u64) -> Transaction {
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint { transaction_id: TransactionId::from_slice(&[index; 32]), index: 0 },
+            signature_script: vec![],
+            sequence: u64::MAX,
+            compute_commit: ComputeCommit::ComputeBudget(0.into()),
+        };
+        let output = TransactionOutput { value: 1, script_public_key: ScriptPublicKey::new(0, scriptvec!(0u8)), covenant: None };
+        Transaction::new(TX_VERSION_TOCCATA, vec![input], vec![output], 0, lane, gas, vec![])
+    }
 
     #[test]
     fn validate_body_in_isolation_test() {
@@ -162,7 +217,9 @@ mod tests {
                         0x4b, 0xb0, 0x75, 0x35, 0xdf, 0xd5, 0x8e, 0x0b, 0x3c, 0xd6, 0x4f, 0xd7, 0x15, 0x52, 0x80, 0x87, 0x2a, 0x04,
                         0x71, 0xbc, 0xf8, 0x30, 0x95, 0x52, 0x6a, 0xce, 0x0e, 0x38, 0xc6, 0x00, 0x00, 0x00,
                     ]),
-                ]],
+                ]]
+                .try_into()
+                .unwrap(),
                 Hash::from_slice(&[
                     0x46, 0xec, 0xf4, 0x5b, 0xe3, 0xba, 0xca, 0x34, 0x9d, 0xfe, 0x8a, 0x78, 0xde, 0xaf, 0x05, 0x3b, 0x0a, 0xa6, 0xd5,
                     0x38, 0x97, 0x4d, 0xa5, 0x0f, 0xd6, 0xef, 0xb4, 0xd2, 0x66, 0xbc, 0x8d, 0x21,
@@ -190,6 +247,7 @@ mod tests {
                                 0xba, 0x30, 0xcd, 0x5a, 0x4b, 0x87
                             ),
                         ),
+                        covenant: None,
                     }],
                     0,
                     SUBNETWORK_ID_COINBASE,
@@ -209,7 +267,7 @@ mod tests {
                             },
                             signature_script: vec![],
                             sequence: u64::MAX,
-                            sig_op_count: 0,
+                            compute_commit: ComputeCommit::SigopCount(0.into()),
                         },
                         TransactionInput {
                             previous_outpoint: TransactionOutpoint {
@@ -221,7 +279,7 @@ mod tests {
                             },
                             signature_script: vec![],
                             sequence: u64::MAX,
-                            sig_op_count: 0,
+                            compute_commit: ComputeCommit::SigopCount(0.into()),
                         },
                     ],
                     vec![],
@@ -254,7 +312,7 @@ mod tests {
                             0x25, 0xf8, 0x7c, 0x16, 0x1b, 0xc6, 0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
+                        compute_commit: ComputeCommit::SigopCount(0.into()),
                     }],
                     vec![
                         TransactionOutput {
@@ -270,6 +328,7 @@ mod tests {
                                     0xac  // OP_CHECKSIG
                                 ),
                             ),
+                            covenant: None,
                         },
                         TransactionOutput {
                             value: 0x108e20f00,
@@ -284,6 +343,7 @@ mod tests {
                                     0xac  // OP_CHECKSIG
                                 ),
                             ),
+                            covenant: None,
                         },
                     ],
                     0,
@@ -314,7 +374,7 @@ mod tests {
                             0xa4, 0x63, 0x1e, 0xe3, 0x95, 0x60, 0x63, 0x9d, 0xb4, 0x62, 0xe9, 0xcb, 0x85, 0x0f, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
+                        compute_commit: ComputeCommit::SigopCount(0.into()),
                     }],
                     vec![
                         TransactionOutput {
@@ -330,6 +390,7 @@ mod tests {
                                     0xac  // OP_CHECKSIG
                                 ),
                             ),
+                            covenant: None,
                         },
                         TransactionOutput {
                             value: 0x11d260c0,
@@ -344,6 +405,7 @@ mod tests {
                                     0xac  // OP_CHECKSIG
                                 ),
                             ),
+                            covenant: None,
                         },
                     ],
                     0,
@@ -375,7 +437,7 @@ mod tests {
                             0xaa, 0xd3, 0xe0, 0x63, 0xce, 0x6a, 0xf4, 0xcf, 0xaa, 0xea, 0x4e, 0xa1, 0x4f, 0xbb, // 65-byte pubkey
                         ],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
+                        compute_commit: ComputeCommit::SigopCount(0.into()),
                     }],
                     vec![TransactionOutput {
                         value: 0xf4240,
@@ -390,6 +452,7 @@ mod tests {
                                 0xac  // OP_CHECKSIG
                             ),
                         ),
+                        covenant: None,
                     }],
                     0,
                     SUBNETWORK_ID_NATIVE,
@@ -408,10 +471,29 @@ mod tests {
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;
-        txs[1].inputs[0].sig_op_count = 255;
-        txs[1].inputs[1].sig_op_count = 255;
+        txs[1].inputs[0].compute_commit = ComputeCommit::SigopCount(255.into());
+        txs[1].inputs[1].compute_commit = ComputeCommit::SigopCount(255.into());
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsMassLimit(_)));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsComputeMassLimit(_, _)));
+
+        let mut block = example_block.clone();
+        block.transactions =
+            vec![block.transactions[0].clone(), toccata_lane_tx(1, lane(1), body_processor.block_lane_limits.gas_per_lane + 1)];
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
+        assert_match!(
+            body_processor.validate_body_in_isolation(&block.to_immutable()),
+            Err(RuleError::ExceedsGasPerLaneLimit(_, _, _))
+        );
+
+        let mut block = example_block.clone();
+        block.transactions = std::iter::once(block.transactions[0].clone())
+            .chain((1..=body_processor.block_lane_limits.lanes_per_block as u8 + 1).map(|i| toccata_lane_tx(i, lane(i), 0)))
+            .collect();
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
+        assert_match!(
+            body_processor.validate_body_in_isolation(&block.to_immutable()),
+            Err(RuleError::ExceedsLanesPerBlockLimit(_, _))
+        );
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;
@@ -478,7 +560,7 @@ mod tests {
         );
 
         let mut block = consensus.build_block_with_parents_and_transactions(1.into(), vec![config.genesis.hash], vec![]);
-        block.header.parents_by_level[0][0] = 0.into();
+        block.header.parents_by_level.set_direct_parents(vec![0.into()]);
 
         assert_match!(
             consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await,

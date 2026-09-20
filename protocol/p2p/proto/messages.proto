@@ -52,6 +52,16 @@ message KaspadMessage {
     IbdChainBlockLocatorMessage ibdChainBlockLocator = 54;
     RequestAntipastMessage requestAntipast = 55;
     RequestNextPruningPointAndItsAnticoneBlocksMessage requestNextPruningPointAndItsAnticoneBlocks = 56;
+    BlockBodyMessage blockBody = 57;
+    RequestBlockBodiesMessage requestBlockBodies = 58;
+    RequestPruningPointSmtStateMessage requestPruningPointSmtState = 59;
+    SmtMetadataMessage smtMetadata = 60;
+    SmtLaneChunkMessage smtLaneChunk = 61;
+    RequestNextPruningPointSmtChunkMessage requestNextPruningPointSmtChunk = 63;
+    PruningPointProofChunkMessage pruningPointProofChunk = 64;
+    PruningPointProofChunksEndMessage pruningPointProofChunksEnd = 65;
+    TrustedDataChunkMessage trustedDataChunk = 66;
+    TrustedDataChunksEndMessage trustedDataChunksEnd = 67;
   }
 }
 

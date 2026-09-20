@@ -1,12 +1,12 @@
 use crate::handler::*;
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use std::convert::Into;
 use syn::{
+    Error, Expr, ExprArray, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, ExprArray, Result, Token,
 };
 
 #[derive(Debug)]
@@ -52,26 +52,29 @@ impl ToTokens for RpcTable {
             // the async implementation of the RPC caller is inlined
             targets.push(quote! {
 
-                fn #fn_call<'life0, 'async_trait>(
+                fn #fn_call<'life0, 'life1, 'async_trait>(
                     &'life0 self,
+                    _connection : ::core::option::Option<&'life1 Arc<dyn kaspa_rpc_core::api::connection::RpcConnection>>,
                     request: #request_type,
                 ) -> ::core::pin::Pin<Box<dyn ::core::future::Future<Output = RpcResult<#response_type>> + ::core::marker::Send + 'async_trait>>
                 where
                     'life0: 'async_trait,
+                    'life1: 'async_trait,
                     Self: 'async_trait,
                 {
+                    use workflow_serializer::prelude::*;
                     Box::pin(async move {
                         if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<RpcResult<#response_type>> {
                             return __ret;
                         }
                         let __self = self;
                         //let request = request;
-                        let __ret: RpcResult<#response_type> = {
-                            let resp: ClientResult<#response_type> = __self.inner.rpc_client.call(#rpc_api_ops::#handler, request).await;
+                        let __ret: RpcResult<Serializable<#response_type>> = {
+                            let resp: ClientResult<Serializable<#response_type>> = __self.inner.rpc_client.call(#rpc_api_ops::#handler, Serializable(request)).await;
                             Ok(resp.map_err(|e| kaspa_rpc_core::error::RpcError::RpcSubsystem(e.to_string()))?)
                         };
                         #[allow(unreachable_code)]
-                        __ret
+                        __ret.map(Serializable::into_inner)
                     })
                 }
 

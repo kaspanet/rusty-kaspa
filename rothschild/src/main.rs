@@ -1,30 +1,46 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
 use clap::{Arg, ArgAction, Command};
+use gas::GasDistribution;
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
-    config::params::{TESTNET11_PARAMS, TESTNET_PARAMS},
-    constants::{SOMPI_PER_KASPA, TX_VERSION},
+    config::params::TESTNET_PARAMS,
+    constants::{SOMPI_PER_KASPA, TX_VERSION, TX_VERSION_TOCCATA},
+    hashing::covenant_id::covenant_id,
+    network::NetworkType,
     sign::sign,
-    subnets::SUBNETWORK_ID_NATIVE,
-    tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
+    subnets::{SUBNETWORK_ID_NATIVE, SUBNETWORK_ID_SIZE, SUBNETWORK_NAMESPACE_LEN, SubnetworkId},
+    tx::{
+        ComputeCommit, CovenantBinding, MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
+        UtxoEntry,
+    },
 };
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::{ClientPool, GrpcClient};
 use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
+use kaspa_rpc_core::{RpcUtxoEntry, api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
+use rand::RngCore;
 use rayon::prelude::*;
-use secp256k1::{rand::thread_rng, Keypair};
-use tokio::time::{interval, MissedTickBehavior};
+use secp256k1::{
+    Keypair,
+    rand::{Rng, thread_rng},
+};
+use tokio::time::{Instant, MissedTickBehavior, interval};
+
+mod gas;
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
-const FEE_PER_MASS: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
-const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
 const ADDRESS_VERSION: Version = Version::PubKey;
+
+// Minimum standard relay fee is 100 sompi/gram; use 110 for a safety margin.
+const FEE_RATE: u64 = 110;
+
+// Mempool minimum relay fee uses post-Toccata cofactors immediately, so we normalize accordingly (factor / ratio between limits).
+const NORMALIZED_TRANSIENT_BYTE_FACTOR: u64 = 2;
 
 struct Stats {
     num_txs: usize,
@@ -40,17 +56,39 @@ pub struct Args {
     pub rpc_server: String,
     pub threads: u8,
     pub unleashed: bool,
+    pub addr: Option<String>,
+    pub priority_fee: u64,
+    pub randomize_fee: bool,
+    pub payload_size: usize,
+    pub enable_covenant_id: bool,
+    pub randomize_tx_version: bool,
+    pub network: NetworkType,
+    pub lps: u64,
+    pub subnet_pool_size: Option<u64>,
 }
 
 impl Args {
     fn parse() -> Self {
         let m = cli().get_matches();
+        let network = m.get_one::<String>("network").cloned().unwrap();
+        let network_type = NetworkType::from_str(&network).expect("Invalid network type");
+        let default_rpc_server = format!("localhost:{}", network_type.default_rpc_port());
+
         Args {
             private_key: m.get_one::<String>("private-key").cloned(),
             tps: m.get_one::<u64>("tps").cloned().unwrap(),
-            rpc_server: m.get_one::<String>("rpcserver").cloned().unwrap_or("localhost:16210".to_owned()),
+            network: network_type,
+            rpc_server: m.get_one::<String>("rpcserver").cloned().unwrap_or(default_rpc_server),
             threads: m.get_one::<u8>("threads").cloned().unwrap(),
             unleashed: m.get_one::<bool>("unleashed").cloned().unwrap_or(false),
+            addr: m.get_one::<String>("addr").cloned(),
+            priority_fee: m.get_one::<u64>("priority-fee").cloned().unwrap_or(0),
+            randomize_fee: m.get_one::<bool>("randomize-fee").cloned().unwrap_or(false),
+            payload_size: m.get_one::<usize>("payload-size").cloned().unwrap_or(0),
+            enable_covenant_id: m.get_one::<bool>("enable-covenant-id").cloned().unwrap_or_default(),
+            randomize_tx_version: m.get_one::<bool>("randomize-tx-version").cloned().unwrap_or_default(),
+            lps: m.get_one::<u64>("lps").cloned().unwrap_or(0),
+            subnet_pool_size: m.get_one::<u64>("subnet-pool-size").cloned(),
         }
     }
 }
@@ -70,12 +108,20 @@ pub fn cli() -> Command {
                 .help("Transactions per second"),
         )
         .arg(
+            Arg::new("network")
+                .long("network")
+                .short('n')
+                .value_name("network")
+                .default_value("testnet")
+                .value_parser(["testnet", "devnet"])
+                .help("Network to use (testnet or devnet)"),
+        )
+        .arg(
             Arg::new("rpcserver")
                 .long("rpcserver")
                 .short('s')
                 .value_name("rpcserver")
-                .default_value("localhost:16210")
-                .help("RPC server"),
+                .help("RPC server (defaults: testnet=16210, devnet=16610"),
         )
         .arg(
             Arg::new("threads")
@@ -85,6 +131,68 @@ pub fn cli() -> Command {
                 .help("The number of threads to use for TX generation. Set to 0 to use 1 thread per core. Default is 2."),
         )
         .arg(Arg::new("unleashed").long("unleashed").action(ArgAction::SetTrue).hide(true).help("Allow higher TPS"))
+        .arg(Arg::new("addr").long("to-addr").short('a').value_name("addr").help("address to send to"))
+        .arg(
+            Arg::new("priority-fee")
+                .long("priority-fee")
+                .short('f')
+                .value_name("priority-fee")
+                .default_value("0")
+                .value_parser(clap::value_parser!(u64))
+                .help("Transaction priority fee"),
+        )
+        .arg(
+            Arg::new("randomize-fee")
+                .long("randomize-fee")
+                .short('r')
+                .value_name("randomize-fee")
+                .action(ArgAction::SetTrue)
+                .default_value("false")
+                .help("Randomize transaction priority fee."),
+        )
+        .arg(
+            Arg::new("payload-size")
+                .long("payload-size")
+                .short('p')
+                .value_name("payload-size")
+                .hide(true)
+                .default_value("0")
+                .value_parser(clap::value_parser!(usize))
+                .help("Randomized payload size"),
+        )
+        .arg(
+            Arg::new("enable-covenant-id")
+                .long("enable-covenant-id")
+                .value_name("enable-covenant-id")
+                .action(ArgAction::SetTrue)
+                .hide(true)
+                .default_value("false")
+                .help("Wether or not to populate with covenant id"),
+        )
+        .arg(
+            Arg::new("randomize-tx-version")
+                .long("randomize-tx-version")
+                .value_name("randomize-tx-version")
+                .action(ArgAction::SetTrue)
+                .default_value("false")
+                .help("Randomize the transaction version between 0 and 1. Using this parameter with other probabilistic-based selection parameters can skew expectations."),
+        )
+        .arg(
+            Arg::new("lps")
+                .long("lps")
+                .value_name("lps")
+                .default_value("0")
+                .value_parser(clap::value_parser!(u64))
+                .help("Number of tx declaring a user-lane (user subnetworks) per second. 0 = all native subnetwork (default)"),
+        )
+        .arg(
+            Arg::new("subnet-pool-size")
+                .long("subnet-pool-size")
+                .value_name("subnet-pool-size")
+                .hide(true)
+                .value_parser(clap::value_parser!(u64))
+                .help("Number of selectable user-lane subnetworks. Defaults to tps."),
+        )
 }
 
 async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
@@ -111,12 +219,29 @@ struct ClientPoolArg {
     utxos_len: usize,
 }
 
+struct TxConfig {
+    tps: u64,
+    priority_fee: u64,
+    randomize_fee: bool,
+    payload_size: usize,
+    with_covenant_id: bool,
+    randomize_tx_version: bool,
+    lps: u64,
+    subnet_pool_size: u64,
+    user_subnetwork_pool: Vec<SubnetworkId>,
+    gas_distribution: GasDistribution,
+}
+
 #[tokio::main]
 async fn main() {
     kaspa_core::log::init_logger(None, "");
     let args = Args::parse();
+
+    let address_prefix = Prefix::from(args.network);
+
     let stats = Arc::new(Mutex::new(Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 }));
     let subscription_context = SubscriptionContext::new();
+    info!("Connecting to {}", format!("grpc://{}", args.rpc_server));
     let rpc_client = GrpcClient::connect_with_args(
         NotificationMode::Direct,
         format!("grpc://{}", args.rpc_server),
@@ -128,17 +253,19 @@ async fn main() {
         Default::default(),
     )
     .await
-    .unwrap();
+    .expect("Critical error: failed to connect to the RPC server.");
+
     info!("Connected to RPC");
-    let mut pending = HashMap::new();
+
+    let mut pending: HashMap<TransactionOutpoint, Instant> = HashMap::new();
 
     let schnorr_key = if let Some(private_key_hex) = args.private_key {
         let mut private_key_bytes = [0u8; 32];
         faster_hex::hex_decode(private_key_hex.as_bytes(), &mut private_key_bytes).unwrap();
-        secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
+        Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
     } else {
         let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
-        let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
+        let kaspa_addr = Address::new(address_prefix, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
         info!(
             "Generated private key {} and address {}. Send some funds to this address and rerun rothschild with `--private-key {}`",
             sk.display_secret(),
@@ -148,18 +275,63 @@ async fn main() {
         return;
     };
 
-    let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
+    let kaspa_addr = Address::new(address_prefix, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
+
+    let kaspa_to_addr = args.addr.as_ref().map_or_else(|| kaspa_addr.clone(), |addr_str| Address::try_from(addr_str.clone()).unwrap());
+
+    (args.payload_size <= 20000).then_some(()).expect("payload-size can be max 20000");
+    assert!(args.lps <= args.tps || args.lps == 0, "lps ({}) must be less than tps ({})", args.lps, args.tps);
+    let subnet_pool_size = args.subnet_pool_size.unwrap_or(args.tps);
+    assert!(args.lps == 0 || subnet_pool_size > 0, "subnet-pool-size must be positive when lps is positive");
+    let user_subnetwork_pool = random_user_subnetwork_pool(args.lps, subnet_pool_size);
+
+    let tx_config = TxConfig {
+        tps: args.tps,
+        priority_fee: args.priority_fee,
+        randomize_fee: args.randomize_fee,
+        payload_size: args.payload_size,
+        with_covenant_id: args.enable_covenant_id,
+        randomize_tx_version: args.randomize_tx_version,
+        lps: args.lps,
+        subnet_pool_size,
+        user_subnetwork_pool,
+        gas_distribution: GasDistribution::default(),
+    };
 
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
-    info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
-    let info = rpc_client.get_block_dag_info().await.unwrap();
-    let coinbase_maturity = match info.network.suffix {
-        Some(11) => TESTNET11_PARAMS.coinbase_maturity,
-        None | Some(_) => TESTNET_PARAMS.coinbase_maturity,
-    };
+    let mut log_message = format!(
+        "Using Rothschild with:\n\
+        \tnetwork: {}\n\
+        \tprivate key: {}\n\
+        \tfrom address: {}",
+        args.network,
+        schnorr_key.display_secret(),
+        String::from(&kaspa_addr)
+    );
+    if args.addr.is_some() {
+        log_message.push_str(&format!("\n\tto address: {}", String::from(&kaspa_to_addr)));
+    }
+    if args.priority_fee != 0 {
+        log_message.push_str(&format!(
+            "\n\tpriority fee: {} SOMPS {}",
+            tx_config.priority_fee,
+            if tx_config.randomize_fee { "[randomize]" } else { "" }
+        ));
+    }
+    if args.payload_size != 0 {
+        log_message.push_str(&format!("\n\tpayload size: {} random bytes", tx_config.payload_size,));
+    }
+    if args.lps > 0 {
+        log_message.push_str(&format!("\n\tlanes per second: {} (user-lane pool size: {})", args.lps, tx_config.subnet_pool_size));
+    }
+    info!("{}", log_message);
+
+    let info = rpc_client.get_block_dag_info().await.expect("Failed to get block dag info.");
+
+    let coinbase_maturity = TESTNET_PARAMS.coinbase_maturity();
     info!(
-        "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {}, 
+        "Node block-DAG info: \n\tNetwork: {}, \n\tBlock count: {}, \n\tHeader count: {}, \n\tDifficulty: {},
 \tMedian time: {}, \n\tDAA score: {}, \n\tPruning point: {}, \n\tTips: {}, \n\t{} virtual parents: ...{}, \n\tCoinbase maturity: {}",
         info.network,
         info.block_count,
@@ -196,10 +368,10 @@ async fn main() {
                     info!(
                         "Tx rate: {:.1}/sec, avg UTXO amount: {}, avg UTXOs per tx: {}, avg outs per tx: {}, estimated available UTXOs: {}",
                         1000f64 * (stats.num_txs as f64) / (time_past as f64),
-                        (stats.utxos_amount / stats.num_utxos as u64),
+                        stats.utxos_amount / stats.num_utxos as u64,
                         stats.num_utxos / stats.num_txs,
                         stats.num_outs / stats.num_txs,
-                        if utxos_len > pending_len { utxos_len - pending_len } else { 0 },
+                        utxos_len.saturating_sub(pending_len),
                     );
                     stats.since = now;
                     stats.num_txs = 0;
@@ -249,13 +421,14 @@ async fn main() {
         let has_funds = maybe_send_tx(
             txs_to_send,
             &tx_sender,
-            kaspa_addr.clone(),
+            kaspa_to_addr.clone(),
             &mut utxos,
             &mut pending,
             schnorr_key,
             stats.clone(),
             maximize_inputs,
             &mut next_available_utxo_index,
+            &tx_config,
         )
         .await;
         if !has_funds {
@@ -276,7 +449,7 @@ async fn main() {
 fn should_maximize_inputs(
     old_value: bool,
     utxos: &[(TransactionOutpoint, UtxoEntry)],
-    pending: &HashMap<TransactionOutpoint, u64>,
+    pending: &HashMap<TransactionOutpoint, Instant>,
 ) -> bool {
     let estimated_utxos = if utxos.len() > pending.len() { utxos.len() - pending.len() } else { 0 };
     if !old_value && estimated_utxos > 1_000_000 {
@@ -306,7 +479,7 @@ async fn pause_if_mempool_is_full(rpc_client: &GrpcClient) {
 async fn refresh_utxos(
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
-    pending: &mut HashMap<TransactionOutpoint, u64>,
+    pending: &mut HashMap<TransactionOutpoint, Instant>,
     coinbase_maturity: u64,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     populate_pending_outpoints_from_mempool(rpc_client, kaspa_addr.clone(), pending).await;
@@ -316,14 +489,15 @@ async fn refresh_utxos(
 async fn populate_pending_outpoints_from_mempool(
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
-    pending_outpoints: &mut HashMap<TransactionOutpoint, u64>,
+    pending_outpoints: &mut HashMap<TransactionOutpoint, Instant>,
 ) {
     let entries = rpc_client.get_mempool_entries_by_addresses(vec![kaspa_addr], true, false).await.unwrap();
-    let now = unix_now();
+    let now = Instant::now();
+
     for entry in entries {
         for entry in entry.sending {
             for input in entry.transaction.inputs {
-                pending_outpoints.insert(input.previous_outpoint, now);
+                pending_outpoints.insert(input.previous_outpoint.into(), now);
             }
         }
     }
@@ -333,24 +507,24 @@ async fn fetch_spendable_utxos(
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
     coinbase_maturity: u64,
-    pending: &mut HashMap<TransactionOutpoint, u64>,
+    pending: &mut HashMap<TransactionOutpoint, Instant>,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     let resp = rpc_client.get_utxos_by_addresses(vec![kaspa_addr]).await.unwrap();
     let dag_info = rpc_client.get_block_dag_info().await.unwrap();
-    let mut utxos = Vec::with_capacity(resp.len());
-    for resp_entry in resp
-        .into_iter()
-        .filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity))
+
+    let mut utxos = resp.into_iter()
+        .filter(|entry| {
+            is_utxo_spendable(&entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity)
+        })
+        .map(|entry| (TransactionOutpoint::from(entry.outpoint), UtxoEntry::from(entry.utxo_entry)))
         // Eliminates UTXOs we already tried to spend so we don't try to spend them again in this period
-        .filter(|utxo| !pending.contains_key(&utxo.outpoint))
-    {
-        utxos.push((resp_entry.outpoint, resp_entry.utxo_entry));
-    }
-    utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
+        .filter(|(outpoint,_)| !pending.contains_key(outpoint))
+        .collect::<Vec<_>>();
+    utxos.sort_by_key(|(_, entry)| std::cmp::Reverse(entry.amount));
     utxos
 }
 
-fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
+fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
     let needed_confs = if !entry.is_coinbase {
         10
     } else {
@@ -359,16 +533,40 @@ fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturit
     entry.block_daa_score + needed_confs < virtual_daa_score
 }
 
+fn random_subnetwork_id<R: Rng + ?Sized>(rng: &mut R) -> SubnetworkId {
+    let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
+    loop {
+        rng.fill(&mut bytes[..SUBNETWORK_NAMESPACE_LEN]);
+        if bytes[1..].iter().any(|&b| b != 0) {
+            return SubnetworkId::from_bytes(bytes);
+        }
+    }
+}
+
+fn random_user_subnetwork_pool(lps: u64, subnet_pool_size: u64) -> Vec<SubnetworkId> {
+    if lps == 0 {
+        return vec![];
+    }
+
+    let mut rng = thread_rng();
+    (0..subnet_pool_size).map(|_| random_subnetwork_id(&mut rng)).collect()
+}
+
+fn should_use_user_lane<R: Rng + ?Sized>(rng: &mut R, tx_config: &TxConfig) -> bool {
+    tx_config.lps > 0 && rng.gen_range(0..tx_config.tps) < tx_config.lps
+}
+
 async fn maybe_send_tx(
     txs_to_send: u64,
     tx_sender: &async_channel::Sender<ClientPoolArg>,
     kaspa_addr: Address,
     utxos: &mut [(TransactionOutpoint, UtxoEntry)],
-    pending: &mut HashMap<TransactionOutpoint, u64>,
+    pending: &mut HashMap<TransactionOutpoint, Instant>,
     schnorr_key: Keypair,
     stats: Arc<Mutex<Stats>>,
     maximize_inputs: bool,
     next_available_utxo_index: &mut usize,
+    tx_config: &TxConfig,
 ) -> bool {
     let num_outs = if maximize_inputs { 1 } else { 2 };
 
@@ -377,7 +575,7 @@ async fn maybe_send_tx(
     let selected_utxos_groups = (0..txs_to_send)
         .map(|_| {
             let (selected_utxos, selected_amount) =
-                select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, next_available_utxo_index);
+                select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, next_available_utxo_index, tx_config);
             if selected_amount == 0 {
                 return None;
             }
@@ -386,7 +584,7 @@ async fn maybe_send_tx(
             // have funds in this tick
             has_fund = true;
 
-            let now = unix_now();
+            let now = Instant::now();
             for input in selected_utxos.iter() {
                 pending.insert(input.0, now);
             }
@@ -403,7 +601,7 @@ async fn maybe_send_tx(
         .into_par_iter()
         .map(|utxo_option| {
             if let Some((selected_utxos, selected_amount)) = utxo_option {
-                let tx = generate_tx(schnorr_key, &selected_utxos, selected_amount, num_outs, &kaspa_addr);
+                let tx = generate_tx(schnorr_key, &selected_utxos, selected_amount, num_outs, &kaspa_addr, tx_config);
 
                 return Some((tx, selected_utxos.len(), selected_utxos.into_iter().map(|(_, entry)| entry.amount).sum::<u64>()));
             }
@@ -429,20 +627,61 @@ async fn maybe_send_tx(
     true
 }
 
-fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, u64>) {
-    let now = unix_now();
-    let old_keys = pending.iter().filter(|(_, time)| now - *time > 3600 * 1000).map(|(op, _)| *op).collect_vec();
-    for key in old_keys {
-        pending.remove(&key).unwrap();
+fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, Instant>) {
+    let now = Instant::now();
+    pending.retain(|_, &mut time| now.duration_since(time) <= Duration::from_secs(3600));
+}
+
+fn required_fee(num_utxos: usize, num_outs: u64, payload_size: usize, with_covenant_binding: bool) -> u64 {
+    let (compute_mass, serialized_bytes) =
+        estimated_compute_mass_and_serialized_bytes(num_utxos, num_outs, payload_size, with_covenant_binding);
+    let normalized_transient_mass = serialized_bytes * NORMALIZED_TRANSIENT_BYTE_FACTOR;
+    FEE_RATE * compute_mass.max(normalized_transient_mass)
+}
+
+const fn estimated_compute_mass_and_serialized_bytes(
+    num_utxos: usize,
+    num_outs: u64,
+    payload_size: usize,
+    with_covenant_binding: bool,
+) -> (u64, u64) {
+    let covenant_bytes_per_output = if with_covenant_binding { 34 } else { 0 }; // covenant binding: authorizing input [2] + covenant id [32]
+    let serialized_bytes = 94 // plain tx: version [2] + input/output counts [16] + locktime [8] + subnetwork id [20] + gas [8] + payload hash [32] + payload length [8]
+        + 118 * (num_utxos as u64) // std input: outpoint [36] + signature script length [8] + single-signature script [66] + sequence [8]
+        + (53 + covenant_bytes_per_output) * num_outs // std output: value [8] + script public key version [2] + script public key length [8] + max std script public key [35] + covenant binding [0/34]
+        + payload_size as u64;
+    let compute_mass = serialized_bytes
+        + 1000 * (num_utxos as u64) // std input script mass (1 sigop)
+        + 370 * num_outs; // std output spk mass: (script public key version [2] + max std script public key [35]) * 10
+    (compute_mass, serialized_bytes)
+}
+
+fn apply_random_covenant_binding_from_inputs(tx: &mut MutableTransaction<Transaction>, with_covenant_id: bool) {
+    if !with_covenant_id {
+        return;
     }
-}
 
-fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
-    FEE_PER_MASS * estimated_mass(num_utxos, num_outs)
-}
+    if tx.entries.is_empty() || tx.tx.outputs.is_empty() {
+        return;
+    }
 
-fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
-    200 + 34 * num_outs + 1000 * (num_utxos as u64)
+    // Only start a new genesis with probability 1:100
+    let start_covenant_genesis = thread_rng().gen_bool(0.01);
+    let idx = thread_rng().gen_range(0..tx.entries.len());
+
+    let covenant_id = if start_covenant_genesis {
+        let auth_outputs = tx.tx.outputs.iter().enumerate().map(|(i, output)| (i as u32, output));
+        Some(covenant_id(tx.tx.inputs[idx].previous_outpoint, auth_outputs))
+    } else {
+        // Otherwise try reusing an existing covenant id
+        tx.entries[idx].as_ref().expect("populated").covenant_id
+    };
+
+    if let Some(covenant_id) = covenant_id {
+        for output in tx.tx.outputs.iter_mut() {
+            output.covenant = Some(CovenantBinding::new(idx as u16, covenant_id));
+        }
+    }
 }
 
 fn generate_tx(
@@ -451,19 +690,54 @@ fn generate_tx(
     send_amount: u64,
     num_outs: u64,
     kaspa_addr: &Address,
+    tx_config: &TxConfig,
 ) -> Transaction {
+    // set base version according to the usage of covenant or lanes
+    let mut tx_version = match tx_config.with_covenant_id || tx_config.lps > 0 {
+        true => TX_VERSION_TOCCATA,
+        false => TX_VERSION,
+    };
+
     let script_public_key = pay_to_address_script(kaspa_addr);
     let inputs = utxos
         .iter()
-        .map(|(op, _)| TransactionInput { previous_outpoint: *op, signature_script: vec![], sequence: 0, sig_op_count: 1 })
+        .map(|(op, _)| TransactionInput {
+            previous_outpoint: *op,
+            signature_script: vec![],
+            sequence: 0,
+            compute_commit: if tx_version == TX_VERSION_TOCCATA {
+                ComputeCommit::ComputeBudget(10.into())
+            } else {
+                ComputeCommit::SigopCount(1.into())
+            },
+        })
         .collect_vec();
 
+    // randomize version between 0 and 1 (pre/post HF)
+    let mut rng = thread_rng();
+    if tx_config.randomize_tx_version {
+        tx_version = rng.gen_range(0..=1);
+    }
+
     let outputs = (0..num_outs)
-        .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone() })
+        .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone(), covenant: None })
         .collect_vec();
-    let unsigned_tx = Transaction::new_non_finalized(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
-    let signed_tx =
-        sign(MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec()), schnorr_key);
+
+    let mut data = vec![0u8; tx_config.payload_size];
+    rand::thread_rng().fill_bytes(&mut data);
+
+    let subnetwork_id = if tx_version == TX_VERSION_TOCCATA && should_use_user_lane(&mut rng, tx_config) {
+        tx_config.user_subnetwork_pool[rng.gen_range(0..tx_config.user_subnetwork_pool.len())]
+    } else {
+        SUBNETWORK_ID_NATIVE
+    };
+    let gas = if subnetwork_id == SUBNETWORK_ID_NATIVE { 0 } else { tx_config.gas_distribution.sample(&mut rng) };
+    let unsigned_tx = Transaction::new_non_finalized(tx_version, inputs, outputs, 0, subnetwork_id, gas, data);
+    let mut unsigned_tx = MutableTransaction::with_entries(unsigned_tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec());
+    if tx_version == TX_VERSION_TOCCATA {
+        apply_random_covenant_binding_from_inputs(&mut unsigned_tx, tx_config.with_covenant_id);
+    }
+    let signed_tx = sign(unsigned_tx, schnorr_key);
     signed_tx.tx
 }
 
@@ -473,22 +747,32 @@ fn select_utxos(
     num_outs: u64,
     maximize_utxos: bool,
     next_available_utxo_index: &mut usize,
+    tx_config: &TxConfig,
 ) -> (Vec<(TransactionOutpoint, UtxoEntry)>, u64) {
-    const MAX_UTXOS: usize = 84;
+    const MAX_UTXOS: usize = 8;
     let mut selected_amount: u64 = 0;
     let mut selected = Vec::new();
+    let mut rng = thread_rng();
 
     while next_available_utxo_index < &mut utxos.len() {
         let (outpoint, entry) = utxos[*next_available_utxo_index].clone();
         selected_amount += entry.amount;
         selected.push((outpoint, entry));
 
-        let fee = required_fee(selected.len(), num_outs);
+        // Pass with_covenant_id as a signal that the tx might have covenant bindings. This can
+        // slightly overestimate the fee when tx versions are randomized, since bindings are only
+        // added later if the final tx version is Toccata.
+        let fee = required_fee(selected.len(), num_outs, tx_config.payload_size, tx_config.with_covenant_id);
+        let priority_fee = if tx_config.randomize_fee && tx_config.priority_fee > 0 {
+            rng.gen_range(0..tx_config.priority_fee)
+        } else {
+            tx_config.priority_fee
+        };
 
         *next_available_utxo_index += 1;
 
-        if selected_amount >= min_amount + fee && (!maximize_utxos || selected.len() == MAX_UTXOS) {
-            return (selected, selected_amount - fee);
+        if selected_amount >= min_amount + fee + priority_fee && (!maximize_utxos || selected.len() == MAX_UTXOS) {
+            return (selected, selected_amount - fee - priority_fee);
         }
 
         if selected.len() > MAX_UTXOS {

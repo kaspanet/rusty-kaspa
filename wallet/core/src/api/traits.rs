@@ -21,12 +21,28 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn register_notifications(self: Arc<Self>, channel: Receiver<WalletNotification>) -> Result<u64>;
     async fn unregister_notifications(self: Arc<Self>, channel_id: u64) -> Result<()>;
 
+    /// Wrapper around [`retain_context_call()`](Self::retain_context_call).
     async fn retain_context(self: Arc<Self>, name: &str, data: Option<Vec<u8>>) -> Result<()> {
         self.retain_context_call(RetainContextRequest { name: name.to_string(), data }).await?;
         Ok(())
     }
 
+    /// Obtain earlier retained context data using the context `name` as a key.
+    async fn get_context(self: Arc<Self>, name: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self.get_context_call(GetContextRequest { name: name.to_string() }).await?.data)
+    }
+
+    /// Allows user to store string key-associated context data in the wallet subsystem runtime.
+    /// The context data persists only during the wallet instance runtime.
+    /// This can be useful if you have a front-end that connects to a
+    /// persistent wallet instance operating in the backend (such as a browser
+    /// extension popup connecting to the background page) and you need to store
+    /// any type of runtime data in the backend (but are limited to using only
+    /// the wallet interface).
     async fn retain_context_call(self: Arc<Self>, request: RetainContextRequest) -> Result<RetainContextResponse>;
+
+    /// Obtain context data stored using [`retain_context()`](Self::retain_context).
+    async fn get_context_call(self: Arc<Self>, request: GetContextRequest) -> Result<GetContextResponse>;
 
     /// Wrapper around [`get_status_call()`](Self::get_status_call).
     async fn get_status(self: Arc<Self>, name: Option<&str>) -> Result<GetStatusResponse> {
@@ -42,8 +58,12 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// - `is_wrpc_client` - whether the wallet is connected to a node via wRPC
     async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse>;
 
-    async fn connect(self: Arc<Self>, url: Option<String>, network_id: NetworkId) -> Result<()> {
-        self.connect_call(ConnectRequest { url, network_id }).await?;
+    /// Synchronous connect call (blocking, single attempt, requires node sync).
+    async fn connect(self: Arc<Self>, url: Option<String>, network_id: &NetworkId) -> Result<()> {
+        let retry_on_error = false;
+        let block_async_connect = true;
+        let require_sync = true;
+        self.connect_call(ConnectRequest { url, network_id: *network_id, retry_on_error, block_async_connect, require_sync }).await?;
         Ok(())
     }
 
@@ -51,6 +71,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// comprised of the `url` and a `network_id`.
     async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse>;
 
+    /// Request the wallet RPC subsystem to disconnect from the node.
     async fn disconnect(self: Arc<Self>) -> Result<()> {
         self.disconnect_call(DisconnectRequest {}).await?;
         Ok(())
@@ -76,6 +97,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Ping the wallet service. Accepts an optional `u64` value that is returned in the response.
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
+    /// Wrapper around [`batch_call()`](Self::batch_call).
     async fn batch(self: Arc<Self>) -> Result<()> {
         self.batch_call(BatchRequest {}).await?;
         Ok(())
@@ -90,6 +112,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     ///
     async fn batch_call(self: Arc<Self>, request: BatchRequest) -> Result<BatchResponse>;
 
+    /// Wrapper around [`flush_call()`](Self::flush_call).
     async fn flush(self: Arc<Self>, wallet_secret: Secret) -> Result<()> {
         self.flush_call(FlushRequest { wallet_secret }).await?;
         Ok(())
@@ -264,6 +287,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// around this call.
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
 
+    /// Wrapper around [`accounts_select_call()`](Self::accounts_select_call)
     async fn accounts_select(self: Arc<Self>, account_id: Option<AccountId>) -> Result<()> {
         self.accounts_select_call(AccountsSelectRequest { account_id }).await?;
         Ok(())
@@ -351,7 +375,15 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: AccountsEnsureDefaultRequest,
     ) -> Result<AccountsEnsureDefaultResponse>;
 
-    // TODO
+    /// Wrapper around [`accounts_import_call()`](Self::accounts_import_call)
+    async fn accounts_import(
+        self: Arc<Self>,
+        wallet_secret: Secret,
+        account_create_args: AccountCreateArgs,
+    ) -> Result<AccountDescriptor> {
+        Ok(self.accounts_import_call(AccountsImportRequest { wallet_secret, account_create_args }).await?.account_descriptor)
+    }
+
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
 
     /// Get an [`AccountDescriptor`] for a specific account id.
@@ -383,12 +415,67 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// well `transaction_ids` containing a list of submitted transaction ids.
     async fn accounts_send_call(self: Arc<Self>, request: AccountsSendRequest) -> Result<AccountsSendResponse>;
 
+    /// Wrapper around [`accounts_pskb_sign()`](Self::accounts_pskb_sign_call)
+    async fn accounts_pskb_sign(self: Arc<Self>, request: AccountsPskbSignRequest) -> Result<AccountsPskbSignResponse> {
+        self.accounts_pskb_sign_call(request).await
+    }
+
+    /// Sign a PSKB.
+    async fn accounts_pskb_sign_call(self: Arc<Self>, request: AccountsPskbSignRequest) -> Result<AccountsPskbSignResponse>;
+
+    /// Wrapper around [`accounts_pskb_broadcast()`](Self::accounts_pskb_broadcast_call)
+    async fn accounts_pskb_broadcast(self: Arc<Self>, request: AccountsPskbBroadcastRequest) -> Result<AccountsPskbBroadcastResponse> {
+        self.accounts_pskb_broadcast_call(request).await
+    }
+
+    /// Broadcast a PSKB.
+    async fn accounts_pskb_broadcast_call(
+        self: Arc<Self>,
+        request: AccountsPskbBroadcastRequest,
+    ) -> Result<AccountsPskbBroadcastResponse>;
+
+    /// Wrapper around [`accounts_pskb_send_call()`](Self::accounts_pskb_send_call)
+    async fn accounts_pskb_send(self: Arc<Self>, request: AccountsPskbSendRequest) -> Result<AccountsPskbSendResponse> {
+        self.accounts_pskb_send_call(request).await
+    }
+
+    /// Sign and broadcast a PSKB.
+    async fn accounts_pskb_send_call(self: Arc<Self>, request: AccountsPskbSendRequest) -> Result<AccountsPskbSendResponse>;
+
+    /// Wrapper around [`accounts_get_utxos_call()`](Self::accounts_get_utxos_call)
+    async fn accounts_get_utxos(self: Arc<Self>, request: AccountsGetUtxosRequest) -> Result<AccountsGetUtxosResponse> {
+        self.accounts_get_utxos_call(request).await
+    }
+
+    /// Get UTXOs for an account.
+    async fn accounts_get_utxos_call(self: Arc<Self>, request: AccountsGetUtxosRequest) -> Result<AccountsGetUtxosResponse>;
+
     /// Transfer funds to another account. Returns an [`AccountsTransferResponse`]
     /// struct that contains a [`GeneratorSummary`] as well `transaction_ids`
     /// containing a list of submitted transaction ids. Unlike funds sent to an
     /// external address, funds transferred between wallet accounts are
     /// available immediately upon transaction acceptance.
     async fn accounts_transfer_call(self: Arc<Self>, request: AccountsTransferRequest) -> Result<AccountsTransferResponse>;
+
+    /// Commit-reveal funds using provided [`PaymentDestination`] in
+    /// [`AccountsCommitRevealManualRequest`].
+    /// Returns an [`AccountsCommitRevealManualResponse`] struct that
+    /// contains transaction ids.
+    async fn accounts_commit_reveal_manual_call(
+        self: Arc<Self>,
+        request: AccountsCommitRevealManualRequest,
+    ) -> Result<AccountsCommitRevealManualResponse>;
+
+    /// Commit-reveal funds to P2SH of given script signature present in
+    /// [`AccountsCommitRevealRequest`] that provides a pubkey placeholder
+    /// used by given address type and address index looked up in derivation
+    /// manager.
+    /// Returns an [`AccountsCommitRevealResponse`] struct that contains
+    /// transaction ids.
+    async fn accounts_commit_reveal_call(
+        self: Arc<Self>,
+        request: AccountsCommitRevealRequest,
+    ) -> Result<AccountsCommitRevealResponse>;
 
     /// Performs a transaction estimate, returning [`AccountsEstimateResponse`]
     /// that contains [`GeneratorSummary`]. This call will estimate the total
@@ -399,7 +486,41 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// an error.
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse>;
 
+    /// Wrapper around [`fee_rate_estimate_call()`](Self::fee_rate_estimate_call)
+    async fn fee_rate_estimate(self: Arc<Self>) -> Result<FeeRateEstimateResponse> {
+        Ok(self.fee_rate_estimate_call(FeeRateEstimateRequest {}).await?)
+    }
+
+    /// Estimate current network fee rate. Returns a [`FeeRateEstimateResponse`]
+    async fn fee_rate_estimate_call(self: Arc<Self>, request: FeeRateEstimateRequest) -> Result<FeeRateEstimateResponse>;
+
+    /// Wrapper around [`fee_rate_poller_enable_call()`](Self::fee_rate_poller_enable_call).
+    async fn fee_rate_poller_enable(self: Arc<Self>, interval_seconds: u64) -> Result<()> {
+        self.fee_rate_poller_enable_call(FeeRatePollerEnableRequest { interval_seconds }).await?;
+        Ok(())
+    }
+
+    /// Enable the fee rate poller. The fee rate poller is a background task that
+    /// periodically polls the network for the current fee rate. The fee rate is
+    /// used to estimate the transaction fee. The poller is disabled by default.
+    /// This function stops the previously enabled poller and starts a new one
+    /// with the specified `interval`.
+    async fn fee_rate_poller_enable_call(self: Arc<Self>, request: FeeRatePollerEnableRequest) -> Result<FeeRatePollerEnableResponse>;
+
+    /// Wrapper around [`fee_rate_poller_disable_call()`](Self::fee_rate_poller_disable_call).
+    async fn fee_rate_poller_disable(self: Arc<Self>) -> Result<()> {
+        self.fee_rate_poller_disable_call(FeeRatePollerDisableRequest {}).await?;
+        Ok(())
+    }
+
+    /// Disable the fee rate poller.
+    async fn fee_rate_poller_disable_call(
+        self: Arc<Self>,
+        request: FeeRatePollerDisableRequest,
+    ) -> Result<FeeRatePollerDisableResponse>;
+
     /// Get a range of transaction records for a specific account id.
+    /// Wrapper around [`transactions_data_get_call()`](Self::transactions_data_get_call).
     async fn transactions_data_get_range(
         self: Arc<Self>,
         account_id: AccountId,
@@ -409,8 +530,8 @@ pub trait WalletApi: Send + Sync + AnySync {
         self.transactions_data_get_call(TransactionsDataGetRequest::with_range(account_id, network_id, range)).await
     }
 
+    /// Get a range of transaction records for a specific account id.
     async fn transactions_data_get_call(self: Arc<Self>, request: TransactionsDataGetRequest) -> Result<TransactionsDataGetResponse>;
-    // async fn transaction_get_call(self: Arc<Self>, request: TransactionGetRequest) -> Result<TransactionGetResponse>;
 
     /// Replaces the note of a transaction with a new note. Note is meant
     /// to explicitly store a user-supplied string. The note is treated
@@ -435,6 +556,7 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: TransactionsReplaceMetadataRequest,
     ) -> Result<TransactionsReplaceMetadataResponse>;
 
+    // TODO
     async fn address_book_enumerate_call(
         self: Arc<Self>,
         request: AddressBookEnumerateRequest,

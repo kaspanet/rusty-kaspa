@@ -16,6 +16,7 @@ pub mod context;
 pub mod single;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[borsh(use_discriminant = true)]
 pub enum Command {
     Start = 0,
     Stop = 1,
@@ -40,11 +41,7 @@ impl From<Command> for i32 {
 impl From<i32> for Command {
     // We make this conversion infallible by falling back to Start from any unexpected value.
     fn from(item: i32) -> Self {
-        if item == 1 {
-            Command::Stop
-        } else {
-            Command::Start
-        }
+        if item == 1 { Command::Stop } else { Command::Start }
     }
 }
 
@@ -242,11 +239,7 @@ pub trait DynEq {
 }
 impl<T: Eq + Any> DynEq for T {
     fn dyn_eq(&self, other: &dyn Any) -> bool {
-        if let Some(other) = other.downcast_ref::<Self>() {
-            self == other
-        } else {
-            false
-        }
+        if let Some(other) = other.downcast_ref::<Self>() { self == other } else { false }
     }
 }
 

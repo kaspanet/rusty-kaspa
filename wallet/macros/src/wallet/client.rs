@@ -1,12 +1,12 @@
 use crate::handler::*;
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use std::convert::Into;
 use syn::{
+    Error, Expr, ExprArray, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, ExprArray, Result, Token,
 };
 
 #[derive(Debug)]
@@ -61,7 +61,7 @@ impl ToTokens for RpcTable {
                             {
                                 match __self.codec {
                                     Codec::Borsh(ref codec) => {
-                                        Ok(#response_type::try_from_slice(&codec.call(op, request.try_to_vec()?).await?)?)
+                                        Ok(#response_type::try_from_slice(&codec.call(op, borsh::to_vec(&request)?).await?)?)
                                     },
                                     Codec::Serde(ref codec) => {
                                         let request = serde_json::to_string(&request)?;

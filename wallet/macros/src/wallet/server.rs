@@ -1,12 +1,12 @@
 use crate::handler::*;
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use std::convert::Into;
 use syn::{
+    Error, Expr, ExprArray, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, ExprArray, Result, Token,
 };
 
 #[derive(Debug)]
@@ -38,7 +38,7 @@ impl ToTokens for RpcTable {
 
             targets_borsh.push(quote! {
                 #hash_64 => {
-                    Ok(self.wallet_api().#fn_call(#request_type::try_from_slice(&request)?).await?.try_to_vec()?)
+                    Ok(borsh::to_vec(&self.wallet_api().#fn_call(#request_type::try_from_slice(&request)?).await?)?)
                 }
             });
 

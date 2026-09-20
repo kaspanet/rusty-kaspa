@@ -1,5 +1,5 @@
 use kaspa_core::warn;
-use kaspa_p2p_lib::{common::ProtocolError, Router};
+use kaspa_p2p_lib::{Router, common::ProtocolError};
 use kaspa_utils::any::type_name_short;
 use std::sync::Arc;
 
@@ -19,12 +19,12 @@ where
     fn launch(mut self: Box<Self>) {
         tokio::spawn(async move {
             let res = self.start().await;
-            if let Err(err) = res {
-                if let Some(router) = self.router() {
-                    router.try_sending_reject_message(&err).await;
-                    if router.close().await || !err.is_connection_closed_error() {
-                        warn!("{} flow error: {}, disconnecting from peer {}.", self.name(), err, router);
-                    }
+            if let Err(err) = res
+                && let Some(router) = self.router()
+            {
+                router.try_sending_reject_message(&err).await;
+                if router.close().await || !err.is_connection_closed_error() {
+                    warn!("{} flow error: {}, disconnecting from peer {}.", self.name(), err, router);
                 }
             }
         });

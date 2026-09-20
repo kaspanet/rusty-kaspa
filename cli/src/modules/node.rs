@@ -20,10 +20,10 @@ impl DefaultSettings for KaspadSettings {
         let mut settings = vec![(Self::Mute, to_value(true).unwrap())];
 
         let root = nw_sys::app::folder();
-        if let Ok(binaries) = kaspa_daemon::locate_binaries(&root, "kaspad").await {
-            if let Some(path) = binaries.first() {
-                settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
-            }
+        if let Ok(binaries) = kaspa_daemon::locate_binaries(&root, "kaspad").await
+            && let Some(path) = binaries.first()
+        {
+            settings.push((Self::Location, to_value(path.to_string_lossy().to_string()).unwrap()));
         }
 
         settings
@@ -49,11 +49,7 @@ impl Default for Node {
 #[async_trait]
 impl Handler for Node {
     fn verb(&self, ctx: &Arc<dyn Context>) -> Option<&'static str> {
-        if let Ok(ctx) = ctx.clone().downcast_arc::<KaspaCli>() {
-            ctx.daemons().clone().kaspad.as_ref().map(|_| "node")
-        } else {
-            None
-        }
+        if let Ok(ctx) = ctx.clone().downcast_arc::<KaspaCli>() { ctx.daemons().clone().kaspad.as_ref().map(|_| "node") } else { None }
     }
 
     fn help(&self, _ctx: &Arc<dyn Context>) -> &'static str {

@@ -1,4 +1,5 @@
 use crate::{
+    EngineFlags,
     opcodes::codes::{OpBlake2b, OpCheckSig, OpCheckSigECDSA, OpData32, OpData33, OpEqual},
     script_builder::{ScriptBuilder, ScriptBuilderResult},
     script_class::ScriptClass,
@@ -12,7 +13,7 @@ use std::iter::once;
 
 mod multisig;
 
-pub use multisig::{multisig_redeem_script, multisig_redeem_script_ecdsa, Error as MultisigCreateError};
+pub use multisig::{Error as MultisigCreateError, multisig_redeem_script, multisig_redeem_script_ecdsa};
 
 /// Creates a new script to pay a transaction output to a 32-byte pubkey.
 fn pay_to_pub_key(address_payload: &[u8]) -> ScriptVec {
@@ -55,7 +56,16 @@ pub fn pay_to_script_hash_script(redeem_script: &[u8]) -> ScriptPublicKey {
 
 /// Generates a signature script that fits a pay-to-script-hash script
 pub fn pay_to_script_hash_signature_script(redeem_script: Vec<u8>, signature: Vec<u8>) -> ScriptBuilderResult<Vec<u8>> {
-    let redeem_script_as_data = ScriptBuilder::new().add_data(&redeem_script)?.drain();
+    pay_to_script_hash_signature_script_with_flags(redeem_script, signature, EngineFlags::default())
+}
+
+/// Generates a signature script that fits a pay-to-script-hash script, given engine flags to be used for the script builder.
+pub fn pay_to_script_hash_signature_script_with_flags(
+    redeem_script: Vec<u8>,
+    signature: Vec<u8>,
+    flags: EngineFlags,
+) -> ScriptBuilderResult<Vec<u8>> {
+    let redeem_script_as_data = ScriptBuilder::with_flags(flags).add_data(&redeem_script)?.drain();
     Ok(Vec::from_iter(signature.iter().copied().chain(redeem_script_as_data.iter().copied())))
 }
 
@@ -85,7 +95,7 @@ pub fn extract_script_pub_key_address(script_public_key: &ScriptPublicKey, prefi
 
 pub mod test_helpers {
     use super::*;
-    use crate::{opcodes::codes::OpTrue, MAX_TX_IN_SEQUENCE_NUM};
+    use crate::{MAX_TX_IN_SEQUENCE_NUM, opcodes::codes::OpTrue};
     use kaspa_consensus_core::{
         constants::TX_VERSION,
         subnets::SUBNETWORK_ID_NATIVE,
@@ -100,9 +110,9 @@ pub mod test_helpers {
         (script_public_key, redeem_script)
     }
 
-    // Creates a transaction that spends the first output of provided transaction.
-    // Assumes that the output being spent has opTrueScript as it's scriptPublicKey.
-    // Creates the value of the spent output minus provided `fee` (in sompi).
+    /// Creates a transaction that spends the first output of provided transaction.
+    /// Assumes that the output being spent has opTrueScript as its scriptPublicKey.
+    /// Creates the value of the spent output minus provided `fee` (in sompi).
     pub fn create_transaction(tx_to_spend: &Transaction, fee: u64) -> Transaction {
         let (script_public_key, redeem_script) = op_true_script();
         let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the script is canonical");
@@ -111,11 +121,48 @@ pub mod test_helpers {
         let output = TransactionOutput::new(tx_to_spend.outputs[0].value - fee, script_public_key);
         Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![])
     }
+
+    /// Creates a transaction that spends the outputs of specified indexes (if they exist) of every provided transaction and returns an optional change.
+    /// Assumes that the outputs being spent have opTrueScript as their scriptPublicKey.
+    ///
+    /// If some change is provided, creates two outputs, first one with the value of the spent outputs minus `change`
+    /// and `fee` (in sompi) and second one of `change` amount.
+    ///
+    /// If no change is provided, creates only one output with the value of the spent outputs minus and `fee` (in sompi)
+    pub fn create_transaction_with_change<'a>(
+        txs_to_spend: impl Iterator<Item = &'a Transaction>,
+        output_indexes: Vec<usize>,
+        change: Option<u64>,
+        fee: u64,
+    ) -> Transaction {
+        let (script_public_key, redeem_script) = op_true_script();
+        let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the script is canonical");
+        let mut inputs_value: u64 = 0;
+        let mut inputs = vec![];
+        for tx_to_spend in txs_to_spend {
+            for i in output_indexes.iter().copied() {
+                if i < tx_to_spend.outputs.len() {
+                    let previous_outpoint = TransactionOutpoint::new(tx_to_spend.id(), i as u32);
+                    inputs.push(TransactionInput::new(previous_outpoint, signature_script.clone(), MAX_TX_IN_SEQUENCE_NUM, 1));
+                    inputs_value += tx_to_spend.outputs[i].value;
+                }
+            }
+        }
+        let outputs = match change {
+            Some(change) => vec![
+                TransactionOutput::new(inputs_value - fee - change, script_public_key.clone()),
+                TransactionOutput::new(change, script_public_key),
+            ],
+            None => vec![TransactionOutput::new(inputs_value - fee, script_public_key.clone())],
+        };
+        Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![])
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_utils::hex::FromHex;
 
     #[test]
     fn test_extract_address_and_encode_script() {
@@ -132,9 +179,7 @@ mod tests {
                 name: "Mainnet PubKey script and address",
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version(),
-                    ScriptVec::from_slice(
-                        &hex::decode("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
-                    ),
+                    ScriptVec::from_hex("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
                 ),
                 prefix: Prefix::Mainnet,
                 expected_address: Ok("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j".try_into().unwrap()),
@@ -143,9 +188,7 @@ mod tests {
                 name: "Testnet PubKeyECDSA script and address",
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKeyECDSA.version(),
-                    ScriptVec::from_slice(
-                        &hex::decode("21ba01fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
-                    ),
+                    ScriptVec::from_hex("21ba01fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
                 ),
                 prefix: Prefix::Testnet,
                 expected_address: Ok("kaspatest:qxaqrlzlf6wes72en3568khahq66wf27tuhfxn5nytkd8tcep2c0vrse6gdmpks".try_into().unwrap()),
@@ -154,9 +197,7 @@ mod tests {
                 name: "Testnet non standard script",
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version(),
-                    ScriptVec::from_slice(
-                        &hex::decode("2001fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
-                    ),
+                    ScriptVec::from_hex("2001fc5f4e9d9879599c69a3dafdb835a7255e5f2e934e9322ecd3af190ab0f60eab").unwrap(),
                 ),
                 prefix: Prefix::Testnet,
                 expected_address: Err(TxScriptError::PubKeyFormat),
@@ -165,9 +206,7 @@ mod tests {
                 name: "Mainnet script with unknown version",
                 script_pub_key: ScriptPublicKey::new(
                     ScriptClass::PubKey.version() + 1,
-                    ScriptVec::from_slice(
-                        &hex::decode("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
-                    ),
+                    ScriptVec::from_hex("207bc04196f1125e4f2676cd09ed14afb77223b1f62177da5488346323eaa91a69ac").unwrap(),
                 ),
                 prefix: Prefix::Mainnet,
                 expected_address: Err(TxScriptError::PubKeyFormat),

@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     model::stores::{
+        DB,
         acceptance_data::DbAcceptanceDataStore,
         block_transactions::DbBlockTransactionsStore,
         block_window_cache::BlockWindowCacheStore,
@@ -11,52 +12,53 @@ use crate::{
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
-        pruning_utxoset::PruningUtxosetStores,
+        pruning_meta::PruningMetaStores,
+        pruning_samples::DbPruningSamplesStore,
         reachability::{DbReachabilityStore, ReachabilityData},
         relations::DbRelationsStore,
         selected_chain::DbSelectedChainStore,
+        smt_metadata::DbSmtMetadataStore,
         statuses::DbStatusesStore,
         tips::DbTipsStore,
         utxo_diffs::DbUtxoDiffsStore,
         utxo_multisets::DbUtxoMultisetsStore,
         virtual_state::{LkgVirtualState, VirtualStores},
-        DB,
     },
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
-use itertools::Itertools;
-use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
+use kaspa_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
+use kaspa_smt_store::processor::SmtStores;
 use parking_lot::RwLock;
-use std::{mem::size_of, ops::DerefMut, sync::Arc};
+use std::{ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
-    db: Arc<DB>,
+    _db: Arc<DB>,
 
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    pub relations_store: Arc<RwLock<DbRelationsStore>>,
     pub reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     pub pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     pub body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
+    pub pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     // Append-only stores
-    pub ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
-    pub ghostdag_primary_store: Arc<DbGhostdagStore>,
+    pub ghostdag_store: Arc<DbGhostdagStore>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     pub daa_excluded_store: Arc<DbDaaStore>,
     pub depth_store: Arc<DbDepthStore>,
+    pub pruning_samples_store: Arc<DbPruningSamplesStore>,
 
     // Utxo-related stores
     pub utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -66,6 +68,10 @@ pub struct ConsensusStorage {
     // Block window caches
     pub block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
     pub block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
+
+    // SMT stores (KIP-21 lane processing)
+    pub smt_stores: Arc<SmtStores>,
+    pub smt_metadata_store: Arc<DbSmtMetadataStore>,
 
     // "Last Known Good" caches
     /// The "last known good" virtual state. To be used by any logic which does not want to wait
@@ -82,19 +88,19 @@ impl ConsensusStorage {
         let perf_params = &config.perf;
 
         // Lower and upper bounds
-        let pruning_depth = params.pruning_depth as usize;
-        let pruning_size_for_caches = (params.pruning_depth + params.finality_depth) as usize; // Upper bound for any block/header related data
+        let pruning_depth = params.pruning_depth() as usize;
+        let pruning_size_for_caches = pruning_depth + params.finality_depth() as usize; // Upper bound for any block/header related data
         let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
         // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
         let daa_excluded_budget = scaled(30_000_000);
         let statuses_budget = scaled(30_000_000);
-        let reachability_data_budget = scaled(20_000_000);
-        let reachability_sets_budget = scaled(20_000_000); // x 2 for tree children and future covering set
+        let reachability_data_budget = scaled(100_000_000);
+        let reachability_sets_budget = scaled(100_000_000); // x 2 for tree children and future covering set
         let ghostdag_compact_budget = scaled(15_000_000);
         let headers_compact_budget = scaled(5_000_000);
-        let parents_budget = scaled(40_000_000); // x 3 for reachability and levels
-        let children_budget = scaled(5_000_000); // x 3 for reachability and levels
+        let parents_budget = scaled(80_000_000); // x 3 for reachability and levels
+        let children_budget = scaled(20_000_000); // x 3 for reachability and levels
         let ghostdag_budget = scaled(80_000_000); // x 2 for levels
         let headers_budget = scaled(80_000_000);
         let transactions_budget = scaled(40_000_000);
@@ -108,8 +114,10 @@ impl ConsensusStorage {
         let reachability_data_bytes = size_of::<Hash>() + size_of::<ReachabilityData>();
         let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
-        let difficulty_window_bytes = params.difficulty_window_size(0) * size_of::<SortableBlock>();
-        let median_window_bytes = params.past_median_time_window_size(0) * size_of::<SortableBlock>();
+
+        // Window sizes in bytes
+        let difficulty_window_bytes = params.difficulty_window_size * size_of::<SortableBlock>();
+        let median_window_bytes = params.past_median_time_window_size * size_of::<SortableBlock>();
 
         // Cache policy builders
         let daa_excluded_builder =
@@ -168,18 +176,12 @@ impl ConsensusStorage {
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), statuses_builder.build())));
-        let relations_stores = Arc::new(RwLock::new(
-            (0..=params.max_block_level)
-                .map(|level| {
-                    DbRelationsStore::new(
-                        db.clone(),
-                        level,
-                        parents_builder.downscale(level).build(),
-                        children_builder.downscale(level).build(),
-                    )
-                })
-                .collect_vec(),
-        ));
+        let relations_store = Arc::new(RwLock::new(DbRelationsStore::new(
+            db.clone(),
+            0,
+            parents_builder.downscale(0).build(),
+            children_builder.downscale(0).build(),
+        )));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(
             db.clone(),
             reachability_data_builder.build(),
@@ -193,19 +195,12 @@ impl ConsensusStorage {
             children_builder.build(),
         )));
 
-        let ghostdag_stores = Arc::new(
-            (0..=params.max_block_level)
-                .map(|level| {
-                    Arc::new(DbGhostdagStore::new(
-                        db.clone(),
-                        level,
-                        ghostdag_builder.downscale(level).build(),
-                        ghostdag_compact_builder.downscale(level).build(),
-                    ))
-                })
-                .collect_vec(),
-        );
-        let ghostdag_primary_store = ghostdag_stores[0].clone();
+        let ghostdag_store = Arc::new(DbGhostdagStore::new(
+            db.clone(),
+            0,
+            ghostdag_builder.downscale(0).build(),
+            ghostdag_compact_builder.downscale(0).build(),
+        ));
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), daa_excluded_builder.build()));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), headers_builder.build(), headers_compact_builder.build()));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), header_data_builder.build()));
@@ -214,8 +209,8 @@ impl ConsensusStorage {
         // Pruning
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
         let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), past_pruning_points_builder.build()));
-        let pruning_utxoset_stores = Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), utxo_set_builder.build())));
-
+        let pruning_meta_stores = Arc::new(RwLock::new(PruningMetaStores::new(db.clone(), utxo_set_builder.build())));
+        let pruning_samples_store = Arc::new(DbPruningSamplesStore::new(db.clone(), header_data_builder.build()));
         // Txs
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), transactions_builder.build()));
         let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), utxo_diffs_builder.build()));
@@ -235,34 +230,49 @@ impl ConsensusStorage {
         let virtual_stores =
             Arc::new(RwLock::new(VirtualStores::new(db.clone(), lkg_virtual_state.clone(), utxo_set_builder.build())));
 
+        // SMT stores (KIP-21).
+        //
+        // The branch cache is larger because each lane update can touch multiple
+        // branch versions along the collapsed path. With the current tuple sizes,
+        // the selected capacities correspond to ~116MB for branches (500k * 232B)
+        // and ~18MB for lanes (100k * 176B).
+        // TODO: decide if SMT cache capacities should be determined from byte budgets
+        let smt_stores = Arc::new(SmtStores::new(db.clone(), scaled(500_000), scaled(100_000)));
+        // Use the header-data cache size for now because SMT metadata entries are small.
+        // TODO: tune SMT metadata cache budget based on profiling.
+        let smt_metadata_builder = PolicyBuilder::new().max_items(perf_params.header_data_cache_size).untracked();
+        let smt_metadata_store = Arc::new(DbSmtMetadataStore::new(db.clone(), smt_metadata_builder.build()));
+
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
         relations::init(reachability_relations_store.write().deref_mut());
 
         Arc::new(Self {
-            db,
+            _db: db,
             statuses_store,
-            relations_stores,
+            relations_store,
             reachability_relations_store,
             reachability_store,
-            ghostdag_stores,
-            ghostdag_primary_store,
+            ghostdag_store,
             pruning_point_store,
             headers_selected_tip_store,
             body_tips_store,
             headers_store,
             block_transactions_store,
-            pruning_utxoset_stores,
+            pruning_meta_stores,
             virtual_stores,
             selected_chain_store,
             acceptance_data_store,
             past_pruning_points_store,
             daa_excluded_store,
             depth_store,
+            pruning_samples_store,
             utxo_diffs_store,
             utxo_multisets_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
+            smt_stores,
+            smt_metadata_store,
             lkg_virtual_state,
         })
     }

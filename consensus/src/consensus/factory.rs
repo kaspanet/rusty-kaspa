@@ -1,15 +1,16 @@
 #[cfg(feature = "devnet-prealloc")]
 use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_initial_utxo_set};
-use super::{ctl::Ctl, Consensus};
+use super::{Consensus, ctl::Ctl};
 use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use itertools::Itertools;
-use kaspa_consensus_core::config::Config;
+use kaspa_consensus_core::{api::ConsensusApi, config::Config, mining_rules::MiningRules};
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl, SessionLock};
 use kaspa_core::{debug, time::unix_now, warn};
 use kaspa_database::{
     prelude::{
-        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
+        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DB, DirectDbWriter, RocksDbPreset, StoreError, StoreResult,
+        StoreResultExt,
     },
     registry::DatabaseStorePrefixes,
 };
@@ -59,7 +60,7 @@ pub struct MultiConsensusMetadata {
     version: u32,
 }
 
-const LATEST_DB_VERSION: u32 = 3;
+pub const LATEST_DB_VERSION: u32 = 7;
 impl Default for MultiConsensusMetadata {
     fn default() -> Self {
         Self {
@@ -82,17 +83,21 @@ pub struct MultiConsensusManagementStore {
 
 impl MultiConsensusManagementStore {
     pub fn new(db: Arc<DB>) -> Self {
-        let mut store = Self {
-            db: db.clone(),
-            entries: CachedDbAccess::new(db.clone(), CachePolicy::Count(16), DatabaseStorePrefixes::ConsensusEntries.into()),
-            metadata: CachedDbItem::new(db, DatabaseStorePrefixes::MultiConsensusMetadata.into()),
-        };
+        let mut store = Self::new_readonly(db);
         store.init();
         store
     }
 
+    pub fn new_readonly(db: Arc<DB>) -> Self {
+        Self {
+            db: db.clone(),
+            entries: CachedDbAccess::new(db.clone(), CachePolicy::Count(16), DatabaseStorePrefixes::ConsensusEntries.into()),
+            metadata: CachedDbItem::new(db, DatabaseStorePrefixes::MultiConsensusMetadata.into()),
+        }
+    }
+
     fn init(&mut self) {
-        if self.metadata.read().unwrap_option().is_none() {
+        if self.metadata.read().optional().unwrap().is_none() {
             let mut batch = WriteBatch::default();
             let metadata = MultiConsensusMetadata::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
@@ -104,7 +109,7 @@ impl MultiConsensusManagementStore {
     pub fn active_consensus_dir_name(&self) -> StoreResult<Option<String>> {
         let metadata = self.metadata.read()?;
         match metadata.current_consensus_key {
-            Some(key) => Ok(Some(self.entries.read(key.into()).unwrap().directory_name)),
+            Some(key) => Ok(Some(self.entries.read(key.into())?.directory_name)),
             None => Ok(None),
         }
     }
@@ -214,9 +219,25 @@ impl MultiConsensusManagementStore {
         let mut metadata = self.metadata.read().unwrap();
         if metadata.is_archival_node != is_archival_node {
             metadata.is_archival_node = is_archival_node;
-            let mut batch = WriteBatch::default();
-            self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
+            self.metadata.write(DirectDbWriter::new(&self.db), &metadata).unwrap();
         }
+    }
+
+    /// Returns the current version of this database
+    pub fn version(&self) -> StoreResult<u32> {
+        match self.metadata.read() {
+            Ok(data) => Ok(data.version),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Set the database version to a different one
+    pub fn set_version(&mut self, version: u32) -> StoreResult<()> {
+        self.metadata.update(DirectDbWriter::new(&self.db), |mut data| {
+            data.version = version;
+            data
+        })?;
+        Ok(())
     }
 
     pub fn should_upgrade(&self) -> StoreResult<bool> {
@@ -237,9 +258,14 @@ pub struct Factory {
     counters: Arc<ProcessingCounters>,
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
     fd_budget: i32,
+    mining_rules: Arc<MiningRules>,
+    rocksdb_preset: RocksDbPreset,
+    wal_dir: Option<PathBuf>,
+    cache_budget: Option<usize>,
 }
 
 impl Factory {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         management_db: Arc<DB>,
         config: &Config,
@@ -249,6 +275,10 @@ impl Factory {
         counters: Arc<ProcessingCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         fd_budget: i32,
+        mining_rules: Arc<MiningRules>,
+        rocksdb_preset: RocksDbPreset,
+        wal_dir: Option<PathBuf>,
+        cache_budget: Option<usize>,
     ) -> Self {
         assert!(fd_budget > 0, "fd_budget has to be positive");
         let mut config = config.clone();
@@ -266,6 +296,10 @@ impl Factory {
             counters,
             tx_script_cache_counters,
             fd_budget,
+            mining_rules,
+            rocksdb_preset,
+            wal_dir,
+            cache_budget,
         };
         factory.delete_inactive_consensus_entries();
         factory
@@ -296,6 +330,9 @@ impl ConsensusFactory for Factory {
             .with_db_path(dir)
             .with_parallelism(self.db_parallelism)
             .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
+            .with_preset(self.rocksdb_preset)
+            .with_wal_dir(self.wal_dir.clone())
+            .with_cache_budget(self.cache_budget)
             .build()
             .unwrap();
 
@@ -308,6 +345,7 @@ impl ConsensusFactory for Factory {
             self.counters.clone(),
             self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
+            self.mining_rules.clone(),
         ));
 
         // We write the new active entry only once the instance was created successfully.
@@ -330,6 +368,9 @@ impl ConsensusFactory for Factory {
             .with_db_path(dir)
             .with_parallelism(self.db_parallelism)
             .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
+            .with_preset(self.rocksdb_preset)
+            .with_wal_dir(self.wal_dir.clone())
+            .with_cache_budget(self.cache_budget)
             .build()
             .unwrap();
 
@@ -342,7 +383,13 @@ impl ConsensusFactory for Factory {
             self.counters.clone(),
             self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
+            self.mining_rules.clone(),
         ));
+
+        // The default for the body_missing_anticone_set is an empty vector, which corresponds precisely to the state before a consensus commit.
+        // The default value for the pruning_utxoset_stable_flag is true, but a staging consensus does not have a utxo and hence the flag is dropped explicitly.
+        consensus.set_pruning_utxoset_stable_flag(false);
+        consensus.set_pruning_smt_stable_flag(false);
 
         (ConsensusInstance::new(session_lock, consensus.clone()), Arc::new(Ctl::new(self.management_store.clone(), db, consensus)))
     }
@@ -399,5 +446,31 @@ impl ConsensusFactory for Factory {
             };
             write_guard.cancel_staging_consensus().unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MultiConsensusManagementStore;
+    use kaspa_database::{prelude::ConnBuilder, utils::get_kaspa_tempdir};
+
+    #[test]
+    fn archival_node_flag_persists_after_reopen() {
+        let db_tempdir = get_kaspa_tempdir();
+        let db_path = db_tempdir.path().to_owned();
+        let db = ConnBuilder::default().with_db_path(db_path.clone()).with_files_limit(10).build().unwrap();
+        let mut store = MultiConsensusManagementStore::new(db.clone());
+
+        store.set_is_archival_node(true);
+        assert!(store.is_archival_node().unwrap());
+        drop(store);
+        drop(db);
+
+        let db = ConnBuilder::default().with_db_path(db_path).with_create_if_missing(false).with_files_limit(10).build().unwrap();
+        let store = MultiConsensusManagementStore::new_readonly(db.clone());
+
+        assert!(store.is_archival_node().unwrap());
+        drop(store);
+        drop(db);
     }
 }

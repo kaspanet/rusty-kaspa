@@ -1,8 +1,8 @@
-use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
+use crate::{ConnectionInitializer, Peer, Router, common::ProtocolError, pb::KaspadMessage};
 use kaspa_core::{debug, info, warn};
 use parking_lot::RwLock;
 use std::{
-    collections::{hash_map::Entry::Occupied, HashMap},
+    collections::{HashMap, hash_map::Entry::Occupied},
     sync::Arc,
 };
 use tokio::sync::mpsc::Receiver as MpscReceiver;
@@ -39,22 +39,29 @@ impl Hub {
                     HubEvent::NewPeer(new_router) => {
                         // If peer is outbound then connection initialization was already performed as part of the connect logic
                         if new_router.is_outbound() {
-                            info!("P2P Connected to outgoing peer {}", new_router);
+                            info!("P2P Connected to outgoing peer {} (outbound: {})", new_router, self.peers_query(true) + 1);
                             self.insert_new_router(new_router).await;
                         } else {
                             match initializer.initialize_connection(new_router.clone()).await {
                                 Ok(()) => {
-                                    info!("P2P Connected to incoming peer {}", new_router);
+                                    info!("P2P Connected to incoming peer {} (inbound: {})", new_router, self.peers_query(false) + 1);
                                     self.insert_new_router(new_router).await;
                                 }
                                 Err(err) => {
                                     new_router.try_sending_reject_message(&err).await;
                                     // Ignoring the new router
                                     new_router.close().await;
-                                    if matches!(err, ProtocolError::LoopbackConnection(_) | ProtocolError::PeerAlreadyExists(_)) {
-                                        debug!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
-                                    } else {
-                                        warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+
+                                    match err {
+                                        ProtocolError::LoopbackConnection(_)
+                                        | ProtocolError::PeerAlreadyExists(_)
+                                        | ProtocolError::VersionMismatch(_, ..=6) => {
+                                            // version 6 and below is prior crescendo, silencing logs on deprecated versions
+                                            debug!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                        }
+                                        _ => {
+                                            warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
+                                        }
                                     }
                                 }
                             }
@@ -91,7 +98,7 @@ impl Hub {
         let total_outbound = peers.values().filter(|peer| peer.is_outbound()).count();
         let total_inbound = peers.len() - total_outbound;
 
-        let mut outbound_count = ((num_peers + 1) / 2).min(total_outbound);
+        let mut outbound_count = num_peers.div_ceil(2).min(total_outbound);
 
         // If there won't be enough inbound peers to meet the num_peers after we've selected only half for outbound,
         // try to require more outbound peers for the difference
@@ -123,9 +130,15 @@ impl Hub {
         }
     }
 
-    /// Broadcast a message to all peers
-    pub async fn broadcast(&self, msg: KaspadMessage) {
-        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
+    /// Broadcast a message to all peers (except an optional filtered peer)
+    pub async fn broadcast(&self, msg: KaspadMessage, filter_peer: Option<PeerKey>) {
+        let peers = self
+            .peers
+            .read()
+            .values()
+            .filter(|&r| filter_peer.is_none_or(|filter_peer| r.key() != filter_peer))
+            .cloned()
+            .collect::<Vec<_>>();
         for router in peers {
             let _ = router.enqueue(msg.clone()).await;
         }
@@ -142,12 +155,18 @@ impl Hub {
         }
     }
 
-    /// Broadcast a vector of messages to all peers
-    pub async fn broadcast_many(&self, msgs: Vec<KaspadMessage>) {
+    /// Broadcast a vector of messages to all peers (except an optional filtered peer)
+    pub async fn broadcast_many(&self, msgs: Vec<KaspadMessage>, filter_peer: Option<PeerKey>) {
         if msgs.is_empty() {
             return;
         }
-        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
+        let peers = self
+            .peers
+            .read()
+            .values()
+            .filter(|&r| filter_peer.is_none_or(|filter_peer| r.key() != filter_peer))
+            .cloned()
+            .collect::<Vec<_>>();
         for router in peers {
             for msg in msgs.iter().cloned() {
                 let _ = router.enqueue(msg).await;
@@ -180,6 +199,11 @@ impl Hub {
     /// Returns the number of currently active peers
     pub fn active_peers_len(&self) -> usize {
         self.peers.read().len()
+    }
+
+    /// Returns the number of outbound/inbound active peers (depending on the `outbound` argument)
+    pub fn peers_query(&self, outbound: bool) -> usize {
+        self.peers.read().values().filter(|r| r.is_outbound() == outbound).count()
     }
 
     /// Returns whether there are currently active peers

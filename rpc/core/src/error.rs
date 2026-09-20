@@ -1,10 +1,17 @@
-use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId};
+//!
+//! [`RpcError`] enum used by RPC primitives.
+//!
+
+use kaspa_consensus_core::{
+    errors::header::CompressedParentsError, subnets::SubnetworkConversionError, tx::TransactionId,
+    utxo::utxo_inquirer::UtxoInquirerError,
+};
 use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 use workflow_core::channel::ChannelError;
 
-use crate::{api::ctl::RpcState, RpcHash, RpcTransactionId, SubmitBlockRejectReason};
+use crate::{RpcHash, RpcTransactionId, SubmitBlockRejectReason, api::ctl::RpcState};
 
 #[derive(Clone, Debug, Error)]
 pub enum RpcError {
@@ -77,6 +84,9 @@ pub enum RpcError {
     #[error("IP {0} is not registered as banned.")]
     IpIsNotBanned(IpAddress),
 
+    #[error("Block {0} doesn't have any merger block.")]
+    MergerNotFound(RpcHash),
+
     #[error("Block was not submitted: {0}")]
     SubmitBlockError(SubmitBlockRejectReason),
 
@@ -127,6 +137,18 @@ pub enum RpcError {
 
     #[error(transparent)]
     ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+
+    #[error("utxo return address could not be found -> {0}")]
+    UtxoReturnAddressNotFound(UtxoInquirerError),
+
+    #[error("consensus converter required {0} - but was not found")]
+    ConsensusConverterNotFound(String),
+
+    #[error("consensus is currently in a transitional ibd state")]
+    ConsensusInTransitionalIbdState,
+
+    #[error(transparent)]
+    CompressedParentsError(#[from] CompressedParentsError),
 }
 
 impl From<String> for RpcError {

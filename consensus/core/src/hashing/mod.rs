@@ -1,10 +1,14 @@
 use crate::BlueWorkType;
 use kaspa_hashes::HasherBase;
 
+pub mod covenant_id;
 pub mod header;
 pub mod sighash;
 pub mod sighash_type;
 pub mod tx;
+
+#[cfg(feature = "wasm32-sdk")]
+pub mod wasm;
 
 pub trait HasherExtensions {
     /// Writes the len as u64 little endian bytes

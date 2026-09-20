@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use kaspa_consensus_core::tx::Transaction;
 use kaspa_core::{error, warn};
 use kaspa_grpc_client::ClientPool;
-use kaspa_rpc_core::{api::rpc::RpcApi, RpcError};
+use kaspa_rpc_core::{RpcError, api::rpc::RpcApi};
 use kaspa_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::{task::JoinHandle, time::sleep};
@@ -27,7 +27,7 @@ pub struct TransactionSubmitterTask {
 }
 
 impl TransactionSubmitterTask {
-    const MAX_ATTEMPTS: usize = 5;
+    const MAX_ATTEMPTS: usize = 500;
 
     pub fn new(pool: ClientPool<IndexedTransaction>, allow_orphan: bool, stopper: Stopper) -> Self {
         Self { pool, allow_orphan, stopper }

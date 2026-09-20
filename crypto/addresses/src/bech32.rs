@@ -1,3 +1,5 @@
+use alloc::{string::String, vec, vec::Vec};
+
 use crate::{Address, AddressError, Prefix};
 
 const CHARSET: &[u8] = b"qpzry9x8gf2tvdw0s3jn54khce6mua7l";
@@ -48,7 +50,7 @@ where
 
 // Convert 8bit array to 5bit array with right padding
 fn conv8to5(payload: &[u8]) -> Vec<u8> {
-    let padding = match payload.len() % 5 == 0 {
+    let padding = match payload.len().is_multiple_of(5) {
         true => 0,
         false => 1,
     };
@@ -122,11 +124,16 @@ impl Address {
             })
             .collect::<Vec<u8>>();
         err?;
+        if address.len() < 8 {
+            return Err(AddressError::BadPayload);
+        }
+
         let (payload_u5, checksum_u5) = address_u5.split_at(address.len() - 8);
         let fivebit_prefix = prefix.as_str().as_bytes().iter().copied().map(|c| c & 0x1fu8);
 
         // Convert to number
-        let checksum_ = u64::from_be_bytes([vec![0u8; 3], conv5to8(checksum_u5)].concat().try_into().expect("Is exactly 8 bytes"));
+        let checksum_ =
+            u64::from_be_bytes([vec![0u8; 3], conv5to8(checksum_u5)].concat().try_into().map_err(|_| AddressError::BadChecksumSize)?);
 
         if checksum(payload_u5, fivebit_prefix) != checksum_ {
             return Err(AddressError::BadChecksum);

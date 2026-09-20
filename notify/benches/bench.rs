@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use kaspa_addresses::{Address, Prefix};
 use kaspa_math::Uint256;
 use kaspa_notify::{address::tracker::Indexes, subscription::context::SubscriptionContext};
@@ -21,7 +21,7 @@ const ADDRESS_COUNT: usize = 1_000_000;
 pub fn bench_subscription_context(c: &mut Criterion) {
     c.bench_function("create_and_fill_context", |b| {
         let addresses = create_addresses(ADDRESS_COUNT);
-        b.iter(|| (black_box(create_and_fill_context(addresses.clone()))))
+        b.iter(|| black_box(create_and_fill_context(addresses.clone())))
     });
 }
 

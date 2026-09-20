@@ -2,12 +2,15 @@
 
 use crate::error::Error;
 use crate::result::Result;
-use crate::tx::{Fees, MassCalculator, PaymentDestination};
+use crate::tx::{Fees, MassCalculator, PaymentDestination, PaymentOutput, PaymentOutputs};
+use crate::utils::kaspa_to_sompi;
 use crate::utxo::UtxoEntryReference;
-use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
+use kaspa_consensus_core::config::params::Params;
+use kaspa_consensus_core::mass::{UtxoCell, transaction_estimated_serialized_size};
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
-use kaspa_consensus_core::tx::Transaction;
+use kaspa_consensus_core::tx::{CovenantBinding, Transaction};
+use kaspa_hashes::Hash;
 use rand::prelude::*;
 use std::cell::RefCell;
 use std::fmt::Debug;
@@ -107,7 +110,7 @@ impl GeneratorSummaryExtension for GeneratorSummary {
             "number of utxo entries"
         );
         let aggregated_fees = accumulator.list.iter().map(|pt| pt.fees()).sum::<u64>();
-        assert_eq!(self.aggregated_fees, aggregated_fees, "aggregated fees");
+        assert_eq!(self.aggregate_fees, aggregated_fees, "aggregated fees");
         self
     }
 }
@@ -140,7 +143,7 @@ impl GeneratorExtension for Generator {
 
 fn test_network_id() -> NetworkId {
     // TODO make this configurable
-    NetworkId::with_suffix(NetworkType::Testnet, 11)
+    NetworkId::with_suffix(NetworkType::Testnet, 10)
 }
 
 #[derive(Default)]
@@ -168,13 +171,12 @@ fn validate(pt: &PendingTransaction) {
         "[validate] aggregate input and output values can not be the same due to fees"
     );
 
-    let calc = MassCalculator::new(&pt.network_type().into(), network_params);
-    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
-    let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
+    let calc = MassCalculator::new(&pt.network_type().into());
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
+    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
 
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
-    let storage_mass = calc.calc_storage_mass_for_transaction(false, &utxo_entries, &tx.outputs).unwrap_or_default();
-
+    let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or(u64::MAX);
     let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
 
     assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
@@ -198,24 +200,20 @@ where
     assert_eq!(tx.outputs.len(), expected.output_count, "expected output count");
 
     let pt_fees = pt.fees();
-    let calc = MassCalculator::new(&pt.network_type().into(), network_params);
-    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
+    let calc = MassCalculator::new(&pt.network_type().into());
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
 
-    let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
+    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
 
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
-    let storage_mass = calc.calc_storage_mass_for_transaction(false, &utxo_entries, &tx.outputs).unwrap_or_default();
+    let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or(u64::MAX);
     if DISPLAY_LOGS && storage_mass != 0 {
-        println!(
-            "calculated storage mass: {} calculated_compute_mass: {} total: {}",
-            storage_mass,
-            compute_mass,
-            storage_mass + compute_mass
-        );
+        println!("calculated storage mass: {} calculated_compute_mass: {}", storage_mass, compute_mass,);
     }
 
     let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
-    let calculated_fees = calc.calc_minimum_transaction_fee_from_mass(calculated_mass);
+    // Minimum standard relay fee requires only compute mass.
+    let calculated_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass + additional_mass);
 
     if storage_mass != 0 {
         println!("PT outputs: {}", tx.outputs.len());
@@ -239,7 +237,9 @@ where
             // mismatch between calculated fees and PT fees
             let dust_disposal_fees = pt_fees - total_fees_expected;
             if !calc.is_dust(dust_disposal_fees) {
-                panic!("[Fees SENDER] dust_disposal_fees test failure - pt fees: {pt_fees}  expected fees: {total_fees_expected} difference: {dust_disposal_fees}");
+                panic!(
+                    "[Fees SENDER] dust_disposal_fees test failure - pt fees: {pt_fees}  expected fees: {total_fees_expected} difference: {dust_disposal_fees}"
+                );
             }
 
             assert_eq!(
@@ -262,7 +262,9 @@ where
             // mismatch between calculated fees and PT fees
             let dust_disposal_fees = pt_fees - total_fees_expected;
             if !calc.is_dust(dust_disposal_fees) {
-                panic!("[Fees RECEIVER] dust_disposal_fees test failure - pt fees: {pt_fees}  expected fees: {total_fees_expected} difference: {dust_disposal_fees}");
+                panic!(
+                    "[Fees RECEIVER] dust_disposal_fees test failure - pt fees: {pt_fees}  expected fees: {total_fees_expected} difference: {dust_disposal_fees}"
+                );
             }
 
             assert_eq!(
@@ -279,7 +281,9 @@ where
             // mismatch between calculated fees and PT fees
             let dust_disposal_fees = pt_fees - calculated_fees;
             if !calc.is_dust(dust_disposal_fees) {
-                panic!("[Fees NONE] dust_disposal_fees test failure - pt fees: {pt_fees}  calculated fees: {calculated_fees} difference: {dust_disposal_fees}");
+                panic!(
+                    "[Fees NONE] dust_disposal_fees test failure - pt fees: {pt_fees}  calculated fees: {calculated_fees} difference: {dust_disposal_fees}"
+                );
             }
 
             let total_output_with_fees = aggregate_output_value + pt_fees;
@@ -329,6 +333,21 @@ impl Harness {
         self.clone()
     }
 
+    pub fn accumulate(self: &Rc<Self>, count: usize) -> Rc<Self> {
+        for _n in 0..count {
+            if DISPLAY_LOGS {
+                println!(
+                    "{}",
+                    style(format!("accumulate gathering transaction: {} ({})", _n, self.accumulator.borrow().list.len())).magenta()
+                );
+            }
+            let ptx = self.generator.generate_transaction().unwrap().unwrap();
+            ptx.accumulate(&mut self.accumulator.borrow_mut());
+        }
+        // println!("accumulated `{}` transactions", self.accumulator.borrow().list.len());
+        self.clone()
+    }
+
     pub fn validate(self: &Rc<Self>) -> Rc<Self> {
         while let Some(pt) = self.generator.generate_transaction().unwrap() {
             pt.accumulate(&mut self.accumulator.borrow_mut()).validate();
@@ -338,7 +357,16 @@ impl Harness {
 
     pub fn finalize(self: Rc<Self>) {
         let pt = self.generator.generate_transaction().unwrap();
-        assert!(pt.is_none(), "expected no more transactions");
+        if pt.is_some() {
+            let mut pending = self.generator.generate_transaction().unwrap();
+            let mut count = 1;
+            while pending.is_some() {
+                count += 1;
+                pending = self.generator.generate_transaction().unwrap();
+            }
+
+            panic!("received extra `{}` unexpected transactions", count);
+        }
         let summary = self.generator.summary();
         if DISPLAY_LOGS {
             println!("{:#?}", summary);
@@ -358,7 +386,14 @@ impl Harness {
     }
 }
 
-pub(crate) fn generator<T, F>(network_id: NetworkId, head: &[f64], tail: &[f64], fees: Fees, outputs: &[(F, T)]) -> Result<Generator>
+pub(crate) fn generator<T, F>(
+    network_id: NetworkId,
+    head: &[f64],
+    tail: &[f64],
+    fee_rate: Option<f64>,
+    fees: Fees,
+    outputs: &[(F, T)],
+) -> Result<Generator>
 where
     T: Into<Sompi> + Clone,
     F: FnOnce(NetworkType) -> Address + Clone,
@@ -370,16 +405,33 @@ where
             (address.clone()(network_id.into()), sompi.0)
         })
         .collect::<Vec<_>>();
-    make_generator(network_id, head, tail, fees, change_address, PaymentOutputs::from(outputs.as_slice()).into())
+    make_generator(network_id, head, tail, fee_rate, fees, change_address, PaymentOutputs::from(outputs.as_slice()).into())
 }
 
 pub(crate) fn make_generator<F>(
     network_id: NetworkId,
     head: &[f64],
     tail: &[f64],
+    fee_rate: Option<f64>,
     fees: Fees,
     change_address: F,
     final_transaction_destination: PaymentDestination,
+) -> Result<Generator>
+where
+    F: FnOnce(NetworkType) -> Address,
+{
+    make_generator_with_payload(network_id, head, tail, fee_rate, fees, change_address, final_transaction_destination, None)
+}
+
+pub(crate) fn make_generator_with_payload<F>(
+    network_id: NetworkId,
+    head: &[f64],
+    tail: &[f64],
+    fee_rate: Option<f64>,
+    fees: Fees,
+    change_address: F,
+    final_transaction_destination: PaymentDestination,
+    final_transaction_payload: Option<Vec<u8>>,
 ) -> Result<Generator>
 where
     F: FnOnce(NetworkType) -> Address,
@@ -392,10 +444,10 @@ where
     let sig_op_count = 1;
     let minimum_signatures = 1;
     let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> = Box::new(utxo_entries.into_iter());
+    let priority_utxo_entries = None;
     let source_utxo_context = None;
     let destination_utxo_context = None;
     let final_priority_fee = fees;
-    let final_transaction_payload = None;
     let change_address = change_address(network_id.into());
 
     let settings = GeneratorSettings {
@@ -406,7 +458,9 @@ where
         change_address,
         utxo_iterator,
         source_utxo_context,
+        priority_utxo_entries,
         destination_utxo_context,
+        fee_rate,
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
         final_transaction_payload,
@@ -433,7 +487,7 @@ pub(crate) fn output_address(network_type: NetworkType) -> Address {
 
 #[test]
 fn test_generator_empty_utxo_noop() -> Result<()> {
-    let generator = make_generator(test_network_id(), &[], &[], Fees::None, change_address, PaymentDestination::Change).unwrap();
+    let generator = make_generator(test_network_id(), &[], &[], None, Fees::None, change_address, PaymentDestination::Change).unwrap();
     let tx = generator.generate_transaction().unwrap();
     assert!(tx.is_none());
     Ok(())
@@ -441,7 +495,7 @@ fn test_generator_empty_utxo_noop() -> Result<()> {
 
 #[test]
 fn test_generator_sweep_single_utxo_noop() -> Result<()> {
-    let generator = make_generator(test_network_id(), &[10.0], &[], Fees::None, change_address, PaymentDestination::Change)
+    let generator = make_generator(test_network_id(), &[10.0], &[], None, Fees::None, change_address, PaymentDestination::Change)
         .expect("single UTXO input: generator");
     let tx = generator.generate_transaction().unwrap();
     assert!(tx.is_none());
@@ -450,7 +504,7 @@ fn test_generator_sweep_single_utxo_noop() -> Result<()> {
 
 #[test]
 fn test_generator_sweep_two_utxos() -> Result<()> {
-    make_generator(test_network_id(), &[10.0, 10.0], &[], Fees::None, change_address, PaymentDestination::Change)
+    make_generator(test_network_id(), &[10.0, 10.0], &[], None, Fees::None, change_address, PaymentDestination::Change)
         .expect("merge 2 UTXOs without fees: generator")
         .harness()
         .fetch(&Expected {
@@ -466,8 +520,15 @@ fn test_generator_sweep_two_utxos() -> Result<()> {
 
 #[test]
 fn test_generator_sweep_two_utxos_with_priority_fees_rejection() -> Result<()> {
-    let generator =
-        make_generator(test_network_id(), &[10.0, 10.0], &[], Fees::sender(Kaspa(5.0)), change_address, PaymentDestination::Change);
+    let generator = make_generator(
+        test_network_id(),
+        &[10.0, 10.0],
+        &[],
+        None,
+        Fees::sender(Kaspa(5.0)),
+        change_address,
+        PaymentDestination::Change,
+    );
     match generator {
         Err(Error::GeneratorFeesInSweepTransaction) => {}
         _ => panic!("merge 2 UTXOs with fees must fail generator creation"),
@@ -476,12 +537,74 @@ fn test_generator_sweep_two_utxos_with_priority_fees_rejection() -> Result<()> {
 }
 
 #[test]
+fn test_generator_large_payload_min_relay_fee() -> Result<()> {
+    let network_id = test_network_id();
+    let harness = make_generator_with_payload(
+        network_id,
+        &[1.0; 19],
+        &[],
+        None,
+        Fees::sender(Kaspa(0.0)),
+        change_address,
+        PaymentOutputs::from([(output_address(network_id.into()), kaspa_to_sompi(18.0))].as_slice()).into(),
+        Some(vec![0; 20_000]),
+    )
+    .unwrap()
+    .harness()
+    .fetch(&Expected {
+        is_final: true,
+        input_count: 19,
+        aggregate_input_value: Kaspa(19.0),
+        output_count: 2,
+        priority_fees: FeesExpected::sender(Kaspa(0.0)),
+    });
+
+    const NORMALIZED_TRANSIENT_BYTE_FACTOR: u64 = 2;
+
+    let pt = harness.accumulator.borrow().list[0].clone();
+    let tx = pt.transaction();
+    let calc = MassCalculator::new(&network_id.into());
+    let mempool_minimum_fee =
+        calc.calc_minimum_transaction_fee_from_mass(transaction_estimated_serialized_size(&tx) * NORMALIZED_TRANSIENT_BYTE_FACTOR);
+    assert!(pt.fees() >= mempool_minimum_fee, "large payloads must cover the mempool transient fee floor");
+
+    harness.finalize();
+
+    Ok(())
+}
+
+#[test]
 fn test_generator_compound_200k_10kas_transactions() -> Result<()> {
-    generator(test_network_id(), &[10.0; 200_000], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(190_000.0))].as_slice())
-        .unwrap()
-        .harness()
-        .validate()
-        .finalize();
+    generator(
+        test_network_id(),
+        &[10.0; 200_000],
+        &[],
+        None,
+        Fees::sender(Kaspa(5.0)),
+        [(output_address, Kaspa(190_000.0))].as_slice(),
+    )
+    .unwrap()
+    .harness()
+    .validate()
+    .finalize();
+
+    Ok(())
+}
+
+#[test]
+fn test_generator_fee_rate_compound_200k_10kas_transactions() -> Result<()> {
+    generator(
+        test_network_id(),
+        &[10.0; 200_000],
+        &[],
+        Some(100.0),
+        Fees::sender(Sompi(0)),
+        [(output_address, Kaspa(190_000.0))].as_slice(),
+    )
+    .unwrap()
+    .harness()
+    .validate()
+    .finalize();
 
     Ok(())
 }
@@ -491,8 +614,14 @@ fn test_generator_compound_100k_random_transactions() -> Result<()> {
     let mut rng = StdRng::seed_from_u64(0);
     let inputs: Vec<f64> = (0..100_000).map(|_| rng.gen_range(0.001..10.0)).collect();
     let total = inputs.iter().sum::<f64>();
-    let outputs = [(output_address, Kaspa(total - 10.0))];
-    generator(test_network_id(), &inputs, &[], Fees::sender(Kaspa(5.0)), outputs.as_slice()).unwrap().harness().validate().finalize();
+    // The generated tree uses roughly 225 block-equivalents, so 150 KAS leaves
+    // enough room at the 0.5 KAS/block relay floor.
+    let outputs = [(output_address, Kaspa(total - 150.0))];
+    generator(test_network_id(), &inputs, &[], None, Fees::sender(Kaspa(5.0)), outputs.as_slice())
+        .unwrap()
+        .harness()
+        .validate()
+        .finalize();
 
     Ok(())
 }
@@ -504,7 +633,7 @@ fn test_generator_random_outputs() -> Result<()> {
     let total = outputs.iter().sum::<f64>();
     let outputs: Vec<_> = outputs.into_iter().map(|v| (output_address, Kaspa(v))).collect();
 
-    generator(test_network_id(), &[total + 100.0], &[], Fees::sender(Kaspa(5.0)), outputs.as_slice())
+    generator(test_network_id(), &[total + 100.0], &[], None, Fees::sender(Kaspa(5.0)), outputs.as_slice())
         .unwrap()
         .harness()
         .validate()
@@ -519,6 +648,7 @@ fn test_generator_dust_1_1() -> Result<()> {
         test_network_id(),
         &[10.0; 20],
         &[],
+        None,
         Fees::sender(Kaspa(5.0)),
         [(output_address, Kaspa(1.0)), (output_address, Kaspa(1.0))].as_slice(),
     )
@@ -542,6 +672,7 @@ fn test_generator_inputs_2_outputs_2_fees_exclude() -> Result<()> {
         test_network_id(),
         &[10.0; 2],
         &[],
+        None,
         Fees::sender(Kaspa(5.0)),
         [(output_address, Kaspa(10.0)), (output_address, Kaspa(1.0))].as_slice(),
     )
@@ -562,7 +693,7 @@ fn test_generator_inputs_2_outputs_2_fees_exclude() -> Result<()> {
 #[test]
 fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
     // generator(test_network_id(), &[10.0; 100], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(990.0))].as_slice())
-    generator(test_network_id(), &[10.0; 100], &[], Fees::sender(Kaspa(0.0)), [(output_address, Kaspa(990.0))].as_slice())
+    generator(test_network_id(), &[10.0; 100], &[], None, Fees::sender(Kaspa(0.0)), [(output_address, Kaspa(990.0))].as_slice())
         .unwrap()
         .harness()
         .fetch(&Expected {
@@ -582,7 +713,7 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
         .fetch(&Expected {
             is_final: true,
             input_count: 2,
-            aggregate_input_value: Sompi(999_99886576),
+            aggregate_input_value: Sompi(999_88657600),
             output_count: 2,
             // priority_fees: FeesExpected::sender(Kaspa(5.0)),
             priority_fees: FeesExpected::sender(Kaspa(0.0)),
@@ -598,6 +729,7 @@ fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
         test_network_id(),
         &[1.0; 100],
         &[],
+        None,
         Fees::receiver(Kaspa(5.0)),
         // [(output_address, Kaspa(100.0))].as_slice(),
         [(output_address, Kaspa(100.0))].as_slice(),
@@ -621,7 +753,7 @@ fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
     .fetch(&Expected {
         is_final: true,
         input_count: 2,
-        aggregate_input_value: Sompi(99_99886576),
+        aggregate_input_value: Sompi(99_88657600),
         output_count: 1,
         priority_fees: FeesExpected::receiver(Kaspa(5.0)),
     })
@@ -632,7 +764,7 @@ fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
 
 #[test]
 fn test_generator_inputs_100_outputs_1_fees_exclude_insufficient_funds() -> Result<()> {
-    generator(test_network_id(), &[10.0; 100], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(1000.0))].as_slice())
+    generator(test_network_id(), &[10.0; 100], &[], None, Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(1000.0))].as_slice())
         .unwrap()
         .harness()
         .fetch(&Expected {
@@ -648,8 +780,8 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_insufficient_funds() -> Resu
 }
 
 #[test]
-fn test_generator_inputs_903_outputs_2_fees_exclude() -> Result<()> {
-    generator(test_network_id(), &[10.0; 1_000], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(9_000.0))].as_slice())
+fn test_generator_inputs_1k_outputs_2_fees_exclude() -> Result<()> {
+    generator(test_network_id(), &[10.0; 1_000], &[], None, Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(9_000.0))].as_slice())
         .unwrap()
         .harness()
         .drain(
@@ -672,11 +804,95 @@ fn test_generator_inputs_903_outputs_2_fees_exclude() -> Result<()> {
         .fetch(&Expected {
             is_final: true,
             input_count: 11,
-            aggregate_input_value: Sompi(9009_98981896),
+            aggregate_input_value: Sompi(9008_98189600),
             output_count: 2,
             priority_fees: FeesExpected::receiver(Kaspa(5.0)),
         })
         .finalize();
+
+    Ok(())
+}
+
+#[test]
+fn test_generator_inputs_32k_outputs_2_fees_exclude() -> Result<()> {
+    let f = 130.0;
+    generator(
+        test_network_id(),
+        &[f; 32_747],
+        &[],
+        None,
+        Fees::sender(Kaspa(10_000.0)),
+        [(output_address, Kaspa(f * 32_747.0 - 10_050.0))].as_slice(),
+    )
+    .unwrap()
+    .harness()
+    .accumulate(379)
+    .finalize();
+    Ok(())
+}
+
+#[test]
+fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
+    let f = 130.0;
+    let head = vec![f; 250_000];
+    let generator = make_generator(test_network_id(), &head, &[], None, Fees::None, change_address, PaymentDestination::Change);
+    generator.unwrap().harness().accumulate(2875).finalize();
+    Ok(())
+}
+
+#[test]
+fn test_generator_fan_out_1() -> Result<()> {
+    use kaspa_consensus_core::mass::calc_storage_mass;
+
+    let network_id = test_network_id();
+    let consensus_params = Params::from(network_id);
+
+    let storage_mass = calc_storage_mass(
+        false,
+        [UtxoCell::new(1, 100000000), UtxoCell::new(1, 8723579967)].into_iter(),
+        [UtxoCell::new(1, 20000000), UtxoCell::new(1, 25000000), UtxoCell::new(1, 31000000)].into_iter(),
+        consensus_params.storage_mass_parameter,
+    );
+
+    println!("storage_mass: {:?}", storage_mass);
+
+    // generator(test_network_id(), &[
+    //     1.00000000,
+    //     87.23579967,
+    // ], &[], None, Fees::sender(Kaspa(1.0)), [
+    //     (output_address, Kaspa(0.20000000)),
+    //     (output_address, Kaspa(0.25000000)),
+    //     (output_address, Kaspa(0.21000000)),
+    // ].as_slice())
+    //     .unwrap()
+    //     .harness()
+    //     // .accumulate(1)
+    //     .fetch(&Expected {
+    //         is_final: true,
+    //         input_count: 2,
+    //         aggregate_input_value: Kaspa(1.00000000 + 87.23579967),
+    //         output_count: 4,
+    //         priority_fees: FeesExpected::receiver(Kaspa(1.0)),
+    //         // priority_fees: FeesExpected::None,
+    //     })
+    //     .finalize();
+
+    Ok(())
+}
+
+#[test]
+fn test_generator_preserves_output_covenant_binding() -> Result<()> {
+    let network_id = test_network_id();
+    let covenant = CovenantBinding::new(0, Hash::from_u64_word(1));
+    let output = PaymentOutput::with_covenant(output_address(network_id.into()), kaspa_to_sompi(10.0), covenant.into());
+    let destination = PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![output] });
+
+    let generator = make_generator(network_id, &[20.0], &[], None, Fees::sender(Kaspa(0.0)), change_address, destination)?;
+    let pending = generator.generate_transaction()?.expect("expected transaction");
+    let tx = pending.transaction();
+
+    assert_eq!(tx.outputs.first().and_then(|output| output.covenant), Some(covenant));
+    assert!(generator.generate_transaction()?.is_none(), "expected no additional transactions");
 
     Ok(())
 }

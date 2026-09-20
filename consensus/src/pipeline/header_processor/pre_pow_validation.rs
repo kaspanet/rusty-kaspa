@@ -12,13 +12,13 @@ impl HeaderProcessor {
     }
 
     fn check_pruning_violation(&self, ctx: &HeaderProcessingContext) -> BlockProcessResult<()> {
-        let known_parents = ctx.direct_known_parents();
+        let known_parents = ctx.known_direct_parents.as_slice();
 
         // We check that the new block is in the future of the pruning point by verifying that at least
         // one of its parents is in the pruning point future (or the pruning point itself). Otherwise,
         // the Prunality proof implies that the block can be discarded.
-        if !self.reachability_service.is_dag_ancestor_of_any(ctx.pruning_point(), &mut known_parents.iter().copied()) {
-            return Err(RuleError::PruningViolation(ctx.pruning_point()));
+        if !self.reachability_service.is_dag_ancestor_of_any(ctx.pruning_point, &mut known_parents.iter().copied()) {
+            return Err(RuleError::PruningViolation(ctx.pruning_point));
         }
         Ok(())
     }
@@ -35,7 +35,7 @@ impl HeaderProcessor {
         ctx.mergeset_non_daa = Some(daa_window.mergeset_non_daa);
 
         if header.bits != expected_bits {
-            return Err(RuleError::UnexpectedDifficulty(header.bits, expected_bits));
+            return Err(RuleError::UnexpectedDifficulty(header.hash, header.bits, expected_bits));
         }
 
         ctx.block_window_for_difficulty = Some(daa_window.window);

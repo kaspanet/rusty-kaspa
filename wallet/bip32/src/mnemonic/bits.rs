@@ -56,7 +56,7 @@ impl Bits for u8 {
     }
 }
 
-impl<'a> Bits for &'a u8 {
+impl Bits for &'_ u8 {
     const SIZE: usize = 8;
 
     fn bits(self) -> u32 {
@@ -97,7 +97,7 @@ impl BitWriter {
     pub fn with_capacity(capacity: usize) -> Self {
         let mut bytes = capacity / 8;
 
-        if capacity % 8 != 0 {
+        if !capacity.is_multiple_of(8) {
             bytes += 1;
         }
 

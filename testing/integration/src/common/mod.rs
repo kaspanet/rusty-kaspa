@@ -8,6 +8,8 @@ pub mod args;
 pub mod client;
 pub mod client_notify;
 pub mod daemon;
+pub mod fee;
+pub mod json;
 pub mod listener;
 pub mod utils;
 

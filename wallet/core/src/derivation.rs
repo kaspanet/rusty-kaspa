@@ -9,13 +9,13 @@ pub use kaspa_wallet_keys::derivation::traits::*;
 use kaspa_wallet_keys::publickey::{PublicKey, PublicKeyArrayT, PublicKeyT};
 pub use kaspa_wallet_keys::types::*;
 
-use crate::account::create_private_keys;
 use crate::account::AccountKind;
+use crate::account::create_private_keys;
 use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
-use kaspa_consensus_core::network::NetworkType;
+use kaspa_consensus_core::network::{NetworkType, NetworkTypeT};
 use kaspa_txscript::{
     extract_script_pub_key_address, multisig_redeem_script, multisig_redeem_script_ecdsa, pay_to_script_hash_script,
 };
@@ -80,7 +80,7 @@ impl AddressManager {
         Ok(Self { wallet, account_kind, pubkey_managers, ecdsa, minimum_signatures, inner: Arc::new(Mutex::new(inner)) })
     }
 
-    pub fn inner(&self) -> MutexGuard<Inner> {
+    pub fn inner(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap()
     }
 
@@ -96,7 +96,7 @@ impl AddressManager {
         let keys = list.into_iter().collect::<kaspa_wallet_keys::result::Result<Vec<_>>>()?;
         let address = self.create_address(keys)?;
 
-        self.update_address_to_index_map(self.index(), &[address.clone()])?;
+        self.update_address_to_index_map(self.index(), std::slice::from_ref(&address))?;
 
         Ok(address)
     }
@@ -204,7 +204,7 @@ impl AddressDerivationManager {
             let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind.as_ref() {
                 LEGACY_ACCOUNT_KIND => Arc::new(WalletDerivationManagerV0::from_extended_public_key(xpub.clone(), cosigner_index)?),
                 MULTISIG_ACCOUNT_KIND => {
-                    let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
+                    let cosigner_index = cosigner_index.unwrap_or(0);
                     Arc::new(WalletDerivationManager::from_extended_public_key(xpub.clone(), Some(cosigner_index))?)
                 }
                 _ => Arc::new(WalletDerivationManager::from_extended_public_key(xpub.clone(), cosigner_index)?),
@@ -458,20 +458,26 @@ pub fn create_multisig_address(
 /// @category Wallet SDK
 #[wasm_bindgen(js_name=createAddress)]
 pub fn create_address_js(
-    key: PublicKeyT,
-    network_type: NetworkType,
+    key: &PublicKeyT,
+    network: &NetworkTypeT,
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,
 ) -> Result<Address> {
     let public_key = PublicKey::try_cast_from(key)?;
-    create_address(1, vec![public_key.as_ref().try_into()?], network_type.into(), ecdsa.unwrap_or(false), account_kind)
+    create_address(
+        1,
+        vec![public_key.as_ref().try_into()?],
+        NetworkType::try_from(network)?.into(),
+        ecdsa.unwrap_or(false),
+        account_kind,
+    )
 }
 
 /// @category Wallet SDK
 #[wasm_bindgen(js_name=createMultisigAddress)]
 pub fn create_multisig_address_js(
     minimum_signatures: usize,
-    keys: PublicKeyArrayT,
+    keys: &PublicKeyArrayT,
     network_type: NetworkType,
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,

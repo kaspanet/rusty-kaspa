@@ -1,5 +1,5 @@
 use crate::address::error::{Error, Result};
-use indexmap::{map::Entry, IndexMap};
+use indexmap::{IndexMap, map::Entry};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
@@ -7,7 +7,7 @@ use kaspa_core::{debug, trace};
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
-    collections::{hash_map, hash_set, HashMap, HashSet},
+    collections::{HashMap, HashSet, hash_map, hash_set},
     fmt::Display,
 };
 
@@ -384,11 +384,11 @@ impl Inner {
     }
 }
 
-/// Tracker of a set of [`Address`](kaspa_addresses::Address), indexing and counting registrations
+/// Tracker of a set of [`Address`], indexing and counting registrations
 ///
 /// #### Implementation design
 ///
-/// Each [`Address`](kaspa_addresses::Address) is stored internally as a [`ScriptPubKey`](kaspa_consensus_core::tx::ScriptPublicKey).
+/// Each [`Address`] is stored internally as a [`ScriptPubKey`](kaspa_consensus_core::tx::ScriptPublicKey).
 /// This prevents inter-network duplication and optimizes UTXOs filtering efficiency.
 ///
 /// But consequently the address network prefix gets lost and must be globally provided when querying for addresses by indexes.
@@ -487,7 +487,7 @@ impl Tracker {
             let mut inner = self.inner.write();
             addresses.retain(|address| {
                 counter += 1;
-                if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                if counter.is_multiple_of(Self::ADDRESS_CHUNK_SIZE) {
                     RwLockWriteGuard::bump(&mut inner);
                 }
                 let spk = pay_to_address_script(address);
@@ -530,7 +530,7 @@ impl Tracker {
             let mut inner = self.inner.write();
             addresses.retain(|address| {
                 counter += 1;
-                if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                if counter.is_multiple_of(Self::ADDRESS_CHUNK_SIZE) {
                     RwLockWriteGuard::bump(&mut inner);
                 }
                 let spk = pay_to_address_script(address);

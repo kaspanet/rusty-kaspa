@@ -1,15 +1,15 @@
 use crate::{
     common::daemon::ClientManager,
     tasks::{
+        Task,
         notify::notification_drainer::NotificationDrainerTask,
         subscription::{
             address_subscriber::AddressSubscriberTask, basic_subscriber::BasicSubscriberTask, submitter::SubscriptionSubmitterTask,
         },
-        Task,
     },
 };
 use async_trait::async_trait;
-use itertools::{chain, Itertools};
+use itertools::{Itertools, chain};
 use kaspa_addresses::Address;
 use kaspa_notify::scope::Scope;
 use kaspa_utils::triggers::SingleTrigger;

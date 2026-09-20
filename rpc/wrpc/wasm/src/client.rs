@@ -1,7 +1,14 @@
+//!
+//! # WASM bindings for the [Kaspa p2p Node RPC client](KaspaRpcClient).
+//!
+//! This module provides a WASM interface for the Kaspa p2p Node RPC client
+//! - [`RpcClient`].
+//!
+
 #![allow(non_snake_case)]
 
-use crate::imports::*;
 use crate::Resolver;
+use crate::imports::*;
 use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
 use js_sys::{Function, Object};
 use kaspa_addresses::{Address, AddressOrStringArrayT};
@@ -16,7 +23,7 @@ pub use kaspa_rpc_core::wasm::message::*;
 pub use kaspa_rpc_macros::{
     build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
 };
-use kaspa_wasm_core::events::{get_event_targets, Sink};
+use kaspa_wasm_core::events::{Sink, get_event_targets};
 pub use serde_wasm_bindgen::from_value;
 use workflow_rpc::client::Ctl;
 pub use workflow_rpc::client::IConnectOptions;
@@ -30,7 +37,7 @@ declare! {
     r#"
     /**
      * RPC client configuration options
-     * 
+     *
      * @category Node RPC
      */
     export interface IRpcConfig {
@@ -130,7 +137,7 @@ impl TryFrom<JsValue> for NotificationEvent {
     }
 }
 
-pub struct Inner {
+pub(crate) struct Inner {
     client: Arc<KaspaRpcClient>,
     resolver: Option<Resolver>,
     notification_task: AtomicBool,
@@ -279,11 +286,7 @@ impl RpcClient {
         let url = url
             .map(
                 |url| {
-                    if let Some(network_id) = network_id {
-                        Self::parse_url(&url, encoding, network_id)
-                    } else {
-                        Ok(url.to_string())
-                    }
+                    if let Some(network_id) = network_id { Self::parse_url(&url, encoding, network_id) } else { Ok(url.to_string()) }
                 },
             )
             .transpose()?;
@@ -333,6 +336,12 @@ impl RpcClient {
         self.inner.resolver.clone()
     }
 
+    /// Current nerwork id
+    #[wasm_bindgen(getter, js_name = networkId)]
+    pub fn network_id(&self) -> Option<NetworkId> {
+        self.inner.client.network_id()
+    }
+
     /// Set the resolver for the RPC client.
     /// This setting will take effect on the next connection.
     #[wasm_bindgen(js_name = setResolver)]
@@ -344,8 +353,8 @@ impl RpcClient {
     /// Set the network id for the RPC client.
     /// This setting will take effect on the next connection.
     #[wasm_bindgen(js_name = setNetworkId)]
-    pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
-        self.inner.client.set_network_id(network_id)?;
+    pub fn set_network_id(&self, network_id: &NetworkIdT) -> Result<()> {
+        self.inner.client.set_network_id(&network_id.try_into_owned()?)?;
         Ok(())
     }
 
@@ -364,19 +373,7 @@ impl RpcClient {
     /// Optional: Resolver node id.
     #[wasm_bindgen(getter, js_name = "nodeId")]
     pub fn resolver_node_id(&self) -> Option<String> {
-        self.inner.client.node_descriptor().map(|node| node.id.clone())
-    }
-
-    /// Optional: public node provider name.
-    #[wasm_bindgen(getter, js_name = "providerName")]
-    pub fn resolver_node_provider_name(&self) -> Option<String> {
-        self.inner.client.node_descriptor().and_then(|node| node.provider_name.clone())
-    }
-
-    /// Optional: public node provider URL.
-    #[wasm_bindgen(getter, js_name = "providerUrl")]
-    pub fn resolver_node_provider_url(&self) -> Option<String> {
-        self.inner.client.node_descriptor().and_then(|node| node.provider_url.clone())
+        self.inner.client.node_descriptor().map(|node| node.uid.clone())
     }
 
     /// Connect to the Kaspa RPC server. This function starts a background
@@ -674,11 +671,10 @@ impl RpcClient {
                                 }
                                 Ctl::Disconnect => {
                                     let listener_id = this.inner.listener_id.lock().unwrap().take();
-                                    if let Some(listener_id) = listener_id {
-                                        if let Err(err) = this.inner.client.unregister_listener(listener_id).await {
+                                    if let Some(listener_id) = listener_id
+                                        && let Err(err) = this.inner.client.unregister_listener(listener_id).await {
                                             log_error!("Error in unregister_listener: {:?}",err);
                                         }
-                                    }
                                 }
                             }
 
@@ -796,7 +792,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = subscribeVirtualDaaScoreChanged)]
     pub async fn subscribe_daa_score(&self) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
-            self.inner.client.stop_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+            self.inner.client.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         } else {
             log_error!("RPC unsubscribe on a closed connection");
         }
@@ -957,6 +953,8 @@ build_wrpc_wasm_bindgen_interface!(
         /// performance and status of the Kaspa node.
         /// Returned information: Memory usage, CPU usage, network activity.
         GetMetrics,
+        /// Retrieves current number of network connections
+        GetConnections,
         /// Retrieves the current sink block, which is the block with
         /// the highest cumulative difficulty in the Kaspa BlockDAG.
         /// Returned information: Sink block hash, sink block height.
@@ -979,6 +977,11 @@ build_wrpc_wasm_bindgen_interface!(
         /// Obtains basic information about the synchronization status of the Kaspa node.
         /// Returned information: Syncing status.
         GetSyncStatus,
+        /// Feerate estimates
+        GetFeeEstimate,
+        /// Retrieves the current network configuration.
+        /// Returned information: Current network configuration.
+        GetCurrentNetwork,
     ],
     [
         // functions with `request` argument
@@ -1006,13 +1009,18 @@ build_wrpc_wasm_bindgen_interface!(
         /// Generates a new block template for mining.
         /// Returned information: Block template information.
         GetBlockTemplate,
+        /// Checks if block is blue or not.
+        /// Returned information: Block blueness.
+        GetCurrentBlockColor,
+        /// Retrieves reward information for a block.
+        /// Returned information: block color, confirmation count, reward, merging chain block, and header.
+        GetBlockRewardInfo,
         /// Retrieves the estimated DAA (Difficulty Adjustment Algorithm)
         /// score timestamp estimate.
         /// Returned information: DAA score timestamp estimate.
         GetDaaScoreTimestampEstimate,
-        /// Retrieves the current network configuration.
-        /// Returned information: Current network configuration.
-        GetCurrentNetwork,
+        /// Feerate estimates (experimental)
+        GetFeeEstimateExperimental,
         /// Retrieves block headers from the Kaspa BlockDAG.
         /// Returned information: List of block headers.
         GetHeaders,
@@ -1042,11 +1050,20 @@ build_wrpc_wasm_bindgen_interface!(
         /// Returned information: None.
         SubmitBlock,
         /// Submits a transaction to the Kaspa network.
-        /// Returned information: None.
+        /// Returned information: Submitted Transaction Id.
         SubmitTransaction,
+        /// Submits an RBF transaction to the Kaspa network.
+        /// Returned information: Submitted Transaction Id, Transaction that was replaced.
+        SubmitTransactionReplacement,
         /// Unbans a previously banned peer, allowing it to connect
         /// to the Kaspa node again.
         /// Returned information: None.
         Unban,
+        /// Get UTXO Return Addresses.
+        GetUtxoReturnAddress,
+        /// Retrieves the virtual chain corresponding to a specified block hash.
+        /// Returned information: Virtual chain information. (Version 2)
+        /// May be used to get fully populated transactions
+        GetVirtualChainFromBlockV2
     ]
 );

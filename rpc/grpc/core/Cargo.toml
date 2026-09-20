@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true
 kaspa-notify.workspace = true
@@ -30,9 +31,16 @@ regex.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream.workspace = true
-tonic = { workspace = true, features = ["tls", "gzip"] }
+tonic = { workspace = true, features = ["gzip"] }
+tonic-prost.workspace = true
 triggered.workspace = true
 workflow-core.workspace = true
 
 [build-dependencies]
-tonic-build = { workspace = true, features = ["prost"] }
+tonic-prost-build = { workspace = true }
+
+[dev-dependencies]
+itertools.workspace = true
+
+[lints]
+workspace = true

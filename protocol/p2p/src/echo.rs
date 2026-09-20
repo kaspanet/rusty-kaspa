@@ -1,9 +1,9 @@
 use crate::{
+    IncomingRoute, KaspadMessagePayloadType, Router,
     common::ProtocolError,
     core::adaptor::ConnectionInitializer,
     handshake::KaspadHandshake,
     pb::{self, VersionMessage},
-    IncomingRoute, KaspadMessagePayloadType, Router,
 };
 use kaspa_core::{debug, time::unix_now, trace, warn};
 use std::sync::Arc;
@@ -96,7 +96,7 @@ fn build_dummy_version_message() -> VersionMessage {
         services: 0,
         timestamp: unix_now() as i64,
         address: None,
-        id: Vec::from(Uuid::new_v4().as_ref()),
+        id: Vec::from(Uuid::new_v4().as_bytes()),
         user_agent: String::new(),
         disable_relay_tx: false,
         subnetwork_id: None,

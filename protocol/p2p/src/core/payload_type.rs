@@ -46,6 +46,16 @@ pub enum KaspadMessagePayloadType {
     IbdChainBlockLocator,
     RequestAntipast,
     RequestNextPruningPointAndItsAnticoneBlocks,
+    BlockBody,
+    RequestBlockBodies,
+    RequestPruningPointSmtState,
+    SmtMetadata,
+    SmtLaneChunk,
+    RequestNextPruningPointSmtChunk,
+    PruningPointProofChunk,
+    PruningPointProofChunksEnd,
+    TrustedDataChunk,
+    TrustedDataChunksEnd,
 }
 
 impl From<&KaspadMessagePayload> for KaspadMessagePayloadType {
@@ -100,6 +110,16 @@ impl From<&KaspadMessagePayload> for KaspadMessagePayloadType {
             KaspadMessagePayload::RequestNextPruningPointAndItsAnticoneBlocks(_) => {
                 KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks
             }
+            KaspadMessagePayload::BlockBody(_) => KaspadMessagePayloadType::BlockBody,
+            KaspadMessagePayload::RequestBlockBodies(_) => KaspadMessagePayloadType::RequestBlockBodies,
+            KaspadMessagePayload::RequestPruningPointSmtState(_) => KaspadMessagePayloadType::RequestPruningPointSmtState,
+            KaspadMessagePayload::SmtMetadata(_) => KaspadMessagePayloadType::SmtMetadata,
+            KaspadMessagePayload::SmtLaneChunk(_) => KaspadMessagePayloadType::SmtLaneChunk,
+            KaspadMessagePayload::RequestNextPruningPointSmtChunk(_) => KaspadMessagePayloadType::RequestNextPruningPointSmtChunk,
+            KaspadMessagePayload::PruningPointProofChunk(_) => KaspadMessagePayloadType::PruningPointProofChunk,
+            KaspadMessagePayload::PruningPointProofChunksEnd(_) => KaspadMessagePayloadType::PruningPointProofChunksEnd,
+            KaspadMessagePayload::TrustedDataChunk(_) => KaspadMessagePayloadType::TrustedDataChunk,
+            KaspadMessagePayload::TrustedDataChunksEnd(_) => KaspadMessagePayloadType::TrustedDataChunksEnd,
         }
     }
 }

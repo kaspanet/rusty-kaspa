@@ -1,12 +1,12 @@
 use crate::handler::*;
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use std::convert::Into;
 use syn::{
+    Error, Expr, ExprArray, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, ExprArray, Result, Token,
 };
 
 #[derive(Debug)]
@@ -72,7 +72,8 @@ impl ToTokens for RpcTable {
                                 Box::pin(async move {
                                     let mut response: #kaspad_response_type = match request.payload {
                                         Some(Payload::#request_type(ref request)) => match request.try_into() {
-                                            Ok(request) => server_ctx.core_service.#fn_call(request).await.into(),
+                                            // TODO: RPC-CONNECTION
+                                            Ok(request) => server_ctx.core_service.#fn_call(None,request).await.into(),
                                             Err(err) => #response_message_type::from(err).into(),
                                         },
                                         _ => {
@@ -128,7 +129,7 @@ impl ToTokens for RpcTable {
             {
                 let mut interface = Interface::new(#server_ctx);
 
-                for op in #payload_ops::list() {
+                for op in #payload_ops::iter() {
                     match op {
                         #(#targets)*
                     }

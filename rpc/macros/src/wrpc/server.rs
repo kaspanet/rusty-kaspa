@@ -1,12 +1,12 @@
 use crate::handler::*;
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use std::convert::Into;
 use syn::{
+    Error, Expr, ExprArray, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, ExprArray, Result, Token,
 };
 
 #[derive(Debug)]
@@ -50,13 +50,14 @@ impl ToTokens for RpcTable {
 
             targets.push(quote! {
                 #rpc_api_ops::#handler => {
-                    interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
+                    interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: Serializable<#request_type>| async move {
                         let verbose = server_ctx.verbose();
                         if verbose { workflow_log::log_info!("request: {:?}",request); }
-                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(request).await
+                        // TODO: RPC-CONNECT
+                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(None, request.into_inner()).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
                         if verbose { workflow_log::log_info!("response: {:?}",response); }
-                        Ok(response)
+                        Ok(Serializable(response))
                     }));
                 }
             });
@@ -71,7 +72,8 @@ impl ToTokens for RpcTable {
                     #rpc_api_ops
                 >::new(#server_ctx);
 
-                for op in #rpc_api_ops::list() {
+                for op in #rpc_api_ops::iter() {
+                    use workflow_serializer::prelude::*;
                     match op {
                         #(#targets)*
                         _ => { }

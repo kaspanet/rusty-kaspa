@@ -1,13 +1,17 @@
 // #![allow(dead_code)]
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::String;
 use borsh::{BorshDeserialize, BorshSerialize};
-use ipnet::IpNet;
-use serde::{Deserialize, Serialize};
-use std::{
+use core::{
     fmt::Display,
     net::{AddrParseError, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     ops::Deref,
     str::FromStr,
 };
+use ipnet::IpNet;
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "peer-id")]
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 
@@ -34,7 +38,7 @@ const TS_IP_ADDRESS: &'static str = r#"
 /// A bucket based on an ip's prefix bytes.
 /// for ipv4 it consists of 6 leading zero bytes, and the first two octets,
 /// for ipv6 it consists of the first 8 octets,
-/// encoded into a big endian u64.  
+/// encoded into a big endian u64.
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
 pub struct PrefixBucket(u64);
 
@@ -160,7 +164,7 @@ impl FromStr for IpAddress {
 }
 
 impl Display for IpAddress {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.0.fmt(f)
     }
 }
@@ -179,7 +183,7 @@ impl Deref for IpAddress {
 //
 
 impl BorshSerialize for IpAddress {
-    fn serialize<W: borsh::maybestd::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), borsh::maybestd::io::Error> {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), borsh::io::Error> {
         let variant_idx: u8 = match self.0 {
             IpAddr::V4(..) => 0u8,
             IpAddr::V6(..) => 1u8,
@@ -198,20 +202,20 @@ impl BorshSerialize for IpAddress {
 }
 
 impl BorshDeserialize for IpAddress {
-    fn deserialize(buf: &mut &[u8]) -> ::core::result::Result<Self, borsh::maybestd::io::Error> {
-        let variant_idx: u8 = BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> ::core::result::Result<Self, borsh::io::Error> {
+        let variant_idx: u8 = BorshDeserialize::deserialize_reader(reader)?;
         let ip = match variant_idx {
             0u8 => {
-                let octets: [u8; 4] = BorshDeserialize::deserialize(buf)?;
+                let octets: [u8; 4] = BorshDeserialize::deserialize_reader(reader)?;
                 IpAddr::V4(Ipv4Addr::from(octets))
             }
             1u8 => {
-                let octets: [u8; 16] = BorshDeserialize::deserialize(buf)?;
+                let octets: [u8; 16] = BorshDeserialize::deserialize_reader(reader)?;
                 IpAddr::V6(Ipv6Addr::from(octets))
             }
             _ => {
-                let msg = borsh::maybestd::format!("Unexpected variant index: {:?}", variant_idx);
-                return Err(borsh::maybestd::io::Error::new(borsh::maybestd::io::ErrorKind::InvalidInput, msg));
+                let msg = format!("Unexpected variant index: {:?}", variant_idx);
+                return Err(borsh::io::Error::new(borsh::io::ErrorKind::InvalidInput, msg));
             }
         };
         Ok(Self(ip))
@@ -256,7 +260,7 @@ impl FromStr for NetAddress {
 }
 
 impl Display for NetAddress {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         SocketAddr::from(self.to_owned()).fmt(f)
     }
 }
@@ -271,8 +275,12 @@ pub struct ContextualNetAddress {
 }
 
 impl ContextualNetAddress {
-    fn new(ip: IpAddress, port: Option<u16>) -> Self {
+    pub fn new(ip: IpAddress, port: Option<u16>) -> Self {
         Self { ip, port }
+    }
+
+    pub fn has_port(&self) -> bool {
+        self.port.is_some()
     }
 
     pub fn normalize(&self, default_port: u16) -> NetAddress {
@@ -285,6 +293,14 @@ impl ContextualNetAddress {
 
     pub fn loopback() -> Self {
         Self { ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)).into(), port: None }
+    }
+
+    pub fn port_not_specified(&self) -> bool {
+        self.port.is_none()
+    }
+
+    pub fn with_port(&self, port: u16) -> Self {
+        Self { ip: self.ip, port: Some(port) }
     }
 }
 
@@ -322,17 +338,20 @@ impl TryFrom<String> for ContextualNetAddress {
 }
 
 impl Display for ContextualNetAddress {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.port {
             Some(port) => SocketAddr::new(self.ip.into(), port).fmt(f),
             None => self.ip.fmt(f),
         }
     }
 }
+
+#[cfg(feature = "peer-id")]
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, Default)]
 #[repr(transparent)]
 pub struct PeerId(pub Uuid);
 
+#[cfg(feature = "peer-id")]
 impl PeerId {
     pub fn new(id: Uuid) -> Self {
         Self(id)
@@ -342,17 +361,22 @@ impl PeerId {
         Ok(Uuid::from_slice(bytes)?.into())
     }
 }
+
+#[cfg(feature = "peer-id")]
 impl From<Uuid> for PeerId {
     fn from(id: Uuid) -> Self {
         Self(id)
     }
 }
+
+#[cfg(feature = "peer-id")]
 impl From<PeerId> for Uuid {
     fn from(value: PeerId) -> Self {
         value.0
     }
 }
 
+#[cfg(feature = "peer-id")]
 impl FromStr for PeerId {
     type Err = uuid::Error;
 
@@ -361,12 +385,14 @@ impl FromStr for PeerId {
     }
 }
 
+#[cfg(feature = "peer-id")]
 impl Display for PeerId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         self.0.fmt(f)
     }
 }
 
+#[cfg(feature = "peer-id")]
 impl Deref for PeerId {
     type Target = Uuid;
 
@@ -379,17 +405,18 @@ impl Deref for PeerId {
 // Borsh serializers need to be manually implemented for `PeerId` since
 // Uuid does not currently support Borsh
 //
-
+#[cfg(feature = "peer-id")]
 impl BorshSerialize for PeerId {
-    fn serialize<W: borsh::maybestd::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), borsh::maybestd::io::Error> {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), borsh::io::Error> {
         borsh::BorshSerialize::serialize(&self.0.as_bytes(), writer)?;
         Ok(())
     }
 }
 
+#[cfg(feature = "peer-id")]
 impl BorshDeserialize for PeerId {
-    fn deserialize(buf: &mut &[u8]) -> ::core::result::Result<Self, borsh::maybestd::io::Error> {
-        let bytes: uuid::Bytes = BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> ::core::result::Result<Self, borsh::io::Error> {
+        let bytes: uuid::Bytes = BorshDeserialize::deserialize_reader(reader)?;
         Ok(Self::new(Uuid::from_bytes(bytes)))
     }
 }
@@ -403,12 +430,12 @@ mod tests {
     fn test_ip_address_borsh() {
         // Tests for IpAddress Borsh ser/deser since we manually implemented them
         let ip: IpAddress = Ipv4Addr::from([44u8; 4]).into();
-        let bin = ip.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&ip).unwrap();
         let ip2: IpAddress = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(ip, ip2);
 
         let ip: IpAddress = Ipv6Addr::from([66u8; 16]).into();
-        let bin = ip.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&ip).unwrap();
         let ip2: IpAddress = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(ip, ip2);
     }
@@ -417,12 +444,12 @@ mod tests {
     fn test_peer_id_borsh() {
         // Tests for PeerId Borsh ser/deser since we manually implemented them
         let id: PeerId = Uuid::new_v4().into();
-        let bin = id.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&id).unwrap();
         let id2: PeerId = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(id, id2);
 
         let id: PeerId = Uuid::from_bytes([123u8; 16]).into();
-        let bin = id.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&id).unwrap();
         let id2: PeerId = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(id, id2);
     }

@@ -11,3 +11,6 @@ repository.workspace = true
 
 [dependencies]
 kaspa-hashes.workspace = true
+
+[lints]
+workspace = true

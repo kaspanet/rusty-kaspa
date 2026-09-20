@@ -41,6 +41,10 @@ tokio-stream.workspace = true
 tonic = { workspace = true, features = ["gzip"] }
 triggered.workspace = true
 futures-util.workspace = true
+rustls.workspace = true
 
 [features]
 heap = []
+
+[lints]
+workspace = true

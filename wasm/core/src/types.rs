@@ -30,7 +30,7 @@ impl From<String> for HexString {
 impl TryFrom<HexString> for String {
     type Error = &'static str;
 
-    fn try_from(value: HexString) -> Result<String, Self::Error> {
+    fn try_from(value: HexString) -> std::result::Result<String, Self::Error> {
         value.as_string().ok_or("Supplied value is not a string")
     }
 }
@@ -48,6 +48,12 @@ impl From<&[u8]> for HexString {
 extern "C" {
     #[wasm_bindgen(typescript_type = "Array<string>")]
     pub type StringArray;
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "Array<number>")]
+    pub type NumberArray;
 }
 
 #[wasm_bindgen]

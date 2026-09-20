@@ -5,8 +5,8 @@ use kaspa_consensus_core::{
         utxo_view::UtxoView,
     },
 };
-use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_database::prelude::DB;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_hashes::Hash;
@@ -17,7 +17,7 @@ type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOut
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
+    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -28,7 +28,7 @@ pub trait UtxoSetStore: UtxoSetStoreReader {
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
 }
 
-pub const UTXO_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + std::mem::size_of::<TransactionIndexType>();
+pub const UTXO_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_of::<TransactionIndexType>();
 
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct UtxoKey([u8; UTXO_KEY_SIZE]);
@@ -81,8 +81,7 @@ impl From<UtxoKey> for TransactionOutpoint {
     fn from(k: UtxoKey) -> Self {
         let transaction_id = Hash::from_slice(&k.0[..kaspa_hashes::HASH_SIZE]);
         let index = TransactionIndexType::from_le_bytes(
-            <[u8; std::mem::size_of::<TransactionIndexType>()]>::try_from(&k.0[kaspa_hashes::HASH_SIZE..])
-                .expect("expecting index size"),
+            <[u8; size_of::<TransactionIndexType>()]>::try_from(&k.0[kaspa_hashes::HASH_SIZE..]).expect("expecting index size"),
         );
         Self::new(transaction_id, index)
     }
@@ -143,7 +142,7 @@ impl DbUtxoSetStore {
 
 impl UtxoView for DbUtxoSetStore {
     fn get(&self, outpoint: &TransactionOutpoint) -> Option<UtxoEntry> {
-        UtxoSetStoreReader::get(self, outpoint).map(|v| v.as_ref().clone()).unwrap_option()
+        UtxoSetStoreReader::get(self, outpoint).map(|v| v.as_ref().clone()).optional().unwrap()
     }
 }
 
@@ -152,7 +151,7 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         self.access.read((*outpoint).into())
     }
 
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator {
+    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator<'_> {
         let seek_key = from_outpoint.map(UtxoKey::from);
         Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
             let (key, entry) = res?;

@@ -1,29 +1,34 @@
 use crate::{
-    consensus::services::DbWindowManager,
+    consensus::{
+        services::{ConsensusServices, DbWindowManager},
+        storage::ConsensusStorage,
+    },
     errors::{BlockProcessResult, RuleError},
     model::{
         services::reachability::MTReachabilityService,
         stores::{
+            DB,
             block_transactions::DbBlockTransactionsStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStore},
-            DB,
         },
     },
     pipeline::{
-        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
         ProcessingCounters,
+        deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
     },
-    processes::{coinbase::CoinbaseManager, mass::MassCalculator, transaction_validator::TransactionValidator},
+    processes::{coinbase::CoinbaseManager, transaction_validator::TransactionValidator},
 };
 use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
+    KType,
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::genesis::GenesisBlock,
+    config::{genesis::GenesisBlock, params::Params},
+    mass::{BlockLaneLimits, BlockMassLimits, Mass, MassCalculator},
     tx::Transaction,
 };
 use kaspa_consensus_notify::{
@@ -36,7 +41,7 @@ use kaspa_notify::notifier::Notify;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 pub struct BlockBodyProcessor {
     // Channels
@@ -50,18 +55,20 @@ pub struct BlockBodyProcessor {
     db: Arc<DB>,
 
     // Config
-    pub(super) max_block_mass: u64,
+    pub(super) block_mass_limits: BlockMassLimits,
+    pub(super) block_lane_limits: BlockLaneLimits,
     pub(super) genesis: GenesisBlock,
+    pub(super) _ghostdag_k: KType,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
-    pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) _ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) _headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
 
     // Managers and services
-    pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
+    pub(super) _reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub(super) coinbase_manager: CoinbaseManager,
     pub(crate) mass_calculator: MassCalculator,
     pub(super) transaction_validator: TransactionValidator,
@@ -78,59 +85,50 @@ pub struct BlockBodyProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
-
-    /// Storage mass hardfork DAA score
-    pub(crate) storage_mass_activation_daa_score: u64,
 }
 
 impl BlockBodyProcessor {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockProcessingMessage>,
         sender: Sender<VirtualStateProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
 
+        params: &Params,
         db: Arc<DB>,
-        statuses_store: Arc<RwLock<DbStatusesStore>>,
-        ghostdag_store: Arc<DbGhostdagStore>,
-        headers_store: Arc<DbHeadersStore>,
-        block_transactions_store: Arc<DbBlockTransactionsStore>,
-        body_tips_store: Arc<RwLock<DbTipsStore>>,
+        storage: &Arc<ConsensusStorage>,
+        services: &Arc<ConsensusServices>,
 
-        reachability_service: MTReachabilityService<DbReachabilityStore>,
-        coinbase_manager: CoinbaseManager,
-        mass_calculator: MassCalculator,
-        transaction_validator: TransactionValidator,
-        window_manager: DbWindowManager,
-        max_block_mass: u64,
-        genesis: GenesisBlock,
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
-        storage_mass_activation_daa_score: u64,
     ) -> Self {
         Self {
             receiver,
             sender,
             thread_pool,
             db,
-            statuses_store,
-            reachability_service,
-            ghostdag_store,
-            headers_store,
-            block_transactions_store,
-            body_tips_store,
-            coinbase_manager,
-            mass_calculator,
-            transaction_validator,
-            window_manager,
-            max_block_mass,
-            genesis,
+
+            block_mass_limits: params.block_mass_limits,
+            block_lane_limits: params.block_lane_limits,
+            genesis: params.genesis.clone(),
+            _ghostdag_k: params.ghostdag_k(),
+
+            statuses_store: storage.statuses_store.clone(),
+            _ghostdag_store: storage.ghostdag_store.clone(),
+            _headers_store: storage.headers_store.clone(),
+            block_transactions_store: storage.block_transactions_store.clone(),
+            body_tips_store: storage.body_tips_store.clone(),
+
+            _reachability_service: services.reachability_service.clone(),
+            coinbase_manager: services.coinbase_manager.clone(),
+            mass_calculator: services.mass_calculator.clone(),
+            transaction_validator: services.transaction_validator.clone(),
+            window_manager: services.window_manager.clone(),
+
             pruning_lock,
             task_manager: BlockTaskDependencyManager::new(),
             notification_root,
             counters,
-            storage_mass_activation_daa_score,
         }
     }
 
@@ -200,8 +198,7 @@ impl BlockBodyProcessor {
                 // transactions that fits the merkle root.
                 // PrunedBlock - PrunedBlock is an error that rejects a block body and
                 // not the block as a whole, so we shouldn't mark it as invalid.
-                // TODO: implement the last part.
-                if !matches!(e, RuleError::BadMerkleRoot(_, _) | RuleError::MissingParents(_)) {
+                if !matches!(e, RuleError::BadMerkleRoot(_, _) | RuleError::MissingParents(_) | RuleError::PrunedBlock) {
                     self.statuses_store.write().set(block.hash(), BlockStatus::StatusInvalid).unwrap();
                 }
                 return Err(e);
@@ -218,15 +215,18 @@ impl BlockBodyProcessor {
         // Report counters
         self.counters.body_counts.fetch_add(1, Ordering::Relaxed);
         self.counters.txs_counts.fetch_add(block.transactions.len() as u64, Ordering::Relaxed);
-        self.counters.mass_counts.fetch_add(mass, Ordering::Relaxed);
+        self.counters.storage_mass_counts.fetch_add(mass.contextual.storage_mass, Ordering::Relaxed);
+        self.counters.compute_mass_counts.fetch_add(mass.non_contextual.compute_mass, Ordering::Relaxed);
+        self.counters.transient_mass_counts.fetch_add(mass.non_contextual.transient_mass, Ordering::Relaxed);
         Ok(BlockStatus::StatusUTXOPendingVerification)
     }
 
-    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<u64> {
+    fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<Mass> {
         let mass = self.validate_body_in_isolation(block)?;
         if !is_trusted {
-            // TODO: Check that it's safe to skip this check if the block is trusted.
             self.validate_body_in_context(block)?;
+        } else {
+            self.validate_trusted_body_in_context(block)?;
         }
         Ok(mass)
     }

@@ -15,13 +15,14 @@ pub enum DatabaseStorePrefixes {
     Ghostdag = 5,
     GhostdagCompact = 6,
     HeadersSelectedTip = 7,
+    // Legacy headers store prefix. CompressedHeaders is used instead
     Headers = 8,
     HeadersCompact = 9,
     PastPruningPoints = 10,
     PruningUtxoset = 11,
     PruningUtxosetPosition = 12,
     PruningPoint = 13,
-    HistoryRoot = 14,
+    RetentionCheckpoint = 14,
     Reachability = 15,
     ReachabilityReindexRoot = 16,
     ReachabilityRelations = 17,
@@ -36,10 +37,30 @@ pub enum DatabaseStorePrefixes {
     UtxoMultisets = 26,
     VirtualUtxoset = 27,
     VirtualState = 28,
+    PruningSamples = 29,
 
     // ---- Decomposed reachability stores ----
     ReachabilityTreeChildren = 30,
     ReachabilityFutureCoveringSet = 31,
+
+    // Stores headers with run-length encoded parents
+    CompressedHeaders = 32,
+
+    // Stores a succinct pruning proof descriptor
+    PruningProofDescriptor = 33,
+
+    // ---- Ghostdag Proof
+    TempGhostdag = 40,
+    TempGhostdagCompact = 41,
+    TempRelationsParents = 42,
+    TempRelationsChildren = 43,
+
+    // ---- Retention Period Root ----
+    RetentionPeriodRoot = 50,
+
+    // ---- Pruning metadata ----
+    PruningUtxosetSyncFlag = 60,
+    BodyMissingAnticone = 61,
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
@@ -53,6 +74,13 @@ pub enum DatabaseStorePrefixes {
     UtxoIndex = 192,
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
+
+    // ---- SMT Versioned Store ----
+    SmtBranchVersions = 71,
+    SmtLaneVersions = 73,
+    SmtScoreIndex = 74,
+    SmtSyncFlag = 75,
+    SmtSeqCommitMeta = 76,
 
     // ---- Separator ----
     /// Reserved as a separator
@@ -95,8 +123,8 @@ mod tests {
         let prefix = DatabaseStorePrefixes::AcceptanceData;
         assert_eq!(&[prefix as u8], prefix.as_ref());
         assert_eq!(
-            std::mem::size_of::<u8>(),
-            std::mem::size_of::<DatabaseStorePrefixes>(),
+            size_of::<u8>(),
+            size_of::<DatabaseStorePrefixes>(),
             "DatabaseStorePrefixes is expected to have the same memory layout of u8"
         );
     }

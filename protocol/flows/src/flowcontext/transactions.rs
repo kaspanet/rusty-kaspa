@@ -3,9 +3,8 @@ use itertools::Itertools;
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_core::debug;
 use kaspa_p2p_lib::{
-    make_message,
-    pb::{kaspad_message::Payload, InvTransactionsMessage, KaspadMessage},
-    Hub,
+    Hub, make_message,
+    pb::{InvTransactionsMessage, KaspadMessage, kaspad_message::Payload},
 };
 use std::time::{Duration, Instant};
 
@@ -47,8 +46,7 @@ impl TransactionsSpread {
         // Keep the launching times aligned to exact intervals. Note that `delta=10.1` seconds will result in
         // adding 10 seconds to last scan time, while `delta=11` will result in adding 20 (assuming scanning
         // interval is 10 seconds).
-        self.last_scanning_time +=
-            Duration::from_secs(((delta.as_secs() + SCANNING_TASK_INTERVAL - 1) / SCANNING_TASK_INTERVAL) * SCANNING_TASK_INTERVAL);
+        self.last_scanning_time += Duration::from_secs(delta.as_secs().div_ceil(SCANNING_TASK_INTERVAL) * SCANNING_TASK_INTERVAL);
 
         self.scanning_job_count += 1;
         self.scanning_task_running = true;
@@ -57,7 +55,7 @@ impl TransactionsSpread {
 
     /// Returns true if the time for a rebroadcast of the mempool high priority transactions has come.
     pub fn should_rebroadcast(&self) -> bool {
-        self.scanning_job_count % REBROADCAST_FREQUENCY == 0
+        self.scanning_job_count.is_multiple_of(REBROADCAST_FREQUENCY)
     }
 
     pub fn mempool_scanning_job_count(&self) -> u64 {
@@ -73,7 +71,7 @@ impl TransactionsSpread {
     /// within transaction Inv messages.
     ///
     /// The broadcast itself may happen only during a subsequent call to this function since it is done at most
-    /// every [`BROADCAST_INTERVAL`] milliseconds or when the queue length is larger than the Inv message
+    /// every `BROADCAST_INTERVAL` milliseconds or when the queue length is larger than the Inv message
     /// capacity.
     ///
     /// _GO-KASPAD: EnqueueTransactionIDsForPropagation_
@@ -100,7 +98,7 @@ impl TransactionsSpread {
             // TODO: Figure out a better number
             self.hub.broadcast_to_some_peers(msg, 8).await
         } else {
-            self.hub.broadcast(msg).await
+            self.hub.broadcast(msg, None).await
         }
     }
 }

@@ -1,47 +1,51 @@
 use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
-    model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
-    processes::window::WindowManager,
+    model::stores::statuses::StatusesStoreReader,
+    processes::{
+        transaction_validator::{
+            TransactionValidator,
+            tx_validation_in_header_context::{LockTimeArg, LockTimeType},
+        },
+        window::WindowManager,
+    },
 };
 use kaspa_consensus_core::block::Block;
-use kaspa_database::prelude::StoreResultExtensions;
+use kaspa_database::prelude::StoreResultExt;
 use kaspa_hashes::Hash;
-use kaspa_utils::option::OptionExtensions;
+use once_cell::unsync::Lazy;
 use std::sync::Arc;
 
 impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         self.check_parent_bodies_exist(block)?;
         self.check_coinbase_blue_score_and_subsidy(block)?;
-        self.check_block_transactions_in_context(block)?;
-        self.check_block_is_not_pruned(block)
+        self.check_block_transactions_in_context(block)
     }
 
-    fn check_block_is_not_pruned(self: &Arc<Self>, _block: &Block) -> BlockProcessResult<()> {
-        // TODO: In kaspad code it checks that the block is not in the past of the current tips.
-        // We should decide what's the best indication that a block was pruned.
-        Ok(())
+    pub fn validate_trusted_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
+        self.check_coinbase_blue_score_and_subsidy(block)
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        let (pmt, _) = self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?;
-        for tx in block.transactions.iter() {
-            if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
-                return Err(RuleError::TxInContextFailed(tx.id(), e));
-            }
-        }
+        // Use lazy evaluation to avoid unnecessary work, as most of the time we expect the txs not to have lock time.
+        let lazy_pmt_res = Lazy::new(|| self.window_manager.calc_past_median_time_for_known_hash(block.hash()));
 
+        for tx in block.transactions.iter() {
+            let lock_time_arg = match TransactionValidator::get_lock_time_type(tx) {
+                LockTimeType::Finalized => LockTimeArg::Finalized,
+                LockTimeType::DaaScore => LockTimeArg::DaaScore(block.header.daa_score),
+                // We only evaluate the pmt calculation when actually needed
+                LockTimeType::Time => LockTimeArg::MedianTime((*lazy_pmt_res).clone()?),
+            };
+            if let Err(e) = self.transaction_validator.validate_tx_in_header_context(tx, lock_time_arg) {
+                return Err(RuleError::TxInContextFailed(tx.id(), e));
+            };
+        }
         Ok(())
     }
 
     fn check_parent_bodies_exist(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        // TODO: Skip this check for blocks in PP anticone that comes as part of the pruning proof.
-
-        if block.header.direct_parents().len() == 1 && block.header.direct_parents()[0] == self.genesis.hash {
-            return Ok(());
-        }
-
         let statuses_read_guard = self.statuses_store.read();
         let missing: Vec<Hash> = block
             .header
@@ -49,7 +53,7 @@ impl BlockBodyProcessor {
             .iter()
             .copied()
             .filter(|parent| {
-                let status_option = statuses_read_guard.get(*parent).unwrap_option();
+                let status_option = statuses_read_guard.get(*parent).optional().unwrap();
                 status_option.is_none_or(|s| !s.has_block_body())
             })
             .collect();
@@ -89,11 +93,11 @@ mod tests {
         constants::TX_VERSION,
         errors::RuleError,
         model::stores::ghostdag::GhostdagStoreReader,
-        params::DEVNET_PARAMS,
         processes::{transaction_validator::errors::TxRuleError, window::WindowManager},
     };
     use kaspa_consensus_core::{
         api::ConsensusApi,
+        config::params::MAINNET_PARAMS,
         merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
@@ -103,15 +107,15 @@ mod tests {
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
-        let config = ConfigBuilder::new(DEVNET_PARAMS)
+        let config = ConfigBuilder::new(MAINNET_PARAMS)
             .skip_proof_of_work()
-            .edit_consensus_params(|p| p.deflationary_phase_daa_score = 2)
+            .edit_consensus_params(|p| p.deflationary_phase_daa_score = p.genesis.daa_score + 2)
             .build();
         let consensus = TestConsensus::new(&config);
         let wait_handles = consensus.init();
         let body_processor = consensus.block_body_processor();
 
-        consensus.add_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
+        consensus.add_header_only_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
 
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);

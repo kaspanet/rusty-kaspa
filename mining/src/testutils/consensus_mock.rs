@@ -1,6 +1,9 @@
 use super::coinbase_mock::CoinbaseManagerMock;
 use kaspa_consensus_core::{
-    api::ConsensusApi,
+    api::{
+        ConsensusApi,
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
+    },
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     coinbase::MinerData,
     constants::BLOCK_VERSION,
@@ -9,14 +12,14 @@ use kaspa_consensus_core::{
         coinbase::CoinbaseResult,
         tx::{TxResult, TxRuleError},
     },
-    header::Header,
-    mass::transaction_estimated_serialized_size,
+    header::{CompressedParents, Header},
+    mass::{ContextualMasses, NonContextualMasses, transaction_estimated_serialized_size},
     merkle::calc_hash_merkle_root,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };
 use kaspa_core::time::unix_now;
-use kaspa_hashes::ZERO_HASH;
+use kaspa_hashes::{Hash, ZERO_HASH};
 
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
@@ -53,7 +56,13 @@ impl ConsensusMock {
         transaction.tx.outputs.iter().enumerate().for_each(|(i, x)| {
             utxos.insert(
                 TransactionOutpoint::new(transaction.id(), i as u32),
-                UtxoEntry::new(x.value, x.script_public_key.clone(), block_daa_score, transaction.tx.is_coinbase()),
+                UtxoEntry::new(
+                    x.value,
+                    x.script_public_key.clone(),
+                    block_daa_score,
+                    transaction.tx.is_coinbase(),
+                    x.covenant.map(|y| y.covenant_id),
+                ),
             );
         });
         // Register the transaction
@@ -83,10 +92,10 @@ impl ConsensusApi for ConsensusMock {
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());
         txs.insert(0, coinbase.tx);
         let now = unix_now();
-        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
+        let hash_merkle_root = self.calc_transaction_hash_merkle_root(&txs);
         let header = Header::new_finalized(
             BLOCK_VERSION,
-            vec![],
+            CompressedParents::default(),
             hash_merkle_root,
             ZERO_HASH,
             ZERO_HASH,
@@ -100,15 +109,15 @@ impl ConsensusApi for ConsensusMock {
         );
         let mutable_block = MutableBlock::new(header, txs);
 
-        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0, ZERO_HASH))
+        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0, ZERO_HASH, vec![]))
     }
 
-    fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+    fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction, _: &TransactionValidationArgs) -> TxResult<()> {
         // If a predefined status was registered to simulate an error, return it right away
-        if let Some(status) = self.statuses.read().get(&mutable_tx.id()) {
-            if status.is_err() {
-                return status.clone();
-            }
+        if let Some(status) = self.statuses.read().get(&mutable_tx.id())
+            && status.is_err()
+        {
+            return status.clone();
         }
         let utxos = self.utxos.read();
         let mut has_missing_outpoints = false;
@@ -130,32 +139,34 @@ impl ConsensusApi for ConsensusMock {
         // At this point we know all UTXO entries are populated, so we can safely calculate the fee
         let total_in: u64 = mutable_tx.entries.iter().map(|x| x.as_ref().unwrap().amount).sum();
         let total_out: u64 = mutable_tx.tx.outputs.iter().map(|x| x.value).sum();
-        let calculated_fee = total_in - total_out;
-        mutable_tx
-            .tx
-            .set_mass(self.calculate_transaction_storage_mass(mutable_tx).unwrap() + mutable_tx.calculated_compute_mass.unwrap());
-        mutable_tx.calculated_fee = Some(calculated_fee);
+        mutable_tx.tx.set_storage_mass(self.calculate_transaction_contextual_masses(mutable_tx).unwrap().storage_mass);
+
+        if mutable_tx.calculated_fee.is_none() {
+            let calculated_fee = total_in - total_out;
+            mutable_tx.calculated_fee = Some(calculated_fee);
+        }
         Ok(())
     }
 
-    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
-        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
+    fn validate_mempool_transactions_in_parallel(
+        &self,
+        transactions: &mut [MutableTransaction],
+        _: &TransactionValidationBatchArgs,
+    ) -> Vec<TxResult<()>> {
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x, &Default::default())).collect()
     }
 
     fn populate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
-        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x, &Default::default())).collect()
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
-        if transaction.is_coinbase() {
-            0
-        } else {
-            transaction_estimated_serialized_size(transaction)
-        }
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
+        let mass = if transaction.is_coinbase() { 0 } else { transaction_estimated_serialized_size(transaction) };
+        Ok(NonContextualMasses::new(mass, mass))
     }
 
-    fn calculate_transaction_storage_mass(&self, _transaction: &MutableTransaction) -> Option<u64> {
-        Some(0)
+    fn calculate_transaction_contextual_masses(&self, _transaction: &MutableTransaction) -> Option<ContextualMasses> {
+        Some(ContextualMasses::new(0))
     }
 
     fn get_virtual_daa_score(&self) -> u64 {
@@ -169,5 +180,9 @@ impl ConsensusApi for ConsensusMock {
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         let coinbase_manager = CoinbaseManagerMock::new();
         Ok(coinbase_manager.modify_coinbase_payload(payload, miner_data))
+    }
+
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction]) -> Hash {
+        calc_hash_merkle_root(txs.iter())
     }
 }

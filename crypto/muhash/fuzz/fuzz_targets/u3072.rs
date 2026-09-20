@@ -4,7 +4,6 @@ use kaspa_muhash::u3072::{self, U3072};
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{One, Signed};
-use std::mem::size_of;
 
 fuzz_target!(|data: &[u8]| {
     if data.len() < muhash::SERIALIZED_MUHASH_SIZE {

@@ -36,3 +36,6 @@ kaspa-consensus.workspace = true
 parking_lot.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 rand = {workspace = true,  features = [ "small_rng" ]}
+
+[lints]
+workspace = true

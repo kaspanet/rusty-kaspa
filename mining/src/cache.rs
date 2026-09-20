@@ -59,7 +59,7 @@ impl BlockTemplateCache {
         self.inner.lock().clear();
     }
 
-    pub(crate) fn lock(&self, virtual_state_approx_id: VirtualStateApproxId) -> MutexGuard<Inner> {
+    pub(crate) fn lock(&self, virtual_state_approx_id: VirtualStateApproxId) -> MutexGuard<'_, Inner> {
         let mut guard = self.inner.lock();
         if guard.block_template.as_ref().is_some_and(|template| template.to_virtual_state_approx_id() != virtual_state_approx_id) {
             // If the VirtualStateApproxId is different from ours, our template is likely expired and we should clear it

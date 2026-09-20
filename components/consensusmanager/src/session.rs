@@ -3,17 +3,21 @@
 //! We use newtypes in order to simplify changing the underlying lock in the future
 
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
-    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
+    BlockHashSet, BlueWorkType, ChainPath, Hash,
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
+    api::{
+        BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ImportLane, ImportLaneBatchIterator,
+        SeqCommitLaneProof,
+    },
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
-    errors::consensus::ConsensusResult,
+    errors::{consensus::ConsensusResult, pruning::PruningImportResult, tx::TxResult},
     header::Header,
+    mass::{ContextualMasses, NonContextualMasses},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, BlueWorkType, ChainPath, Hash,
+    tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, TransactionQueryResult, TransactionType, UtxoEntry},
 };
 use kaspa_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
@@ -57,11 +61,11 @@ impl SessionLock {
         SessionOwnedReadGuard(Arc::new(self.0.clone().read_owned().await))
     }
 
-    pub async fn read(&self) -> SessionReadGuard {
+    pub async fn read(&self) -> SessionReadGuard<'_> {
         SessionReadGuard(self.0.read().await)
     }
 
-    pub fn blocking_read(&self) -> SessionReadGuard {
+    pub fn blocking_read(&self) -> SessionReadGuard<'_> {
         SessionReadGuard(self.0.blocking_read())
     }
 
@@ -84,14 +88,14 @@ impl ConsensusInstance {
     /// Returns a blocking session to be used in **non async** environments.
     /// Users would usually need to call something like `futures::executor::block_on` in order
     /// to acquire the session, but we prefer leaving this decision to the caller
-    pub async fn session_blocking(&self) -> ConsensusSessionBlocking {
+    pub async fn session_blocking(&self) -> ConsensusSessionBlocking<'_> {
         let g = self.session_lock.read().await;
         ConsensusSessionBlocking::new(g, self.consensus.clone())
     }
 
     /// Returns an unguarded *blocking* consensus session. There's no guarantee that data will not be pruned between
     /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
-    /// be preferred upon [`session_blocking`] when data consistency is not important.
+    /// be preferred upon [`session_blocking()`](Self::session_blocking) when data consistency is not important.
     pub fn unguarded_session_blocking(&self) -> ConsensusSessionBlocking<'static> {
         ConsensusSessionBlocking::new_without_session_guard(self.consensus.clone())
     }
@@ -100,7 +104,7 @@ impl ConsensusInstance {
     /// that consensus state is consistent between operations, that is, no pruning was performed between the calls.
     /// The returned object is an *owned* consensus session type which can be cloned and shared across threads.
     /// The sharing ability is useful for spawning blocking operations on a different thread using the same
-    /// session object, see [`ConsensusSessionOwned::spawn_blocking`]. The caller is responsible to make sure
+    /// session object, see [`ConsensusSessionOwned::spawn_blocking()`](ConsensusSessionOwned::spawn_blocking). The caller is responsible to make sure
     /// that the overall lifetime of this session is not too long (~2 seconds max)
     pub async fn session(&self) -> ConsensusSessionOwned {
         let g = self.session_lock.read_owned().await;
@@ -109,7 +113,7 @@ impl ConsensusInstance {
 
     /// Returns an unguarded consensus session. There's no guarantee that data will not be pruned between
     /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
-    /// be preferred upon [`session`] when data consistency is not important.
+    /// be preferred upon [`session()`](Self::session) when data consistency is not important.
     pub fn unguarded_session(&self) -> ConsensusSessionOwned {
         ConsensusSessionOwned::new_without_session_guard(self.consensus.clone())
     }
@@ -139,7 +143,8 @@ impl Deref for ConsensusSessionBlocking<'_> {
 }
 
 /// An *owned* consensus session type which can be cloned and shared across threads.
-/// See method `spawn_blocking` within for context on the usefulness of this type
+/// See method `spawn_blocking` within for context on the usefulness of this type.
+/// Please note - you must use [`ConsensusProxy`] type alias instead of this struct.
 #[derive(Clone)]
 pub struct ConsensusSessionOwned {
     _session_guard: Option<SessionOwnedReadGuard>,
@@ -189,14 +194,14 @@ impl ConsensusSessionOwned {
         self.consensus.validate_and_insert_trusted_block(tb)
     }
 
-    pub fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+    pub fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_compute_mass(transaction)
+        self.consensus.calculate_transaction_non_contextual_masses(transaction)
     }
 
-    pub fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+    pub fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_storage_mass(transaction)
+        self.consensus.calculate_transaction_contextual_masses(transaction)
     }
 
     pub fn get_virtual_daa_score(&self) -> u64 {
@@ -247,24 +252,33 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_sink_timestamp()).await
     }
 
-    /// source refers to the earliest block from which the current node has full header & block data  
-    pub async fn async_get_source(&self) -> Hash {
-        self.clone().spawn_blocking(|c| c.get_source()).await
+    pub async fn async_get_sink_blue_score(&self) -> u64 {
+        self.clone().spawn_blocking(|c| c.get_sink_blue_score()).await
+    }
+
+    pub async fn async_get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
+        self.clone().spawn_blocking(|c| c.get_sink_daa_score_timestamp()).await
+    }
+
+    pub async fn async_get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
+        self.clone().spawn_blocking(move |c| c.get_merged_block_context(hash)).await
+    }
+
+    /// retention period root refers to the earliest block from which the current node has full header & block data
+    pub async fn async_get_retention_period_root(&self) -> Hash {
+        self.clone().spawn_blocking(|c| c.get_retention_period_root()).await
     }
 
     pub async fn async_estimate_block_count(&self) -> BlockCount {
         self.clone().spawn_blocking(|c| c.estimate_block_count()).await
     }
 
-    /// Returns whether this consensus is considered synced or close to being synced.
-    ///
-    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
-    pub async fn async_is_nearly_synced(&self) -> bool {
-        self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
-    }
-
-    pub async fn async_get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(hash)).await
+    pub async fn async_get_virtual_chain_from_block(
+        &self,
+        low: Hash,
+        chain_path_added_limit: Option<usize>,
+    ) -> ConsensusResult<ChainPath> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, chain_path_added_limit)).await
     }
 
     pub async fn async_get_virtual_utxos(
@@ -302,6 +316,29 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
         self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
+    }
+
+    pub async fn async_get_transactions_by_accepting_daa_score(
+        &self,
+        accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        self.clone().spawn_blocking(move |c| c.get_transactions_by_accepting_daa_score(accepting_daa_score, tx_ids, tx_type)).await
+    }
+
+    pub async fn async_get_transactions_by_block_acceptance_data(
+        &self,
+        accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        self.clone()
+            .spawn_blocking(move |c| {
+                c.get_transactions_by_block_acceptance_data(accepting_block, block_acceptance_data, tx_ids, tx_type)
+            })
+            .await
     }
 
     /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.
@@ -349,6 +386,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_block(hash)).await
     }
 
+    pub async fn async_get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        self.clone().spawn_blocking(move |c| c.get_block_body(hash)).await
+    }
+
     pub async fn async_get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
         self.clone().spawn_blocking(move |c| c.get_block_even_if_header_only(hash)).await
     }
@@ -376,12 +417,20 @@ impl ConsensusSessionOwned {
     /// Returns acceptance data for a set of blocks belonging to the selected parent chain.
     ///
     /// See `self::get_virtual_chain`
-    pub async fn async_get_blocks_acceptance_data(&self, hashes: Vec<Hash>) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
-        self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes)).await
+    pub async fn async_get_blocks_acceptance_data(
+        &self,
+        hashes: Vec<Hash>,
+        merged_blocks_limit: Option<usize>,
+    ) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes, merged_blocks_limit)).await
     }
 
     pub async fn async_is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
         self.clone().spawn_blocking(move |c| c.is_chain_block(hash)).await
+    }
+
+    pub async fn async_get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
+        self.clone().spawn_blocking(move |c| c.get_seq_commit_lane_proof(block_hash, lane_key)).await
     }
 
     pub async fn async_get_pruning_point_utxos(
@@ -400,16 +449,16 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_missing_block_body_hashes(high)).await
     }
 
+    pub async fn async_get_body_missing_anticone(&self) -> Vec<Hash> {
+        self.clone().spawn_blocking(move |c| c.get_body_missing_anticone()).await
+    }
+
+    pub async fn async_clear_body_missing_anticone_set(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_body_missing_anticone_set()).await
+    }
+
     pub async fn async_pruning_point(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.pruning_point()).await
-    }
-
-    pub async fn async_get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
-        self.clone().spawn_blocking(move |c| c.get_daa_window(hash)).await
-    }
-
-    pub async fn async_get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
-        self.clone().spawn_blocking(move |c| c.get_trusted_block_associated_ghostdag_data_block_hashes(hash)).await
     }
 
     pub async fn async_estimate_network_hashes_per_second(
@@ -420,8 +469,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.estimate_network_hashes_per_second(start_hash, window_size)).await
     }
 
-    pub async fn async_validate_pruning_points(&self) -> ConsensusResult<()> {
-        self.clone().spawn_blocking(move |c| c.validate_pruning_points()).await
+    pub async fn async_validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.validate_pruning_points(syncer_virtual_selected_parent)).await
     }
 
     pub async fn async_are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
@@ -434,6 +483,73 @@ impl ConsensusSessionOwned {
 
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
+    }
+    pub async fn async_clear_pruning_utxo_set(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_pruning_utxo_set()).await
+    }
+    pub async fn async_is_pruning_utxoset_stable(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_utxoset_stable()).await
+    }
+    pub async fn async_is_pruning_point_anticone_fully_synced(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_point_anticone_fully_synced()).await
+    }
+    pub async fn async_is_consensus_in_transitional_ibd_state(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_consensus_in_transitional_ibd_state()).await
+    }
+    pub async fn async_set_pruning_utxoset_unstable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable_flag(false)).await
+    }
+    pub async fn async_set_pruning_utxoset_stable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_utxoset_stable_flag(true)).await
+    }
+    pub async fn async_intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+        self.clone().spawn_blocking(move |c| c.intrusive_pruning_point_update(new_pruning_point, syncer_sink)).await
+    }
+    pub async fn async_get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
+        self.clone().spawn_blocking(move |c| c.get_n_last_pruning_points(n)).await
+    }
+    pub async fn async_clear_pruning_smt_stores(&self) {
+        self.clone().spawn_blocking(move |c| c.clear_pruning_smt_stores()).await
+    }
+    pub async fn async_set_pruning_smt_stable(&self) {
+        self.clone().spawn_blocking(move |c| c.set_pruning_smt_stable_flag(true)).await
+    }
+    /// Synchronous passthrough to [`ConsensusApi::import_pruning_point_smt`]. Intended to
+    /// be driven from `tokio::task::spawn_blocking` so the caller can interleave it with
+    /// async work that feeds `rx` — see `protocol/flows/src/ibd/flow.rs::sync_new_smt_state`.
+    pub fn import_pruning_point_smt(
+        &self,
+        new_pruning_point: Hash,
+        metadata: kaspa_consensus_core::api::SmtExportMetadata,
+        inactivity_shortcut_block: Hash,
+        mut rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
+    ) -> PruningImportResult<()> {
+        let lane_batches: ImportLaneBatchIterator = &mut std::iter::from_fn(move || rx.blocking_recv());
+        self.consensus.import_pruning_point_smt(new_pruning_point, metadata, inactivity_shortcut_block, lane_batches)
+    }
+    pub async fn async_is_pruning_smt_stable(&self) -> bool {
+        self.clone().spawn_blocking(move |c| c.is_pruning_smt_stable()).await
+    }
+    pub async fn async_get_pruning_point_smt_metadata(
+        &self,
+        expected_pp: Hash,
+    ) -> ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+        self.clone().spawn_blocking(move |c| c.get_pruning_point_smt_metadata(expected_pp)).await
+    }
+
+    pub async fn async_inactivity_shortcut_block_for_pov(&self, pov_block: Hash) -> ConsensusResult<Hash> {
+        self.clone().spawn_blocking(move |c| c.inactivity_shortcut_block_for_pov(pov_block)).await
+    }
+
+    /// Synchronous passthrough to [`ConsensusApi::open_pruning_point_smt_lane_stream`].
+    /// Intended to be driven from `tokio::task::spawn_blocking` so the caller
+    /// can open the stream and drain it in one blocking task without extra
+    /// async hops — see `protocol/flows/src/v9/request_pruning_point_smt_state.rs`.
+    pub fn open_pruning_point_smt_lane_stream(
+        &self,
+        expected_pp: Hash,
+    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<ImportLane>> + Send + 'static>> {
+        self.consensus.open_pruning_point_smt_lane_stream(expected_pp)
     }
 }
 

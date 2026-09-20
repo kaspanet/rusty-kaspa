@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHasher};
+use kaspa_consensus_core::{BlockHasher, blockstatus::BlockStatus};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use rocksdb::WriteBatch;
@@ -54,7 +54,7 @@ pub trait StatusesStoreBatchExtensions {
         batch: &mut WriteBatch,
         hash: Hash,
         status: BlockStatus,
-    ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError>;
+    ) -> Result<RwLockWriteGuard<'_, DbStatusesStore>, StoreError>;
 }
 
 impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
@@ -63,7 +63,7 @@ impl StatusesStoreBatchExtensions for Arc<RwLock<DbStatusesStore>> {
         batch: &mut WriteBatch,
         hash: Hash,
         status: BlockStatus,
-    ) -> Result<RwLockWriteGuard<DbStatusesStore>, StoreError> {
+    ) -> Result<RwLockWriteGuard<'_, DbStatusesStore>, StoreError> {
         let write_guard = self.write();
         write_guard.access.write(BatchDbWriter::new(batch), hash, status)?;
         Ok(write_guard)

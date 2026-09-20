@@ -1,10 +1,10 @@
 use std::{collections::HashMap, fmt::Display};
 
 use crate::{
-    constants,
-    errors::{coinbase::CoinbaseError, tx::TxRuleError},
-    tx::{TransactionId, TransactionOutpoint},
     BlueWorkType,
+    errors::{coinbase::CoinbaseError, tx::TxRuleError},
+    subnets::SubnetworkId,
+    tx::{TransactionId, TransactionOutpoint},
 };
 use itertools::Itertools;
 use kaspa_hashes::Hash;
@@ -28,8 +28,8 @@ impl<T: Display + Clone> Display for TwoDimVecDisplay<T> {
 
 #[derive(Error, Debug, Clone)]
 pub enum RuleError {
-    #[error("wrong block version: got {0} but expected {}", constants::BLOCK_VERSION)]
-    WrongBlockVersion(u16),
+    #[error("wrong block version: got {0} but expected {1}")]
+    WrongBlockVersion(u16, u16),
 
     #[error("the block timestamp is too far into the future: block timestamp is {0} but maximum timestamp allowed is {1}")]
     TimeTooFarIntoTheFuture(u64, u64),
@@ -64,8 +64,8 @@ pub enum RuleError {
     #[error("expected header blue work {0} but got {1}")]
     UnexpectedHeaderBlueWork(BlueWorkType, BlueWorkType),
 
-    #[error("block difficulty of {0} is not the expected value of {1}")]
-    UnexpectedDifficulty(u32, u32),
+    #[error("block {0} difficulty of {1} is not the expected value of {2}")]
+    UnexpectedDifficulty(Hash, u32, u32),
 
     #[error("block timestamp of {0} is not after expected {1}")]
     TimeTooOld(u64, u64),
@@ -100,11 +100,20 @@ pub enum RuleError {
     #[error("transaction in isolation validation failed for tx {0}: {1}")]
     TxInIsolationValidationFailed(TransactionId, TxRuleError),
 
-    #[error("block exceeded mass limit of {0}")]
-    ExceedsMassLimit(u64),
+    #[error("block compute mass {0} exceeds limit of {1}")]
+    ExceedsComputeMassLimit(u64, u64),
 
-    #[error("transaction {0} has mass field of {1} but mass should be at least {2}")]
-    MassFieldTooLow(TransactionId, u64, u64),
+    #[error("block transient storage mass {0} exceeds limit of {1}")]
+    ExceedsTransientMassLimit(u64, u64),
+
+    #[error("block persistent storage mass {0} exceeds limit of {1}")]
+    ExceedsStorageMassLimit(u64, u64),
+
+    #[error("block has {0} lanes, exceeding limit of {1}")]
+    ExceedsLanesPerBlockLimit(usize, usize),
+
+    #[error("block lane {0} gas {1} exceeds limit of {2}")]
+    ExceedsGasPerLaneLimit(SubnetworkId, u64, u64),
 
     #[error("outpoint {0} is spent more than once on the same block")]
     DoubleSpendInSameBlock(TransactionOutpoint),
@@ -127,6 +136,9 @@ pub enum RuleError {
     #[error("expected header pruning point is {0} but got {1}")]
     WrongHeaderPruningPoint(Hash, Hash),
 
+    #[error("block {0} first direct parent is {2} but selected parent is {1}")]
+    WrongSelectedParentOrder(Hash, Hash, Hash),
+
     #[error("expected indirect parents {0} but got {1}")]
     UnexpectedIndirectParents(TwoDimVecDisplay<Hash>, TwoDimVecDisplay<Hash>),
 
@@ -147,6 +159,10 @@ pub enum RuleError {
 
     #[error("DAA window data has only {0} entries")]
     InsufficientDaaWindowSize(usize),
+
+    /// Currently this error is never created because it is impossible to submit such a block
+    #[error("cannot add block body to a pruned block")]
+    PrunedBlock,
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

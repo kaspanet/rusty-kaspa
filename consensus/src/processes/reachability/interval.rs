@@ -89,7 +89,7 @@ impl Interval {
     }
 
     /// Splits this interval to exactly |sizes| parts where
-    /// |part_i| = sizes[i]. This method expects sum(sizes) to be exactly
+    /// |part_i| = sizes\[i\]. This method expects sum(sizes) to be exactly
     /// equal to the interval's size.
     pub fn split_exact(&self, sizes: &[u64]) -> Vec<Self> {
         assert_eq!(sizes.iter().sum::<u64>(), self.size(), "sum of sizes must be equal to the interval's size");
@@ -107,7 +107,7 @@ impl Interval {
     /// Splits this interval to |sizes| parts
     /// by the allocation rule described below. This method expects sum(sizes)
     /// to be smaller or equal to the interval's size. Every part_i is
-    /// allocated at least sizes[i] capacity. The remaining budget is
+    /// allocated at least sizes\[i\] capacity. The remaining budget is
     /// split by an exponentially biased rule described below.
     ///
     /// This rule follows the GHOSTDAG protocol behavior where the child

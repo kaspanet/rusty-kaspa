@@ -1,10 +1,10 @@
 use crate::{
+    MiningCounters,
+    feerate::{FeerateEstimator, FeerateEstimatorArgs},
     model::{
-        candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         tx_query::TransactionQuery,
     },
-    MiningCounters,
 };
 
 use self::{
@@ -12,10 +12,14 @@ use self::{
     model::{accepted_transactions::AcceptedTransactions, orphan_pool::OrphanPool, pool::Pool, transactions_pool::TransactionsPool},
     tx::Priority,
 };
-use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
+use kaspa_consensus_core::{
+    block::TemplateTransactionSelector,
+    tx::{MutableTransaction, TransactionId},
+};
 use kaspa_core::time::Stopwatch;
 use std::sync::Arc;
 
+pub(crate) mod check_transaction_limits;
 pub(crate) mod check_transaction_standard;
 pub mod config;
 pub mod errors;
@@ -23,6 +27,7 @@ pub(crate) mod handle_new_block_transactions;
 pub(crate) mod model;
 pub(crate) mod populate_entries_and_try_validate;
 pub(crate) mod remove_transaction;
+pub(crate) mod replace_by_fee;
 pub(crate) mod validate_and_insert_transaction;
 
 /// Mempool contains transactions intended to be inserted into a block and mined.
@@ -40,7 +45,7 @@ pub(crate) mod validate_and_insert_transaction;
 ///   They are owned by the node, they never expire in the mempool and the node
 ///   rebroadcasts them once in a while.
 /// - Transactions received through P2P have **low-priority**. They expire after
-///   60 seconds and are removed if not inserted in a block for mining.
+///   24 hours and are removed if not inserted in a block for mining.
 pub(crate) struct Mempool {
     config: Arc<Config>,
     transaction_pool: TransactionsPool,
@@ -111,9 +116,23 @@ impl Mempool {
         count
     }
 
-    pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
-        let _sw = Stopwatch::<10>::with_threshold("block_candidate_transactions op");
-        self.transaction_pool.all_ready_transactions()
+    pub(crate) fn ready_transaction_count(&self) -> usize {
+        self.transaction_pool.ready_transaction_count()
+    }
+
+    pub(crate) fn ready_transaction_total_mass(&self) -> u64 {
+        self.transaction_pool.ready_transaction_total_mass()
+    }
+
+    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
+    pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
+        let _sw = Stopwatch::<10>::with_threshold("build_selector op");
+        self.transaction_pool.build_selector()
+    }
+
+    /// Builds a feerate estimator based on internal state of the ready transactions frontier
+    pub(crate) fn build_feerate_estimator(&self, args: FeerateEstimatorArgs) -> FeerateEstimator {
+        self.transaction_pool.build_feerate_estimator(args)
     }
 
     pub(crate) fn all_transaction_ids_with_priority(&self, priority: Priority) -> Vec<TransactionId> {
@@ -122,12 +141,7 @@ impl Mempool {
     }
 
     pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
-        if let Some(tx) = self.transaction_pool.get_mut(&transaction.id()) {
-            tx.mtx = transaction;
-            true
-        } else {
-            false
-        }
+        self.transaction_pool.update_revalidated_transaction(transaction)
     }
 
     pub(crate) fn has_accepted_transaction(&self, transaction_id: &TransactionId) -> bool {
@@ -144,12 +158,19 @@ impl Mempool {
             .filter(|transaction_id| !(self.transaction_pool.has(transaction_id) || self.orphan_pool.has(transaction_id)));
         self.accepted_transactions.unaccepted(&mut not_in_pools_txs)
     }
+
+    #[cfg(test)]
+    pub(crate) fn get_estimated_size(&self) -> usize {
+        self.transaction_pool.get_estimated_size()
+    }
 }
 
 pub mod tx {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Priority {
+        /// Provenance is P2P
         Low,
+        /// Provenance is RPC submit
         High,
     }
 
@@ -157,5 +178,52 @@ pub mod tx {
     pub enum Orphan {
         Forbidden,
         Allowed,
+    }
+
+    /// Replace by Fee (RBF) policy
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum RbfPolicy {
+        /// ### RBF is forbidden
+        ///
+        /// Inserts the incoming transaction.
+        ///
+        /// Conditions of success:
+        ///
+        /// - no double spend
+        ///
+        /// If conditions are not met, leaves the mempool unchanged and fails with a double spend error.
+        Forbidden,
+
+        /// ### RBF may occur
+        ///
+        /// Identifies double spends in mempool and their owning transactions checking in order every input of the incoming
+        /// transaction.
+        ///
+        /// Removes all mempool transactions owning double spends and inserts the incoming transaction.
+        ///
+        /// Conditions of success:
+        ///
+        /// - on absence of double spends, always succeeds
+        /// - on double spends, the incoming transaction has a higher fee/mass ratio than the mempool transaction owning
+        ///   the first double spend
+        ///
+        /// If conditions are not met, leaves the mempool unchanged and fails with a double spend or a tx fee/mass too low error.
+        Allowed,
+
+        /// ### RBF must occur
+        ///
+        /// Identifies double spends in mempool and their owning transactions checking in order every input of the incoming
+        /// transaction.
+        ///
+        /// Removes the mempool transaction owning the double spends and inserts the incoming transaction.
+        ///
+        /// Conditions of success:
+        ///
+        /// - at least one double spend
+        /// - all double spends belong to the same mempool transaction
+        /// - the incoming transaction has a higher fee/mass ratio than the mempool double spending transaction.
+        ///
+        /// If conditions are not met, leaves the mempool unchanged and fails with a double spend or a tx fee/mass too low error.
+        Mandatory,
     }
 }

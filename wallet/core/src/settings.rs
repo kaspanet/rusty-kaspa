@@ -6,13 +6,14 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::Storage;
 use serde::de::DeserializeOwned;
-use serde_json::{from_value, to_value, Map, Value};
+use serde_json::{Map, Value, from_value, to_value};
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use workflow_core::enums::Describe;
 use workflow_store::fs;
 
+/// Wallet settings enumeration.
 #[derive(Describe, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
 pub enum WalletSettings {
@@ -36,6 +37,8 @@ pub trait DefaultSettings: Sized {
     async fn defaults() -> Vec<(Self, Value)>;
 }
 
+/// Platform neutral settings store (stores the settings K:V map
+/// in a file or the browser `localStorage`).
 #[derive(Debug, Clone)]
 pub struct SettingsStore<K>
 where
@@ -127,7 +130,7 @@ where
     }
 
     pub async fn try_store(&self) -> Result<()> {
-        let map = Map::from_iter(self.map.clone().into_iter());
+        let map = Map::from_iter(self.map.clone());
         self.storage.ensure_dir().await?;
         workflow_store::fs::write_json(self.storage.filename(), &Value::Object(map)).await?;
         Ok(())
@@ -170,10 +173,12 @@ where
     }
 }
 
+/// Returns the wallet data storage folder `~/.kaspa`.
 pub fn application_folder() -> Result<PathBuf> {
     Ok(fs::resolve_path(storage::local::default_storage_folder())?)
 }
 
+/// If missing, creates the wallet data storage folder `~/.kaspa`.
 pub async fn ensure_application_folder() -> Result<()> {
     let path = application_folder()?;
     log_info!("Creating application folder: `{}`", path.display());

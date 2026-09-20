@@ -3,10 +3,10 @@
 //!
 
 use crate::imports::*;
-use crate::storage::local::Payload;
-use crate::storage::local::Storage;
 use crate::storage::Encryptable;
 use crate::storage::TransactionRecord;
+use crate::storage::local::Payload;
+use crate::storage::local::Storage;
 use crate::storage::{AccountMetadata, Decrypted, Encrypted, Hint, PrvKeyData, PrvKeyDataId};
 use workflow_store::fs;
 
@@ -61,7 +61,7 @@ impl WalletStorage {
 
         cfg_if! {
             if #[cfg(target_arch = "wasm32")] {
-                let serialized = BorshSerialize::try_to_vec(self)?;
+                let serialized = borsh::to_vec(self)?;
                 fs::write(store.filename(), serialized.as_slice()).await?;
             } else {
                 // make this platform-specific to avoid creating
@@ -101,8 +101,8 @@ impl BorshSerialize for WalletStorage {
 }
 
 impl BorshDeserialize for WalletStorage {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
-        let StorageHeader { magic, version, .. } = StorageHeader::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
+        let StorageHeader { magic, version, .. } = StorageHeader::deserialize_reader(reader)?;
 
         if magic != Self::STORAGE_MAGIC {
             return Err(IoError::new(
@@ -114,16 +114,20 @@ impl BorshDeserialize for WalletStorage {
         if version > Self::STORAGE_VERSION {
             return Err(IoError::new(
                 IoErrorKind::InvalidData,
-                format!("This wallet data was generated using a new version of the software. Please upgrade your software environment. Expected at most version '{}', encountered version '{}'", Self::STORAGE_VERSION, version),
+                format!(
+                    "This wallet data was generated using a new version of the software. Please upgrade your software environment. Expected at most version '{}', encountered version '{}'",
+                    Self::STORAGE_VERSION,
+                    version
+                ),
             ));
         }
 
-        let title = BorshDeserialize::deserialize(buf)?;
-        let user_hint = BorshDeserialize::deserialize(buf)?;
-        let encryption_kind = BorshDeserialize::deserialize(buf)?;
-        let payload = BorshDeserialize::deserialize(buf)?;
-        let metadata = BorshDeserialize::deserialize(buf)?;
-        let transactions = BorshDeserialize::deserialize(buf)?;
+        let title = BorshDeserialize::deserialize_reader(reader)?;
+        let user_hint = BorshDeserialize::deserialize_reader(reader)?;
+        let encryption_kind = BorshDeserialize::deserialize_reader(reader)?;
+        let payload = BorshDeserialize::deserialize_reader(reader)?;
+        let metadata = BorshDeserialize::deserialize_reader(reader)?;
+        let transactions = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { title, user_hint, encryption_kind, payload, metadata, transactions })
     }

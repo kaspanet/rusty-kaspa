@@ -2,7 +2,7 @@ fn main() {
     let protowire_files = &["./proto/messages.proto", "./proto/rpc.proto"];
     let dirs = &["./proto"];
 
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .build_server(true)
         .build_client(true)
 
@@ -10,7 +10,7 @@ fn main() {
         // uncomment this line and reflect the change in src/lib.rs
         //.out_dir("./src")
 
-        .compile(&protowire_files[0..1], dirs)
+        .compile_protos(&protowire_files[0..1], dirs)
         .unwrap_or_else(|e| panic!("protobuf compile error: {e}"));
 
     // recompile protobufs only if any of the proto files changes.

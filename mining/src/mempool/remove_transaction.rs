@@ -1,10 +1,10 @@
 use crate::mempool::{
+    Mempool,
     errors::RuleResult,
     model::{pool::Pool, tx::TxRemovalReason},
-    Mempool,
 };
 use kaspa_consensus_core::tx::TransactionId;
-use kaspa_core::{debug, warn};
+use kaspa_core::debug;
 use kaspa_utils::iter::IterExtensions;
 
 impl Mempool {
@@ -43,8 +43,8 @@ impl Mempool {
             TxRemovalReason::Muted => {}
             TxRemovalReason::DoubleSpend => match removed_transactions.len() {
                 0 => {}
-                1 => warn!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
-                n => warn!(
+                1 => debug!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
+                n => debug!(
                     "Removed {} transactions ({}): {}{}",
                     n,
                     reason,

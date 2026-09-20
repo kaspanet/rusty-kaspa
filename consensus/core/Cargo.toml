@@ -15,8 +15,10 @@ wasm32-sdk = []
 default = []
 
 [dependencies]
+arc-swap.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
+bitflags.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 futures-util.workspace = true
@@ -25,27 +27,32 @@ itertools.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-core.workspace = true
-kaspa-hashes.workspace = true
+kaspa-hashes = { workspace = true, features = ["mem_size"] }
 kaspa-math.workspace = true
+kaspa-smt.workspace = true
 kaspa-merkle.workspace = true
 kaspa-muhash.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
 rand.workspace = true
 secp256k1.workspace = true
-serde_json.workspace = true
+serde-value.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
+workflow-serializer.workspace = true
 workflow-wasm.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
 bincode.workspace = true
+serde_yaml = "0.9"
+toml.workspace = true
 wasm-bindgen-test.workspace = true
 web-sys.workspace = true
 
@@ -53,5 +60,9 @@ web-sys.workspace = true
 name = "serde_benchmark"
 harness = false
 
-[lints.clippy]
-empty_docs = "allow"
+[[bench]]
+name = "tx_id_bench"
+harness = false
+
+[lints]
+workspace = true

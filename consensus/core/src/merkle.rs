@@ -2,26 +2,34 @@ use crate::{hashing, tx::Transaction};
 use kaspa_hashes::Hash;
 use kaspa_merkle::calc_merkle_root;
 
-pub fn calc_hash_merkle_root_with_options<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>, include_mass_field: bool) -> Hash {
-    calc_merkle_root(txs.map(|tx| hashing::tx::hash(tx, include_mass_field)))
+pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
+    calc_merkle_root(txs.map(hashing::tx::hash))
 }
 
-pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
-    calc_merkle_root(txs.map(|tx| hashing::tx::hash(tx, false)))
+pub fn calc_hash_merkle_root_pre_crescendo<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
+    calc_merkle_root(txs.map(hashing::tx::hash_pre_crescendo))
+}
+
+pub fn calc_accepted_id_merkle_root_pre_crescendo(mut accepted_tx_ids: Vec<Hash>) -> Hash {
+    accepted_tx_ids.sort();
+    kaspa_merkle::calc_merkle_root(accepted_tx_ids.into_iter())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::merkle::calc_hash_merkle_root;
+    use crate::merkle::{calc_hash_merkle_root, calc_hash_merkle_root_pre_crescendo};
     use crate::{
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
-        tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
+        tx::{
+            ComputeCommit, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
+            scriptvec,
+        },
     };
     use kaspa_hashes::Hash;
 
     #[test]
     fn merkle_root_test() {
-        let txs = vec![
+        let txs = [
             Transaction::new(
                 0,
                 vec![],
@@ -34,6 +42,7 @@ mod tests {
                             0xba, 0x30, 0xcd, 0x5a, 0x4b, 0x87,
                         ],
                     ),
+                    covenant: None,
                 }],
                 0,
                 SUBNETWORK_ID_COINBASE,
@@ -53,7 +62,7 @@ mod tests {
                         },
                         signature_script: vec![],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
+                        compute_commit: ComputeCommit::SigopCount(0.into()),
                     },
                     TransactionInput {
                         previous_outpoint: TransactionOutpoint {
@@ -65,7 +74,7 @@ mod tests {
                         },
                         signature_script: vec![],
                         sequence: u64::MAX,
-                        sig_op_count: 0,
+                        compute_commit: ComputeCommit::SigopCount(0.into()),
                     },
                 ],
                 vec![],
@@ -98,7 +107,7 @@ mod tests {
                         0x16, 0x1b, 0xc6, 0xf8, 0xa6, 0x30, 0x12, 0x1d, 0xf2, 0xb3, 0xd3, // 65-byte pubkey
                     ],
                     sequence: u64::MAX,
-                    sig_op_count: 0,
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 }],
                 vec![
                     TransactionOutput {
@@ -114,6 +123,7 @@ mod tests {
                                 0xac, // OP_CHECKSIG
                             ],
                         ),
+                        covenant: None,
                     },
                     TransactionOutput {
                         value: 0x108e20f00,
@@ -128,6 +138,7 @@ mod tests {
                                 0xac, // OP_CHECKSIG
                             ],
                         ),
+                        covenant: None,
                     },
                 ],
                 0,
@@ -158,7 +169,7 @@ mod tests {
                         0xe3, 0x95, 0x60, 0x63, 0x9d, 0xb4, 0x62, 0xe9, 0xcb, 0x85, 0x0f, // 65-byte pubkey
                     ],
                     sequence: u64::MAX,
-                    sig_op_count: 0,
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 }],
                 vec![
                     TransactionOutput {
@@ -174,6 +185,7 @@ mod tests {
                                 0xac, // OP_CHECKSIG
                             ],
                         ),
+                        covenant: None,
                     },
                     TransactionOutput {
                         value: 0x11d260c0,
@@ -188,6 +200,7 @@ mod tests {
                                 0xac, // OP_CHECKSIG
                             ],
                         ),
+                        covenant: None,
                     },
                 ],
                 0,
@@ -219,7 +232,7 @@ mod tests {
                         0x63, 0xce, 0x6a, 0xf4, 0xcf, 0xaa, 0xea, 0x4e, 0xa1, 0x4f, 0xbb, // 65-byte pubkey
                     ],
                     sequence: u64::MAX,
-                    sig_op_count: 0,
+                    compute_commit: ComputeCommit::SigopCount(0.into()),
                 }],
                 vec![TransactionOutput {
                     value: 0xf4240,
@@ -234,6 +247,7 @@ mod tests {
                             0xac, // OP_CHECKSIG
                         ],
                     ),
+                    covenant: None,
                 }],
                 0,
                 SUBNETWORK_ID_NATIVE,
@@ -243,6 +257,26 @@ mod tests {
         ];
         assert_eq!(
             calc_hash_merkle_root(txs.iter()),
+            Hash::from_slice(&[
+                0x46, 0xec, 0xf4, 0x5b, 0xe3, 0xba, 0xca, 0x34, 0x9d, 0xfe, 0x8a, 0x78, 0xde, 0xaf, 0x05, 0x3b, 0x0a, 0xa6, 0xd5,
+                0x38, 0x97, 0x4d, 0xa5, 0x0f, 0xd6, 0xef, 0xb4, 0xd2, 0x66, 0xbc, 0x8d, 0x21,
+            ])
+        );
+
+        // Test a tx with storage mass commitment > 0
+        txs[0].set_storage_mass(7);
+
+        assert_eq!(
+            calc_hash_merkle_root(txs.iter()),
+            Hash::from_slice(&[
+                0x75, 0x4a, 0x1, 0x59, 0xdc, 0x4b, 0x3d, 0xaa, 0x16, 0x95, 0x28, 0x4d, 0x96, 0xc8, 0x2a, 0xba, 0x27, 0x2a, 0x11, 0x43,
+                0xe4, 0x2e, 0x60, 0x4, 0xaf, 0x2b, 0xaa, 0x1e, 0x3c, 0xed, 0x23, 0x7,
+            ])
+        );
+
+        // Make sure that pre-crescendo hash is unaffected by the mass set
+        assert_eq!(
+            calc_hash_merkle_root_pre_crescendo(txs.iter()),
             Hash::from_slice(&[
                 0x46, 0xec, 0xf4, 0x5b, 0xe3, 0xba, 0xca, 0x34, 0x9d, 0xfe, 0x8a, 0x78, 0xde, 0xaf, 0x05, 0x3b, 0x0a, 0xa6, 0xd5,
                 0x38, 0x97, 0x4d, 0xa5, 0x0f, 0xd6, 0xef, 0xb4, 0xd2, 0x66, 0xbc, 0x8d, 0x21,

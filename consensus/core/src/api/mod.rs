@@ -3,7 +3,9 @@ use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
-    acceptance_data::AcceptanceData,
+    BlockHashSet, BlueWorkType, ChainPath,
+    acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
+    api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -16,15 +18,19 @@ use crate::{
         tx::TxResult,
     },
     header::Header,
-    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
+    mass::{ContextualMasses, NonContextualMasses},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, BlueWorkType, ChainPath,
+    tx::{
+        MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionOutpoint, TransactionQueryResult,
+        TransactionType, UtxoEntry,
+    },
 };
 use kaspa_hashes::Hash;
 
 pub use self::stats::{BlockCount, ConsensusStats};
 
+pub mod args;
 pub mod counters;
 pub mod stats;
 
@@ -37,8 +43,69 @@ pub struct BlockValidationFutures {
 
     /// A future triggered when DAG state which included this block has been processed by the virtual processor
     /// (exceptions are header-only blocks and trusted blocks which have the future completed before virtual
-    /// processing along with the [`block_task`])
+    /// processing along with the `block_task`)
     pub virtual_state_task: BlockValidationFuture,
+}
+
+/// A proof is attached to the first lane and every `SMT_PROOF_INTERVAL`-th lane
+/// during IBD SMT export. The importer verifies these against `lanes_root`.
+///
+/// The end-to-end correctness of the import is already guaranteed by the final
+/// `computed_root == lanes_root` check in `streaming_import`. Inline proofs
+/// only exist so the receiver can abort a misbehaving peer mid-stream before
+/// downloading everything, so a sparse stride is enough — one every ~1M lanes
+/// bounds wasted bandwidth and eliminates per-lane `prove_lane` cost on the
+/// sender
+pub const SMT_PROOF_INTERVAL: usize = 1 << 20;
+
+/// A lane to import during IBD SMT sync.
+#[derive(Clone, Debug)]
+pub struct ImportLane {
+    pub lane_key: Hash,
+    pub lane_tip: Hash,
+    pub blue_score: u64,
+    pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
+}
+
+pub type ImportLaneBatchIterator<'a> = &'a mut (dyn Iterator<Item = Vec<ImportLane>> + Send);
+
+/// SMT metadata for IBD sync, verified against the pruning point header.
+///
+/// Wire: `lanes_root || payload_and_ctx_digest || parent_seq_commit` (96 bytes).
+/// `inactivity_shortcut_block` is derived by the receiver from chain headers; not transmitted.
+#[derive(Clone, Copy, Debug)]
+pub struct SmtExportMetadata {
+    pub lanes_root: Hash,
+    pub payload_and_ctx_digest: Hash,
+    pub parent_seq_commit: Hash,
+    pub active_lanes_count: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct SeqCommitLaneEntry {
+    pub tip: Hash,
+    pub blue_score: u64,
+}
+
+/// Witness for verifying a single lane against the `seq_commit` of a canonical block.
+///
+/// Given the block's header (which carries `seq_commit` in `accepted_id_merkle_root`),
+/// a client can reconstruct the lane's SMT leaf and verify the proof chain:
+/// `smt_leaf → compute_root → lanes_root → activity_root → seq_state_root → seq_commit`.
+///
+/// `lane` is `None` when the lane is absent at this POV;
+/// the SMT proof is then a non-inclusion proof.
+///
+/// `inactivity_shortcut` (KIP-21 activity_root level): the `accepted_id_merkle_root`
+/// (= seq_commit) of the anchor block resolved per KIP-21. Folded into
+/// `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`.
+#[derive(Clone, Debug)]
+pub struct SeqCommitLaneProof {
+    pub smt_proof: kaspa_smt::proof::OwnedSmtProof,
+    pub lane: Option<SeqCommitLaneEntry>,
+    pub payload_and_ctx_digest: Hash,
+    pub parent_seq_commit: Hash,
+    pub inactivity_shortcut: Hash,
 }
 
 /// Abstracts the consensus external API
@@ -62,14 +129,18 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to full transaction
-    /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated.
-    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+    /// validation if all are found. If validation is successful, also `transaction.calculated_fee` is expected to be populated.
+    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction, args: &TransactionValidationArgs) -> TxResult<()> {
         unimplemented!()
     }
 
     /// Populates the mempool transactions with maximally found UTXO entry data and proceeds to full transactions
-    /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated.
-    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+    /// validation if all are found. If validation is successful, also `transaction.calculated_fee` is expected to be populated.
+    fn validate_mempool_transactions_in_parallel(
+        &self,
+        transactions: &mut [MutableTransaction],
+        args: &TransactionValidationBatchArgs,
+    ) -> Vec<TxResult<()>> {
         unimplemented!()
     }
 
@@ -83,11 +154,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_non_contextual_masses(&self, transaction: &Transaction) -> TxResult<NonContextualMasses> {
         unimplemented!()
     }
 
-    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+    fn calculate_transaction_contextual_masses(&self, transaction: &MutableTransaction) -> Option<ContextualMasses> {
         unimplemented!()
     }
 
@@ -127,12 +198,24 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_sink_blue_score(&self) -> u64 {
+        unimplemented!()
+    }
+
+    fn get_sink_daa_score_timestamp(&self) -> DaaScoreTimestamp {
+        unimplemented!()
+    }
+
+    fn get_merged_block_context(&self, hash: Hash) -> ConsensusResult<Option<MergedBlockContext>> {
+        unimplemented!()
+    }
+
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         unimplemented!()
     }
 
-    /// source refers to the earliest block from which the current node has full header & block data  
-    fn get_source(&self) -> Hash {
+    /// retention period root refers to the earliest block from which the current node has full header & block data
+    fn get_retention_period_root(&self) -> Hash {
         unimplemented!()
     }
 
@@ -140,18 +223,47 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// Returns whether this consensus is considered synced or close to being synced.
+    /// Gets the virtual chain paths from `low` to the `sink` hash, or until `chain_path_added_limit` is reached
     ///
-    /// This info is used to determine if it's ok to use a block template from this node for mining purposes.
-    fn is_nearly_synced(&self) -> bool {
-        unimplemented!()
-    }
-
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
+    /// Note:
+    ///     1) `chain_path_added_limit` will populate removed fully, and then the added chain path, up to `chain_path_added_limit` amount of hashes.
+    ///     1.1) use `None to impose no limit with optimized backward chain iteration, for better performance in cases where batching is not required.
+    fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {
         unimplemented!()
     }
 
     fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        unimplemented!()
+    }
+
+    /// Returns the fully populated transaction with the given txid which was accepted at the provided accepting_block_daa_score.
+    /// The argument `accepting_block_daa_score` is expected to be the DAA score of the accepting chain block of `txid`.
+    /// Note: If the transaction vec is None, the function returns all accepted transactions.
+    fn get_transactions_by_accepting_daa_score(
+        &self,
+        accepting_daa_score: u64,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        unimplemented!()
+    }
+
+    fn get_transactions_by_block_acceptance_data(
+        &self,
+        accepting_block: Hash,
+        block_acceptance_data: MergesetBlockAcceptanceData,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        unimplemented!()
+    }
+
+    fn get_transactions_by_accepting_block(
+        &self,
+        accepting_block: Hash,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
         unimplemented!()
     }
 
@@ -184,15 +296,24 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_pruning_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction]) -> Hash {
         unimplemented!()
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+    fn validate_pruning_proof(&self, proof: &PruningPointProof, proof_metadata: &PruningProofMetadata) -> PruningImportResult<()> {
         unimplemented!()
     }
 
-    fn import_pruning_points(&self, pruning_points: PruningPointsList) {
+    fn apply_pruning_proof(
+        &self,
+        proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        header_only_chain_segment: &[Arc<Header>],
+    ) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    fn import_pruning_points(&self, pruning_points: PruningPointsList) -> PruningImportResult<()> {
         unimplemented!()
     }
 
@@ -201,6 +322,54 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    /// Import SMT lane state at the pruning point. Builds the tree from lane
+    /// preimages, verifies root matches `lanes_root`, and flushes to DB.
+    ///
+    /// The iterator yields lane chunks already sized by the wire-level chunker
+    /// each element is up to `SMT_CHUNK_SIZE` lanes. The importer does not
+    /// re-batch.
+    ///
+    /// `inactivity_shortcut_block` is resolved by the caller during metadata verification.
+    fn import_pruning_point_smt(
+        &self,
+        _new_pruning_point: Hash,
+        _metadata: SmtExportMetadata,
+        _inactivity_shortcut_block: Hash,
+        _lane_batches: ImportLaneBatchIterator<'_>,
+    ) -> PruningImportResult<()> {
+        unimplemented!()
+    }
+
+    /// Compute SMT metadata for the pruning point (for P2P streaming).
+    fn get_pruning_point_smt_metadata(&self, _expected_pruning_point: Hash) -> ConsensusResult<SmtExportMetadata> {
+        unimplemented!()
+    }
+
+    /// Resolve the `inactivity_shortcut_block` (the block hash anchoring the
+    /// `activity_root` shortcut) from the POV of `pov_block`. Uses headers +
+    /// reachability only; safe to call at the IBD PP boundary before the SMT
+    /// is imported. Callers resolve to the seq_commit Hash themselves (the
+    /// block-to-seq_commit fold is just a header read + activation check).
+    fn inactivity_shortcut_block_for_pov(&self, _pov_block: Hash) -> ConsensusResult<Hash> {
+        unimplemented!()
+    }
+
+    /// Open a live canonical-lane stream for the pruning point. The returned
+    /// iterator yields every canonical lane once, holds its own owned
+    /// pruning-lock guard internally so data stays pinned for its full
+    /// lifetime, and can be moved across `spawn_blocking` boundaries.
+    ///
+    /// Every [`SMT_PROOF_INTERVAL`]-th lane carries an inline SMT proof so the
+    /// receiver can abort a misbehaving peer mid-stream. Correctness is still
+    /// anchored by the final `lanes_root == computed_root` check in the
+    /// importer.
+    fn open_pruning_point_smt_lane_stream(
+        &self,
+        _expected_pruning_point: Hash,
+    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<ImportLane>> + Send + 'static>> {
         unimplemented!()
     }
 
@@ -256,6 +425,14 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_block_transactions(&self, hash: Hash, indices: Option<Vec<TransactionIndexType>>) -> ConsensusResult<Vec<Transaction>> {
+        unimplemented!()
+    }
+
+    fn get_block_body(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        unimplemented!()
+    }
+
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {
         unimplemented!()
     }
@@ -283,11 +460,25 @@ pub trait ConsensusApi: Send + Sync {
     /// Returns acceptance data for a set of blocks belonging to the selected parent chain.
     ///
     /// See `self::get_virtual_chain`
-    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+    fn get_blocks_acceptance_data(
+        &self,
+        hashes: &[Hash],
+        merged_blocks_limit: Option<usize>,
+    ) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
         unimplemented!()
     }
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        unimplemented!()
+    }
+
+    /// Returns a self-contained witness for verifying the lane `lane_key` against
+    /// the `seq_commit` carried in `block_hash`'s header. The block must be a
+    /// chain (selected-parent) block at or after the current pruning point;
+    /// non-canonical blocks are rejected with [`ConsensusError::BlockNotInSelectedChain`],
+    /// too-deep blocks with [`ConsensusError::BlockTooDeep`], and genesis with
+    /// [`ConsensusError::BlockIsGenesis`].
+    fn get_seq_commit_lane_proof(&self, block_hash: Hash, lane_key: Hash) -> ConsensusResult<SeqCommitLaneProof> {
         unimplemented!()
     }
 
@@ -304,19 +495,14 @@ pub trait ConsensusApi: Send + Sync {
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
+    fn get_body_missing_anticone(&self) -> Vec<Hash> {
+        unimplemented!()
+    }
+    fn clear_body_missing_anticone_set(&self) {
+        unimplemented!()
+    }
 
     fn pruning_point(&self) -> Hash {
-        unimplemented!()
-    }
-
-    // TODO: Delete this function once there's no need for go-kaspad backward compatibility.
-    fn get_daa_window(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
-        unimplemented!()
-    }
-
-    // TODO: Think of a better name.
-    // TODO: Delete this function once there's no need for go-kaspad backward compatibility.
-    fn get_trusted_block_associated_ghostdag_data_block_hashes(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         unimplemented!()
     }
 
@@ -324,7 +510,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_pruning_points(&self) -> ConsensusResult<()> {
+    fn validate_pruning_points(&self, syncer_virtual_selected_parent: Hash) -> ConsensusResult<()> {
         unimplemented!()
     }
 
@@ -337,6 +523,47 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn finality_point(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn clear_pruning_utxo_set(&self) {
+        unimplemented!()
+    }
+
+    fn clear_pruning_smt_stores(&self) {
+        unimplemented!()
+    }
+
+    fn set_pruning_smt_stable_flag(&self, _val: bool) {
+        unimplemented!()
+    }
+
+    fn is_pruning_smt_stable(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn set_pruning_utxoset_stable_flag(&self, val: bool) {
+        unimplemented!()
+    }
+
+    fn is_pruning_utxoset_stable(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn is_pruning_point_anticone_fully_synced(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn is_consensus_in_transitional_ibd_state(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn intrusive_pruning_point_update(&self, new_pruning_point: Hash, syncer_sink: Hash) -> ConsensusResult<()> {
+        unimplemented!()
+    }
+
+    /// Returns the n most recent pruning points (including the current pruning point)
+    fn get_n_last_pruning_points(&self, n: usize) -> Vec<Hash> {
         unimplemented!()
     }
 }

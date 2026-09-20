@@ -1,7 +1,7 @@
 use crate::common::ProtocolError;
 use crate::core::hub::HubEvent;
 use crate::pb::{
-    p2p_client::P2pClient as ProtoP2pClient, p2p_server::P2p as ProtoP2p, p2p_server::P2pServer as ProtoP2pServer, KaspadMessage,
+    KaspadMessage, p2p_client::P2pClient as ProtoP2pClient, p2p_server::P2p as ProtoP2p, p2p_server::P2pServer as ProtoP2pServer,
 };
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
@@ -9,18 +9,17 @@ use kaspa_core::{debug, info};
 use kaspa_utils::networking::NetAddress;
 use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
-    middleware::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
+    middleware::{CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
-use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio::sync::mpsc::{Sender as MpscSender, channel as mpsc_channel};
+use tokio::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use tokio_stream::StreamExt;
-use tonic::codegen::Body;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::{Error as TonicError, Server as TonicServer};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
 
@@ -80,8 +79,8 @@ impl ConnectionHandler {
 
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
-                .layer(measure_request_body_size_layer(bytes_rx, |b| b))
-                .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone())))
+                .layer(MapRequestBodyLayer::new(move |body| tonic::body::Body::new(CountBytesBody::new(body, bytes_rx.clone()))))
+                .layer(MapResponseBodyLayer::new(move |body| tonic::body::Body::new(CountBytesBody::new(body, bytes_tx.clone()))))
                 .add_service(proto_server)
                 .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                 .await;
@@ -109,9 +108,11 @@ impl ConnectionHandler {
             .await?;
 
         let channel = ServiceBuilder::new()
-            .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, self.counters.bytes_rx.clone())))
-            .layer(measure_request_body_size_layer(self.counters.bytes_tx.clone(), |body| {
-                body.map_err(|e| tonic::Status::from_error(Box::new(e))).boxed_unsync()
+            .layer(MapResponseBodyLayer::new(move |body| {
+                tonic::body::Body::new(CountBytesBody::new(body, self.counters.bytes_rx.clone()))
+            }))
+            .layer(MapRequestBodyLayer::new(move |body| {
+                tonic::body::Body::new(CountBytesBody::new(body, self.counters.bytes_tx.clone()))
             }))
             .service(channel);
 

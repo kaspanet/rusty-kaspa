@@ -1,6 +1,6 @@
-use serde::ser::SerializeTuple;
+use core::str;
 use serde::Serializer;
-use std::str;
+use serde::ser::SerializeTuple;
 
 /// Trait for serialization of types which can be referenced as fixed-size byte arrays.
 pub trait Serialize<const N: usize> {
@@ -16,7 +16,7 @@ impl<const N: usize> Serialize<N> for [u8; N] {
         S: Serializer,
     {
         if serializer.is_human_readable() {
-            let mut hex = vec![0u8; self.len() * 2];
+            let mut hex = alloc::vec![0u8; self.len() * 2];
             faster_hex::hex_encode(self, &mut hex[..]).map_err(serde::ser::Error::custom)?;
             serializer.serialize_str(unsafe { str::from_utf8_unchecked(&hex) })
         } else {

@@ -26,3 +26,6 @@ workflow-rpc.workspace = true
 
 [package.metadata.emanate.build]
 folder = "setup"
+
+[lints]
+workspace = true

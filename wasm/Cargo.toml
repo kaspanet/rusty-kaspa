@@ -18,11 +18,14 @@ crate-type = ["cdylib"]
 cfg-if.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
+kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
 kaspa-math.workspace = true
 kaspa-pow.workspace = true
+kaspa-txscript.workspace = true
+kaspa-txscript-zk-sdk.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
@@ -36,14 +39,18 @@ workflow-log.workspace = true
 workflow-core.workspace = true
 workflow-wasm.workspace = true
 
-[features] 
+[features]
 wasm32-sdk = [
     "kaspa-wallet-core/wasm32-sdk",
     "kaspa-pow/wasm32-sdk",
+    "kaspa-txscript/wasm32-sdk",
+    "kaspa-txscript-zk-sdk/wasm32-sdk",
 ]
 wasm32-core = [
     "kaspa-wallet-core/wasm32-core",
     "kaspa-pow/wasm32-sdk",
+    "kaspa-txscript/wasm32-sdk",
+    "kaspa-txscript-zk-sdk/wasm32-core",
 ]
 wasm32-rpc = [
     "kaspa-consensus-core/wasm32-sdk",
@@ -60,6 +67,17 @@ targets = ["wasm32-unknown-unknown"]
 [package.metadata.emanate.wasm]
 targets = [
     { target = "nodejs", out-dir = "nodejs/kaspa" },
-    { target = "web", out-dir = "web/kaspa" }
+    { target = "web", out-dir = "web/kaspa" },
 ]
 folder = "setup"
+
+# Workaround for Rust 1.87.0
+# https://github.com/rust-lang/rust/issues/141048
+[package.metadata.wasm-pack.profile.release]
+# This optimization configuration requires "-Ctarget-cpu=mvp" Rustflag (only enable W3C MVP feature set)
+# This flag is automatically used either via (release optimized) build script at root
+#   or via .cargo/config.toml when executing the build from /wasm
+wasm-opt = ["-O","--enable-bulk-memory"]
+
+[lints]
+workspace = true

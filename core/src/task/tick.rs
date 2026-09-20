@@ -1,5 +1,5 @@
 use std::{sync::Arc, time::Duration};
-use triggered::{trigger, Listener, Trigger};
+use triggered::{Listener, Trigger, trigger};
 
 use super::service::{AsyncService, AsyncServiceFuture};
 
