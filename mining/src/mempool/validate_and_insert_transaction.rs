@@ -24,6 +24,9 @@ impl Mempool {
         rbf_policy: RbfPolicy,
     ) -> RuleResult<TransactionPreValidation> {
         let transaction_id = transaction.id();
+        if transaction.tx.is_coinbase() {
+            return Err(RuleError::RejectCoinbase(transaction_id));
+        }
         self.validate_transaction_unacceptance(transaction_id)?;
         self.validate_transaction_not_duplicate(transaction_id)?;
         // Populate non-contextual masses up front, they will be used in multiple places throughout validation and insertion.
