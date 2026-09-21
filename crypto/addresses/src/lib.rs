@@ -369,7 +369,7 @@ impl<'de> Deserialize<'de> for Address {
             {
                 use wasm_bindgen::convert::RefFromWasmAbi;
 
-                let instance_ref = unsafe { Self::Value::ref_from_abi(v) }; // TODO: add checks for safecast
+                let instance_ref = unsafe { Self::Value::ref_from_abi(wasm_bindgen::__rt::WasmPtr::from_usize(v as usize)) }; // TODO: add checks for safecast
                 Ok(instance_ref.clone())
             }
 

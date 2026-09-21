@@ -1,6 +1,13 @@
 //!
 //! WASM bindings for the [Rusty Kaspa p2p Node wRPC Client](kaspa-wrpc-client)
 //!
+//! ## TLS crypto provider
+//!
+//! In WASM/JavaScript environments, TLS for `wss://` connections (and HTTPS via
+//! the resolver) is handled by the host — the browser or Node.js — so, unlike
+//! the native [`kaspa-wrpc-client`](https://docs.rs/kaspa-wrpc-client), **no
+//! rustls crypto provider needs to be installed**.
+//!
 
 #![allow(unused_imports)]
 

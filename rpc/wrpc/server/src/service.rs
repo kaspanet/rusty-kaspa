@@ -146,7 +146,7 @@ impl WrpcService {
         // Spawn a task running the server
         info!("WRPC Server starting on: {}", listen_address);
         tokio::spawn(async move {
-            let config = WebSocketConfig { max_message_size: Some(MAX_WRPC_MESSAGE_SIZE), ..Default::default() };
+            let config = WebSocketConfig::default().max_message_size(Some(MAX_WRPC_MESSAGE_SIZE));
             match self.server.bind(&listen_address).await {
                 Ok(listener) => {
                     let serve_result = self.server.listen(listener, Some(config)).await;

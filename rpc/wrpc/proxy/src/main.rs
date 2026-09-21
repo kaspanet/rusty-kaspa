@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
     log_info!("Kaspa wRPC server is listening on {}", options.listen_address);
     log_info!("Using `{encoding}` protocol encoding");
 
-    let config = WebSocketConfig { max_message_size: Some(1024 * 1024 * 1024), ..Default::default() };
+    let config = WebSocketConfig::default().max_message_size(Some(1024 * 1024 * 1024));
     let listener = server.bind(&options.listen_address).await?;
     server.listen(listener, Some(config)).await?;
 
