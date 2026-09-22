@@ -33,12 +33,11 @@ pub(super) async fn receive_pruning_point_proof(
     let mut proof = PruningPointProofMessage { headers: Vec::new() };
     let mut current_level: Option<BlockLevel> = None;
     let mut current_headers = PruningPointProofHeaderArray { headers: Vec::new() };
-    let mut chunk_count = 0;
     let mut cumulative_size = 0;
     let started_at = Instant::now();
     // Proof generation can take several minutes, so we start with a long timeout and reset it to the default after the first chunk is received.
     let mut timeout = Duration::from_secs(600);
-    loop {
+    for chunk_count in 1u64.. {
         let msg = tokio::time::timeout(timeout, incoming_route.recv())
             .await
             .map_err(|_| ProtocolError::Timeout(timeout))?
@@ -70,7 +69,6 @@ pub(super) async fn receive_pruning_point_proof(
                 }
                 current_level = Some(level);
                 current_headers.headers.extend(chunk.chunk);
-                chunk_count += 1;
                 info!("Received pruning point proof chunk #{}: level {}", chunk_count, level);
             }
             Some(Payload::PruningPointProofChunksEnd(_)) => {
@@ -88,9 +86,11 @@ pub(super) async fn receive_pruning_point_proof(
             }
         }
     }
+    unreachable!()
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
     use kaspa_consensus_core::header::Header;

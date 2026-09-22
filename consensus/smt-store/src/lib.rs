@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 use kaspa_hashes::Hash;
 
 pub mod branch_version_store;

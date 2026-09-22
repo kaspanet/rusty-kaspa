@@ -1,3 +1,6 @@
+// Test code is exempt from the arithmetic-side-effects lint.
+#![allow(clippy::arithmetic_side_effects)]
+
 use std::{
     sync::{Arc, Mutex},
     thread::sleep,

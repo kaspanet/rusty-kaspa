@@ -3,6 +3,7 @@
 //!
 //! General purpose utilities and various type extensions used across the Rusty Kaspa codebase.
 //!
+#![allow(clippy::arithmetic_side_effects)]
 #![no_std]
 
 extern crate alloc;

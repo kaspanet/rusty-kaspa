@@ -54,6 +54,7 @@ impl SearchArgument<FeerateKey> for FeerateWeight {
         // value is out of bounds
         match keys.len() {
             0 => None,
+            #[allow(clippy::arithmetic_side_effects, reason = "The preceding arm handles zero, so n >= 1.")]
             n => Some(n - 1),
         }
     }
@@ -74,6 +75,7 @@ impl SearchArgument<FeerateKey> for FeerateWeight {
         // last leaf (see locate_in_leaf as well)
         match arguments.len() {
             0 => None,
+            #[allow(clippy::arithmetic_side_effects, reason = "The preceding arm handles zero, so both n - 1 expressions are safe.")]
             n => Some((n - 1, arguments[n - 1].0)),
         }
     }
@@ -105,7 +107,10 @@ impl<'a> PrefixWeightVisitor<'a> {
             }
             Ok(idx) => {
                 // Exact match, return the following index
-                idx + 1
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    idx + 1
+                }
             }
         }
     }

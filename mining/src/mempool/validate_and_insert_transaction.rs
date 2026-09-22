@@ -105,7 +105,7 @@ impl Mempool {
                 // Note that self.transaction_pool.len() < self.config.maximum_transaction_count means we have
                 // at least one available slot in terms of the count limit
                 if self.transaction_pool.len() < self.config.maximum_transaction_count
-                    && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit
+                    && self.transaction_pool.get_estimated_size().saturating_add(transaction_size) <= self.config.mempool_size_limit
                 {
                     break;
                 }
@@ -115,15 +115,21 @@ impl Mempool {
                 .fetch_add(transaction_pool_len_before.saturating_sub(self.transaction_pool.len()) as u64, Ordering::Relaxed);
         }
 
-        assert!(
-            self.transaction_pool.len() < self.config.maximum_transaction_count
-                && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit,
-            "Transactions in mempool: {}, max: {}, mempool bytes size: {}, max: {}",
-            self.transaction_pool.len() + 1,
-            self.config.maximum_transaction_count,
-            self.transaction_pool.get_estimated_size() + transaction_size,
-            self.config.mempool_size_limit,
-        );
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "The assertion intentionally checks both invariants: overflow checks make an unrepresentable sum panic before the comparison, while a representable sum must not exceed the mempool size limit."
+        )]
+        {
+            assert!(
+                self.transaction_pool.len() < self.config.maximum_transaction_count
+                    && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit,
+                "Transactions in mempool: {}, max: {}, mempool bytes size: {}, max: {}",
+                self.transaction_pool.len().saturating_add(1),
+                self.config.maximum_transaction_count,
+                self.transaction_pool.get_estimated_size().saturating_add(transaction_size),
+                self.config.mempool_size_limit,
+            );
+        }
 
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =

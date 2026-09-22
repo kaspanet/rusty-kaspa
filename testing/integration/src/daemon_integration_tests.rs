@@ -25,15 +25,19 @@ use kaspa_notify::{
     events::EventType,
     scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
-use kaspa_rpc_core::{Notification, RpcTransaction, RpcTransactionId, api::rpc::RpcApi};
+use kaspa_rpc_core::{
+    Notification, RpcTransaction, RpcTransactionId, api::rpc::RpcApi, model::BanRequest, model::GetPeerAddressesRequest,
+    model::UnbanRequest,
+};
 use kaspa_txscript::{
     opcodes::codes, pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script,
     script_builder::ScriptBuilder,
 };
+use kaspa_utils::networking::ContextualNetAddress;
 use kaspad_lib::args::Args;
 use rand::thread_rng;
 use serde_json;
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 fn load_override_params(path: &PathBuf) -> Params {
     let override_params_json = fs::read_to_string(path).unwrap();
@@ -1215,4 +1219,81 @@ async fn daemon_cleaning_test() {
     assert_eq!(consensus_manager.strong_count(), 0);
     assert_eq!(async_runtime.strong_count(), 0);
     assert_eq!(core.strong_count(), 0);
+}
+
+/// Verifies that a node rejects an inbound P2P connection whose originating IP is banned
+/// (see FlowContext::initialize_connection, protocol/flows/src/flow_context.rs), and that
+/// the connection succeeds once the IP is unbanned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_banned_ip_inbound_rejection_test() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    let args = Args {
+        simnet: true,
+        unsafe_rpc: true, // required for the ban/unban RPC calls
+        disable_upnp: true,
+        disable_dns_seeding: true,
+        outbound_target: 0, // avoid automatic outbound connections interfering with the test
+        ..Default::default()
+    };
+    let total_fd_limit = 10;
+
+    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client1 = kaspad1.start().await;
+    let rpc_client2 = kaspad2.start().await;
+
+    // Both daemons listen on 127.0.0.1, so banning the loopback IP on kaspad1
+    // simulates banning the IP of the connecting (inbound) peer
+    let ip = ContextualNetAddress::from_str("127.0.0.1").unwrap().normalize(1).ip;
+
+    // Ban the IP on kaspad1
+    rpc_client1.ban_call(None, BanRequest { ip }).await.unwrap();
+
+    // Verify the ban was registered
+    let response = rpc_client1.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await.unwrap();
+    assert!(response.banned_addresses.contains(&ip), "the IP should be listed as banned");
+
+    // Have kaspad2 connect to kaspad1. This is an outbound connection from kaspad2's
+    // perspective but an inbound connection from kaspad1's perspective
+    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), false).await.unwrap();
+
+    // Give kaspad1 ample time to (attempt to) process the inbound connection
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // kaspad1 must have rejected the inbound connection from the banned IP
+    let peers1 = rpc_client1.get_connected_peer_info().await.unwrap().peer_info;
+    assert!(peers1.is_empty(), "kaspad1 accepted an inbound connection from a banned IP: {:?}", peers1);
+
+    // And consequently kaspad2 must not be connected either
+    let peers2 = rpc_client2.get_connected_peer_info().await.unwrap().peer_info;
+    assert!(peers2.is_empty(), "kaspad2 unexpectedly reports a connected peer: {:?}", peers2);
+
+    // Unban the IP and verify a subsequent inbound connection is accepted
+    rpc_client1.unban_call(None, UnbanRequest { ip }).await.unwrap();
+
+    let response = rpc_client1.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await.unwrap();
+    assert!(!response.banned_addresses.contains(&ip), "the IP should no longer be listed as banned");
+
+    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), false).await.unwrap();
+
+    let check_client = rpc_client1.clone();
+    wait_for(
+        50,
+        20,
+        move || {
+            async fn peer_connected(client: GrpcClient) -> bool {
+                client.get_connected_peer_info().await.unwrap().peer_info.len() == 1
+            }
+            Box::pin(peer_connected(check_client.clone()))
+        },
+        "kaspad1 did not accept the inbound connection after the IP was unbanned",
+    )
+    .await;
+
+    rpc_client1.disconnect().await.unwrap();
+    rpc_client2.disconnect().await.unwrap();
+    kaspad1.shutdown();
+    kaspad2.shutdown();
 }

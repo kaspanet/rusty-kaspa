@@ -185,9 +185,9 @@ impl AddressManager {
         // - If a mapping is found that uses the desired external port, the loop breaks with `already_in_use` set to true.
         // - If the index is not valid (i.e., we've iterated through all the mappings), the loop breaks with `already_in_use` set to false.
         // - Any other errors during fetching of port mappings are handled accordingly, but the end result is to exit the loop with the `already_in_use` flag set appropriately.
-        let mut index = 0;
-        let already_in_use = loop {
-            match gateway.get_generic_port_mapping_entry(index) {
+        let mut already_in_use = false;
+        for i in 0.. {
+            match gateway.get_generic_port_mapping_entry(i) {
                 Ok(entry) => {
                     if entry.enabled && entry.external_port == desired_external_port {
                         info!(
@@ -198,21 +198,20 @@ impl AddressManager {
                             entry.internal_client,
                             entry.lease_duration
                         );
-                        break true;
+                        already_in_use = true;
+                        break;
                     }
-                    index += 1;
                 }
                 Err(GetGenericPortMappingEntryError::ActionNotAuthorized) => {
-                    index += 1;
                     continue;
                 }
                 Err(GetGenericPortMappingEntryError::RequestError(err)) => {
                     warn!("[UPnP] request existing port mapping err: {:?}", err);
-                    break false;
+                    break;
                 }
-                Err(GetGenericPortMappingEntryError::SpecifiedArrayIndexInvalid) => break false,
+                Err(GetGenericPortMappingEntryError::SpecifiedArrayIndexInvalid) => break,
             }
-        };
+        }
         if already_in_use {
             let port =
                 gateway.add_any_port(igd::PortMappingProtocol::TCP, local_addr, UPNP_DEADLINE_SEC as u32, UPNP_REGISTRATION_NAME)?;
@@ -277,6 +276,7 @@ impl AddressManager {
             return;
         }
 
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
         let new_count = self.address_store.get(address).connection_failed_count + 1;
         if new_count > MAX_CONNECTION_FAILED_COUNT {
             self.address_store.remove(address);
@@ -317,7 +317,7 @@ impl AddressManager {
         const MAX_BANNED_TIME: u64 = 24 * 60 * 60 * 1000;
         match self.banned_address_store.get(ip.into()).optional().unwrap() {
             Some(timestamp) => {
-                if unix_now() - timestamp.0 > MAX_BANNED_TIME {
+                if unix_now().saturating_sub(timestamp.0) > MAX_BANNED_TIME {
                     self.unban(ip);
                     false
                 } else {
@@ -447,8 +447,11 @@ mod address_store_with_cache {
                 .filter(|(addr_key, _)| !exceptions.contains(addr_key))
                 .map(|(_, e)| {
                     let count = prefix_counter.entry(e.address.prefix_bucket()).or_insert(0);
-                    *count += 1;
-                    (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address)
+                    #[allow(clippy::arithmetic_side_effects, reason = "See below")]
+                    {
+                        *count += 1; // ARITH-SAFETY(COUNTER)
+                        (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address) // It's guaranteed that `e.connection_failed_count <= MAX_CONNECTION_FAILED_COUNT`.
+                    }
                 })
                 .unzip();
 
@@ -484,6 +487,7 @@ mod address_store_with_cache {
             let weighted_index = match WeightedIndex::new(weights) {
                 Ok(index) => Some(index),
                 Err(WeightedError::NoItem) => None,
+                Err(WeightedError::AllWeightsZero) => None,
                 Err(e) => panic!("{e}"),
             };
             Self { weighted_index, remaining, addresses }
@@ -502,7 +506,15 @@ mod address_store_with_cache {
                     Err(WeightedError::AllWeightsZero) => self.weighted_index = None,
                     Err(e) => panic!("{e}"),
                 }
-                self.remaining -= 1;
+
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    reason = "It's guaranteed that once `remaining = 0` then `weighted_index = None`, and then this code path will not be reached."
+                )]
+                {
+                    self.remaining -= 1;
+                }
+
                 if self.remaining == 0 {
                     self.weighted_index = None;
                 }

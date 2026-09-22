@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use kaspa_consensus_core::hashing::tx::{id_v0, id_v1};
 use kaspa_consensus_core::{

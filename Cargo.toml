@@ -293,6 +293,7 @@ tower-http = { version = "0.5.2", features = [
 tower = "0.5.1"
 chrono = "0.4.31"
 indexed_db_futures = "0.5.0"
+serde_with = "3.23.0"
 
 # ZK consensus verifier dependencies: do not bump casually.
 # Upstream verifier fixes can change proof/receipt acceptance, so any bump
@@ -419,5 +420,6 @@ opt-level = 2
 opt-level = 2
 
 [workspace.lints.clippy]
+arithmetic_side_effects = "warn"
 empty_docs = "allow"
 uninlined_format_args = "allow"

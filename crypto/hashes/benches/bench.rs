@@ -1,3 +1,6 @@
+// Benchmarks are exempt from the arithmetic-side-effects lint.
+#![allow(clippy::arithmetic_side_effects)]
+
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use kaspa_hashes::*;
 use rand::{Rng, RngCore, thread_rng};

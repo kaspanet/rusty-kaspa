@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use zeroize::Zeroizing;
 
 pub use secp256k1;
