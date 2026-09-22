@@ -201,9 +201,6 @@ async fn main() -> Result<(), anyhow::Error> {
     // instead of having the server re-read `config.yaml` from disk.
     // This is best-effort and does not affect any mining logic.
     prom::set_web_status_config(config.global.kaspad_address.clone(), config.instances.len());
-    // Point the web config endpoint at the actual config file path the bridge is using.
-    let loaded_config_path = CONFIG_LOADED_FROM.get().and_then(|p| p.as_ref()).cloned().unwrap_or_else(|| requested_config.clone());
-    prom::set_web_config_path(loaded_config_path);
 
     // Initialize tracing with WARN level by default (less verbose)
     // Can be overridden with RUST_LOG environment variable (e.g., RUST_LOG=info,debug)

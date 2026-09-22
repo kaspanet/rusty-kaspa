@@ -51,13 +51,6 @@ pub struct BridgeConfig {
     pub instances: Vec<InstanceConfig>,
 }
 
-#[derive(Serialize)]
-struct BridgeConfigYaml<'a> {
-    #[serde(flatten)]
-    global: &'a GlobalConfig,
-    instances: &'a [InstanceConfig],
-}
-
 // Custom deserializers
 
 /// Deserialize a port string and normalize it
@@ -273,10 +266,5 @@ impl BridgeConfig {
         }
 
         Ok(BridgeConfig { global: raw.global, instances })
-    }
-
-    pub(crate) fn to_yaml(&self) -> Result<String, serde_yaml::Error> {
-        let yaml = BridgeConfigYaml { global: &self.global, instances: &self.instances };
-        serde_yaml::to_string(&yaml)
     }
 }
