@@ -1343,7 +1343,7 @@ impl ShareHandler {
                     total_blocks_all_time += *overall.blocks_found.lock();
 
                     let stats_map = stats.lock();
-                    for (_, v) in stats_map.iter() {
+                    for v in stats_map.values() {
                         let elapsed = v.start_time.elapsed().as_secs_f64();
                         let rate = if elapsed > 0.0 {
                             let total_hash_value = *v.shares_diff.lock();
@@ -1606,7 +1606,7 @@ impl ShareHandler {
                 let mut stats_map = stats.lock();
                 let now = Instant::now();
 
-                for (_worker_id, v) in stats_map.iter_mut() {
+                for v in stats_map.values_mut() {
                     let start_opt = *v.var_diff_start_time.lock();
                     let Some(start) = start_opt else { continue };
 

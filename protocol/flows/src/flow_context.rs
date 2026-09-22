@@ -485,13 +485,13 @@ impl FlowContext {
     /// Adds the rpc-submitted block to the DAG and propagates it to peers.
     pub async fn submit_rpc_block(&self, consensus: &ConsensusProxy, block: Block) -> Result<(), ProtocolError> {
         if block.transactions.is_empty() {
-            return Err(RuleError::NoTransactions)?;
+            Err(RuleError::NoTransactions)?;
         }
         let hash = block.hash();
         let BlockValidationFutures { block_task, virtual_state_task } = consensus.validate_and_insert_block(block.clone());
         if let Err(err) = block_task.await {
             warn!("Validation failed for block {}: {}", hash, err);
-            return Err(err)?;
+            Err(err)?;
         }
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) }), None).await;

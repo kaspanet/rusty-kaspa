@@ -245,13 +245,13 @@ where
             if let Some(inst_num) = instance_num {
                 // Apply instance color to the entire message
                 let color_code = LogColors::instance_color_code(inst_num);
-                write!(writer, "{}{}\x1b[0m", color_code, &message)?;
+                write!(writer, "{}{}\x1b[0m", color_code, message)?;
                 writeln!(writer)?;
                 return Ok(());
             }
 
             if (message.contains("| Worker") && message.contains("| Inst")) || message.contains("| TOTAL") {
-                write!(writer, "\x1b[92m{}\x1b[0m", &message)?;
+                write!(writer, "\x1b[92m{}\x1b[0m", message)?;
                 writeln!(writer)?;
                 return Ok(());
             } else
@@ -263,29 +263,29 @@ where
                 if let Ok(inst_num) = instance_str.parse::<usize>() {
                     // Apply instance color to the entire message
                     let color_code = LogColors::instance_color_code(inst_num);
-                    write!(writer, "{}{}\x1b[0m", color_code, &message)?;
+                    write!(writer, "{}{}\x1b[0m", color_code, message)?;
                     writeln!(writer)?;
                     return Ok(());
                 }
             }
             if message.contains("[ASIC->BRIDGE]") {
-                write!(writer, "\x1b[96m{}\x1b[0m", &message)?; // Cyan
+                write!(writer, "\x1b[96m{}\x1b[0m", message)?; // Cyan
             } else if message.contains("[BRIDGE->ASIC]") {
-                write!(writer, "\x1b[92m{}\x1b[0m", &message)?; // Green
+                write!(writer, "\x1b[92m{}\x1b[0m", message)?; // Green
             } else if message.contains("[VALIDATION]") {
-                write!(writer, "\x1b[93m{}\x1b[0m", &message)?; // Yellow
+                write!(writer, "\x1b[93m{}\x1b[0m", message)?; // Yellow
             } else if message.contains("===== BLOCK") || message.contains("[BLOCK]") {
-                write!(writer, "\x1b[95m{}\x1b[0m", &message)?; // Magenta
+                write!(writer, "\x1b[95m{}\x1b[0m", message)?; // Magenta
             } else if message.contains("[API]") {
-                write!(writer, "\x1b[94m{}\x1b[0m", &message)?; // Blue
+                write!(writer, "\x1b[94m{}\x1b[0m", message)?; // Blue
             } else if message.contains("Error") || message.contains("ERROR") {
-                write!(writer, "\x1b[91m{}\x1b[0m", &message)?; // Red
+                write!(writer, "\x1b[91m{}\x1b[0m", message)?; // Red
             } else if message.contains("----------------------------------") {
-                write!(writer, "\x1b[96m{}\x1b[0m", &message)?; // Bright Cyan for separator lines
+                write!(writer, "\x1b[96m{}\x1b[0m", message)?; // Bright Cyan for separator lines
             } else if message.contains("initializing bridge") {
-                write!(writer, "\x1b[92m{}\x1b[0m", &message)?; // Bright Green for initialization
+                write!(writer, "\x1b[92m{}\x1b[0m", message)?; // Bright Green for initialization
             } else if message.contains("Starting RKStratum") {
-                write!(writer, "\x1b[92m{}\x1b[0m", &message)?; // Bright Green for startup
+                write!(writer, "\x1b[92m{}\x1b[0m", message)?; // Bright Green for startup
             } else if message.starts_with("\t") && message.contains(":") {
                 // Configuration lines - color the label part (e.g., "\tkaspad:          value")
                 if let Some(colon_pos) = message.find(':') {
@@ -296,16 +296,16 @@ where
                     let value = &message[label_end_pos..];
                     write!(writer, "\x1b[94m{}\x1b[0m{}", label, value)?; // Blue for labels
                 } else {
-                    write!(writer, "{}", &message)?;
+                    write!(writer, "{}", message)?;
                 }
             } else if message.contains("[NODE]") {
                 let colored = message.replace("[NODE]", "\x1b[97m[\x1b[0m\x1b[92mNODE\x1b[0m\x1b[97m]\x1b[0m");
                 write!(writer, "{}", colored)?;
             } else {
-                write!(writer, "{}", &message)?; // No color
+                write!(writer, "{}", message)?; // No color
             }
         } else {
-            write!(writer, "{}", &message)?;
+            write!(writer, "{}", message)?;
         }
 
         writeln!(writer)

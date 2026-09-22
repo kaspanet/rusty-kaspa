@@ -81,7 +81,7 @@ impl DaemonArgs {
             "--p2p".to_owned(),
             format!("{}", self.p2p),
             "--private-key".to_owned(),
-            format!("{}", self.private_key),
+            self.private_key.to_string(),
             "--max-tracked-addresses".to_owned(),
             format!("{}", self.max_tracked_addresses),
         ];
