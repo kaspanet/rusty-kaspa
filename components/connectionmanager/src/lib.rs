@@ -1,8 +1,12 @@
 use std::{
     cmp::min,
     collections::{HashMap, HashSet},
+    future::Future,
     net::{IpAddr, SocketAddr, ToSocketAddrs},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime},
 };
 
@@ -32,20 +36,85 @@ pub struct ConnectionManager {
     default_port: u16,
     address_manager: Arc<ParkingLotMutex<AddressManager>>,
     connection_requests: TokioMutex<HashMap<SocketAddr, ConnectionRequest>>,
+    next_connection_request_generation: AtomicU64,
     force_next_iteration: UnboundedSender<()>,
     shutdown_signal: SingleTrigger,
 }
 
 #[derive(Clone, Debug)]
 struct ConnectionRequest {
+    generation: u64,
     next_attempt: SystemTime,
     is_permanent: bool,
     attempts: u32,
 }
 
 impl ConnectionRequest {
-    fn new(is_permanent: bool) -> Self {
-        Self { next_attempt: SystemTime::now(), is_permanent, attempts: 0 }
+    fn new(generation: u64, is_permanent: bool) -> Self {
+        Self { generation, next_attempt: SystemTime::now(), is_permanent, attempts: 0 }
+    }
+}
+
+async fn process_connection_requests<P, F, Fut>(
+    connection_requests: &TokioMutex<HashMap<SocketAddr, ConnectionRequest>>,
+    peer_by_address: &HashMap<SocketAddr, P>,
+    mut connect_peer: F,
+) where
+    F: FnMut(SocketAddr) -> Fut,
+    Fut: Future<Output = Result<(), String>>,
+{
+    // Snapshot the request map so no network await occurs while its mutex is held.
+    let requests = connection_requests
+        .lock()
+        .await
+        .iter()
+        .map(|(&address, request)| (address, request.clone(), peer_by_address.contains_key(&address)))
+        .collect_vec();
+
+    let mut updates = Vec::with_capacity(requests.len());
+    for (address, request, is_connected) in requests {
+        let replacement = if is_connected && !request.is_permanent {
+            None
+        } else if !is_connected && request.next_attempt <= SystemTime::now() {
+            debug!("Connecting to peer request {}", address);
+            match connect_peer(address).await {
+                Err(err) => {
+                    debug!("Failed connecting to peer request: {}, {}", address, err);
+                    if request.is_permanent {
+                        const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
+                        let retry_duration = Duration::from_secs(30u64 * 2u64.pow(min(request.attempts, MAX_ACCOUNTABLE_ATTEMPTS)));
+                        debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
+                        Some(ConnectionRequest {
+                            generation: request.generation,
+                            next_attempt: SystemTime::now() + retry_duration,
+                            attempts: request.attempts + 1,
+                            is_permanent: true,
+                        })
+                    } else {
+                        None
+                    }
+                }
+                Ok(()) if request.is_permanent => Some(ConnectionRequest::new(request.generation, true)),
+                Ok(()) => None,
+            }
+        } else {
+            Some(request.clone())
+        };
+        updates.push((address, request.generation, replacement));
+    }
+
+    // Apply an outcome only if the live entry is still the generation that was dialed.
+    // This preserves concurrent inserts, replacements, and removals.
+    let mut live_requests = connection_requests.lock().await;
+    for (address, generation, replacement) in updates {
+        if !live_requests.get(&address).is_some_and(|request| request.generation == generation) {
+            continue;
+        }
+        if let Some(request) = replacement {
+            live_requests.insert(address, request);
+        } else {
+            live_requests.remove(&address);
+        }
     }
 }
 
@@ -65,6 +134,7 @@ impl ConnectionManager {
             inbound_limit,
             address_manager,
             connection_requests: Default::default(),
+            next_connection_request_generation: AtomicU64::new(0),
             force_next_iteration: tx,
             shutdown_signal: SingleTrigger::new(),
             dns_seeders,
@@ -107,7 +177,8 @@ impl ConnectionManager {
 
     pub async fn add_connection_request(&self, address: SocketAddr, is_permanent: bool) {
         // If the request already exists, it resets the attempts count and overrides the `is_permanent` setting.
-        self.connection_requests.lock().await.insert(address, ConnectionRequest::new(is_permanent));
+        let generation = self.next_connection_request_generation.fetch_add(1, Ordering::Relaxed);
+        self.connection_requests.lock().await.insert(address, ConnectionRequest::new(generation, is_permanent));
         // Force the next iteration of the connection loop. This is a fire-and-forget wakeup, so if
         // the event loop receiver was already dropped (e.g. during shutdown) the send is a no-op
         // rather than a panic. add_connection_request is reachable from the AddPeer RPC handler,
@@ -120,49 +191,11 @@ impl ConnectionManager {
     }
 
     async fn handle_connection_requests(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
-        let mut requests = self.connection_requests.lock().await;
-        let mut new_requests = HashMap::with_capacity(requests.len());
-        for (address, request) in requests.iter() {
-            let address = *address;
-            let request = request.clone();
-            let is_connected = peer_by_address.contains_key(&address);
-            if is_connected && !request.is_permanent {
-                // The peer is connected and the request is not permanent - no need to keep the request
-                continue;
-            }
-
-            if !is_connected && request.next_attempt <= SystemTime::now() {
-                debug!("Connecting to peer request {}", address);
-                match self.p2p_adaptor.connect_peer(address.to_string()).await {
-                    Err(err) => {
-                        debug!("Failed connecting to peer request: {}, {}", address, err);
-                        if request.is_permanent {
-                            const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
-                            let retry_duration =
-                                Duration::from_secs(30u64 * 2u64.pow(min(request.attempts, MAX_ACCOUNTABLE_ATTEMPTS)));
-                            debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
-                            new_requests.insert(
-                                address,
-                                ConnectionRequest {
-                                    next_attempt: SystemTime::now() + retry_duration,
-                                    attempts: request.attempts + 1,
-                                    is_permanent: true,
-                                },
-                            );
-                        }
-                    }
-                    Ok(_) if request.is_permanent => {
-                        // Permanent requests are kept forever
-                        new_requests.insert(address, ConnectionRequest::new(true));
-                    }
-                    Ok(_) => {}
-                }
-            } else {
-                new_requests.insert(address, request);
-            }
-        }
-
-        *requests = new_requests;
+        process_connection_requests(&self.connection_requests, peer_by_address, |address| {
+            let p2p_adaptor = self.p2p_adaptor.clone();
+            async move { p2p_adaptor.connect_peer(address.to_string()).await.map(|_| ()).map_err(|err| err.to_string()) }
+        })
+        .await;
     }
 
     async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
@@ -340,5 +373,91 @@ impl ConnectionManager {
     /// Returns whether the given IP has some permanent request.
     pub async fn ip_has_permanent_connection(&self, ip: IpAddr) -> bool {
         self.connection_requests.lock().await.iter().any(|(address, request)| request.is_permanent && address.ip() == ip)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::{sync::Notify, time::timeout};
+
+    fn address(port: u16) -> SocketAddr {
+        SocketAddr::from(([127, 0, 0, 1], port))
+    }
+
+    async fn start_blocked_processing(
+        requests: Arc<TokioMutex<HashMap<SocketAddr, ConnectionRequest>>>,
+    ) -> (Arc<Notify>, Arc<Notify>, tokio::task::JoinHandle<()>) {
+        let entered = Arc::new(Notify::new());
+        let resume = Arc::new(Notify::new());
+        let task_entered = entered.clone();
+        let task_resume = resume.clone();
+        let task = tokio::spawn(async move {
+            let peers = HashMap::<SocketAddr, ()>::new();
+            process_connection_requests(&requests, &peers, move |_| {
+                let entered = task_entered.clone();
+                let resume = task_resume.clone();
+                async move {
+                    entered.notify_one();
+                    resume.notified().await;
+                    Ok(())
+                }
+            })
+            .await;
+        });
+        (entered, resume, task)
+    }
+
+    async fn lock_while_dialing(
+        requests: &Arc<TokioMutex<HashMap<SocketAddr, ConnectionRequest>>>,
+    ) -> tokio::sync::MutexGuard<'_, HashMap<SocketAddr, ConnectionRequest>> {
+        timeout(Duration::from_secs(1), requests.lock()).await.expect("request map remained locked during peer dial")
+    }
+
+    #[tokio::test]
+    async fn preserves_insert_during_peer_dial() {
+        let original = address(16110);
+        let inserted = address(16111);
+        let requests = Arc::new(TokioMutex::new(HashMap::from([(original, ConnectionRequest::new(1, true))])));
+        let (entered, resume, task) = start_blocked_processing(requests.clone()).await;
+
+        entered.notified().await;
+        lock_while_dialing(&requests).await.insert(inserted, ConnectionRequest::new(2, false));
+        resume.notify_one();
+        task.await.unwrap();
+
+        let requests = requests.lock().await;
+        assert_eq!(requests.get(&original).unwrap().generation, 1);
+        assert_eq!(requests.get(&inserted).unwrap().generation, 2);
+    }
+
+    #[tokio::test]
+    async fn preserves_reinsert_during_peer_dial() {
+        let address = address(16110);
+        let requests = Arc::new(TokioMutex::new(HashMap::from([(address, ConnectionRequest::new(1, true))])));
+        let (entered, resume, task) = start_blocked_processing(requests.clone()).await;
+
+        entered.notified().await;
+        lock_while_dialing(&requests).await.insert(address, ConnectionRequest::new(2, false));
+        resume.notify_one();
+        task.await.unwrap();
+
+        let request = requests.lock().await.get(&address).unwrap().clone();
+        assert_eq!(request.generation, 2);
+        assert!(!request.is_permanent);
+    }
+
+    #[tokio::test]
+    async fn preserves_removal_during_peer_dial() {
+        let address = address(16110);
+        let requests = Arc::new(TokioMutex::new(HashMap::from([(address, ConnectionRequest::new(1, true))])));
+        let (entered, resume, task) = start_blocked_processing(requests.clone()).await;
+
+        entered.notified().await;
+        lock_while_dialing(&requests).await.remove(&address);
+        resume.notify_one();
+        task.await.unwrap();
+
+        assert!(!requests.lock().await.contains_key(&address));
     }
 }
