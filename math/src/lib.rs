@@ -186,4 +186,21 @@ mod tests {
         ]);
         assert_eq!(r / newr, expected);
     }
+
+    #[test]
+    fn as_f64_u3072_saturates_to_positive_infinity() {
+        // 2^1023 is finite and exactly representable as f64.
+        let uint_1023 = Uint3072::from(1u64) << 1023;
+        assert_eq!(uint_1023.as_f64(), 2f64.powi(1023));
+
+        // 2^1024 and above must saturate to +infinity.
+        let two_pow_1024 = Uint3072::from(1u64) << 1024;
+        assert_eq!(2f64.powi(1024), f64::INFINITY);
+        assert_eq!(two_pow_1024.as_f64(), f64::INFINITY);
+
+        let two_pow_1024_plus_one = two_pow_1024 + 1;
+        assert_eq!(two_pow_1024_plus_one.as_f64(), f64::INFINITY);
+
+        assert_eq!(Uint3072::MAX.as_f64(), f64::INFINITY);
+    }
 }

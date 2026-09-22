@@ -76,6 +76,7 @@ impl U3072 {
 
     #[inline(always)]
     fn full_reduce(&mut self) {
+        debug_assert!(self.is_overflow());
         let mut low = PRIME_DIFF;
         let mut high: Limb = 0;
         for limb in &mut self.limbs {
@@ -249,6 +250,7 @@ fn mul_wide(a: Limb, b: Limb) -> (Limb, Limb) {
 #[inline(always)]
 #[must_use]
 fn mulnadd3(c0: Limb, c1: Limb, d0: Limb, d1: Limb, d2: Limb, n: Limb) -> (Limb, Limb, Limb) {
+    debug_assert!(d2 < LIMBS as Limb, "{d2} >= {LIMBS}"); // d2 is the highest limb of the number, so it must be smaller than the number of limbs (otherwise it would have been reduced already)
     let mut t = d0 as DoubleLimb * n as DoubleLimb + c0 as DoubleLimb;
     let c0 = t as Limb;
     t >>= LIMB_SIZE;
@@ -277,6 +279,7 @@ fn muladd3(a: Limb, b: Limb, low: Limb, high: Limb, mut carry: Limb) -> (Limb, L
 #[inline(always)]
 #[must_use]
 fn muln2(low: Limb, high: Limb, n: Limb) -> (Limb, Limb) {
+    debug_assert!(high <= LIMBS as Limb, "high({high}) carry must be bounded by accumulation count");
     let mut tmp = low as DoubleLimb * n as DoubleLimb;
     let low = tmp as Limb;
 
@@ -338,22 +341,22 @@ mod tests {
                 c1: Limb::MAX - 75,
                 d0: Limb::MAX - 30,
                 d1: Limb::MAX - 3452,
-                d2: 829429,
+                d2: 10,
                 n: 48569320,
                 expected_c0: 18446744072203902596,
                 expected_c1: 18446743906048258900,
-                expected_c2: 40284851087600,
+                expected_c2: 534262520,
             },
             TestVector {
                 c0: 0,
                 c1: Limb::MAX - 32432432,
                 d0: Limb::MAX - 534532431432423,
                 d1: 1,
-                d2: 342356341,
+                d2: 47,
                 n: 878998734,
                 expected_c0: 3687790413486659920,
                 expected_c1: 1725539564,
-                expected_c2: 300930790315872295,
+                expected_c2: 41312940499,
             },
         ];
         for test in tests {
@@ -374,14 +377,8 @@ mod tests {
             expected_high: Limb,
         }
         let tests = [
-            TestVector { low: Limb::MAX - 99, high: Limb::MAX - 75, n: Limb::MAX - 543, expected_low: 54400, expected_high: 40700 },
-            TestVector {
-                low: 0,
-                high: Limb::MAX - 32432432,
-                n: Limb::MAX - 546546456543,
-                expected_low: 0,
-                expected_high: 17725831333250691552,
-            },
+            TestVector { low: Limb::MAX - 99, high: 47, n: Limb::MAX - 543, expected_low: 54400, expected_high: 18446744073709525404 },
+            TestVector { low: 0, high: 3, n: Limb::MAX - 546546456543, expected_low: 0, expected_high: 18446742434070181984 },
         ];
         for test in tests {
             let (low, high) = u3072::muln2(test.low, test.high, test.n);
