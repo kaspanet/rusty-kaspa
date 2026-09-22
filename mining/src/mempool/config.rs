@@ -1,7 +1,4 @@
-use kaspa_consensus_core::{
-    config::params::ForkedParam,
-    mass::{BlockLaneLimits, BlockMassLimits, MassCofactors},
-};
+use kaspa_consensus_core::mass::{BlockLaneLimits, BlockMassLimits, MassCofactors};
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
 pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 1_000_000_000;
@@ -22,11 +19,6 @@ pub(crate) const DEFAULT_MAXIMUM_ORPHAN_TRANSACTION_COUNT: u64 = 500;
 /// The default is 100 sompi per gram.
 pub(crate) const DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE: u64 = 100_000;
 
-/// LEGACY_MINIMUM_RELAY_TRANSACTION_FEE specifies the minimum transaction fee for a transaction to be accepted to
-/// the mempool and relayed prior toccata activates. It is specified in sompi per 1kg (or 1000 grams) of transaction mass.
-/// It was 1 sompi per gram.
-pub(crate) const LEGACY_MINIMUM_RELAY_TRANSACTION_FEE: u64 = 1_000;
-
 #[derive(Clone, Debug)]
 pub struct Config {
     pub maximum_transaction_count: usize,
@@ -43,8 +35,8 @@ pub struct Config {
     pub maximum_orphan_transaction_normalized_mass: u64,
     pub maximum_orphan_transaction_count: u64,
     pub accept_non_standard: bool,
-    pub mempool_block_mass_limits: ForkedParam<BlockMassLimits>,
-    pub mempool_mass_cofactors: ForkedParam<MassCofactors>,
+    pub mempool_block_mass_limits: BlockMassLimits,
+    pub mempool_mass_cofactors: MassCofactors,
     pub block_lane_limits: BlockLaneLimits,
     pub minimum_relay_transaction_fee: u64,
     pub network_blocks_per_second: u64,
@@ -67,13 +59,12 @@ impl Config {
         maximum_orphan_transaction_normalized_mass: u64,
         maximum_orphan_transaction_count: u64,
         accept_non_standard: bool,
-        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
+        mempool_block_mass_limits: BlockMassLimits,
         block_lane_limits: BlockLaneLimits,
         minimum_relay_transaction_fee: u64,
         network_blocks_per_second: u64,
     ) -> Self {
-        let mempool_block_mass_limits = mempool_block_mass_limits.into();
-        let mempool_mass_cofactors = mempool_block_mass_limits.map(|limits| limits.cofactors());
+        let mempool_mass_cofactors = mempool_block_mass_limits.cofactors();
         Self {
             maximum_transaction_count,
             mempool_size_limit,
@@ -98,15 +89,14 @@ impl Config {
     }
 
     /// Build a default config.
-    /// The mass limits should be obtained from [`kaspa_consensus_core::config::params::Params::mempool_block_mass_limits`].
+    /// The mass limits should be obtained from [`kaspa_consensus_core::config::params::Params::block_mass_limits`].
     pub fn build_default(
         target_milliseconds_per_block: u64,
         relay_non_std_transactions: bool,
-        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
+        mempool_block_mass_limits: BlockMassLimits,
         block_lane_limits: BlockLaneLimits,
     ) -> Self {
-        let mempool_block_mass_limits = mempool_block_mass_limits.into();
-        let mempool_mass_cofactors = mempool_block_mass_limits.map(|limits| limits.cofactors());
+        let mempool_mass_cofactors = mempool_block_mass_limits.cofactors();
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
             mempool_size_limit: DEFAULT_MEMPOOL_SIZE_LIMIT,

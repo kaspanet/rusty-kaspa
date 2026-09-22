@@ -9,9 +9,8 @@ use kaspa_consensus_core::{
     BlockHashSet,
     api::BlockValidationFuture,
     block::Block,
-    config::params::{ForkActivation, Params},
     header::Header,
-    pruning::{PruningPointProof, PruningPointsList, PruningProofMetadata},
+    pruning::{PruningPointsList, PruningProofMetadata},
     trusted::TrustedBlock,
     tx::Transaction,
 };
@@ -22,15 +21,10 @@ use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
-    convert::{
-        header::{HeaderFormat, Versioned},
-        model::trusted::TrustedDataPackage,
-    },
     dequeue_with_timeout, make_message, make_request,
     pb::{
-        RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
-        RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
-        kaspad_message::Payload,
+        RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestPruningPointAndItsAnticoneMessage,
+        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage, kaspad_message::Payload,
     },
 };
 use kaspa_utils::channel::JobReceiver;
@@ -48,11 +42,10 @@ pub struct IbdFlow {
     pub(super) ctx: FlowContext,
     pub(super) router: Arc<Router>,
     pub(super) incoming_route: IncomingRoute,
-    pub(super) body_only_ibd_permitted: bool,
-    header_format: HeaderFormat,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: JobReceiver<Block>,
+    use_ibd_chunks: bool,
 }
 
 #[async_trait::async_trait]
@@ -85,10 +78,9 @@ impl IbdFlow {
         router: Arc<Router>,
         incoming_route: IncomingRoute,
         relay_receiver: JobReceiver<Block>,
-        body_only_ibd_permitted: bool,
-        header_format: HeaderFormat,
+        use_ibd_chunks: bool,
     ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted, header_format }
+        Self { ctx, router, incoming_route, relay_receiver, use_ibd_chunks }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -148,10 +140,6 @@ impl IbdFlow {
                         pruning_point, self.router
                     );
                     self.sync_new_smt_state(&session, pruning_point).await?;
-                } else {
-                    // TODO(post-toccata): In pre-Toccata nodes there are some edge cases where the SMT stable flag is wrongly set to false at this point.
-                    // Therefore, the below line can be removed post-Toccata.
-                    session.async_set_pruning_smt_stable().await;
                 }
 
                 if !is_utxo_stable
@@ -281,15 +269,7 @@ impl IbdFlow {
 
                 let is_utxo_stable = consensus.async_is_pruning_utxoset_stable().await;
                 let is_pp_anticone_synced = consensus.async_is_pruning_point_anticone_fully_synced().await;
-                // The SMT stable flag is only meaningful once Toccata is active at the current
-                // pruning point. Before activation, `sync_new_smt_state` is a no-op and the flag
-                // is never set, so we treat it as stable to preserve pre-activation IBD behavior.
-                let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-                let is_smt_stable = if self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
-                    consensus.async_is_pruning_smt_stable().await
-                } else {
-                    true
-                };
+                let is_smt_stable = consensus.async_is_pruning_smt_stable().await;
 
                 return match (syncer_skew, is_utxo_stable && is_smt_stable && is_pp_anticone_synced) {
                     (SyncerSkew::Aligned, _) => {
@@ -397,14 +377,13 @@ impl IbdFlow {
     }
 
     async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy, relay_block: &Block) -> Result<Hash, ProtocolError> {
-        // [Toccata] Guard IBD from outdated nodes. P2P flow registration does not protect
+        // Guard IBD from outdated nodes. P2P flow registration does not protect
         // fresh IBD peers, and the relay block is usually the syncer sink, so reject an unexpected
-        // block version before requesting the pruning proof. The pruning point itself is
-        // checked below by `validate_pruning_point_freshness_for_toccata`.
-        let expected_relay_block_version = self.ctx.config.block_version().get(relay_block.header.daa_score);
+        // block version before requesting the pruning proof.
+        let expected_relay_block_version = self.ctx.config.block_version();
         if relay_block.header.version != expected_relay_block_version {
             return Err(ProtocolError::OtherOwned(format!(
-                "peer relayed block {} header version mismatch: got {}, expected {} at DAA score {} (Toccata guard)",
+                "peer relayed block {} header version mismatch: got {}, expected {} at DAA score {}",
                 relay_block.hash(),
                 relay_block.header.version,
                 expected_relay_block_version,
@@ -415,8 +394,7 @@ impl IbdFlow {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
-        let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
-        let proof: PruningPointProof = Versioned(self.header_format, msg).try_into()?;
+        let proof = super::proof::receive_pruning_point_proof(&mut self.incoming_route, self.use_ibd_chunks).await?;
         info!(
             "Received headers proof with overall {} headers ({} unique)",
             proof.iter().map(|l| l.len()).sum::<usize>(),
@@ -444,21 +422,12 @@ impl IbdFlow {
         }
         drop(consensus);
 
-        // [Toccata] Reject IBD from outdated peers
-        validate_pruning_point_freshness_for_toccata(
-            self.ctx.config.as_ref(),
-            proof_pruning_point_header.hash,
-            proof_pruning_point_header.timestamp,
-            proof_pruning_point_header.daa_score,
-            unix_now(),
-        )?;
-
         self.router
             .enqueue(make_message!(Payload::RequestPruningPointAndItsAnticone, RequestPruningPointAndItsAnticoneMessage {}))
             .await?;
         // First, all pruning points up to the last are sent
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
-        let pruning_points: PruningPointsList = Versioned(self.header_format, msg).try_into()?;
+        let pruning_points: PruningPointsList = msg.try_into()?;
 
         if pruning_points.is_empty() || pruning_points.last().unwrap().hash != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the last pruning point in the list"));
@@ -493,11 +462,10 @@ impl IbdFlow {
         // point and its anticone.
         // The latter, the trusted data entries, each represent a block (with daa) from the anticone of the pruning point
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
-        let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
-        let pkg: TrustedDataPackage = Versioned(self.header_format, msg).try_into()?;
+        let pkg = super::trusted_data::receive_trusted_data(&mut self.incoming_route, self.use_ibd_chunks).await?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
-        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route, self.header_format);
+        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
         // The first entry of the trusted data is the pruning point itself.
         let Some(pruning_point_entry) = entry_stream.next().await? else {
             return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
@@ -647,7 +615,7 @@ impl IbdFlow {
                 }
             ))
             .await?;
-        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route, self.header_format);
+        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
         if let Some(chunk) = chunk_stream.next().await? {
             let (mut prev_daa_score, mut prev_timestamp) = {
@@ -700,10 +668,6 @@ impl IbdFlow {
         use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 
         let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
-        if !self.ctx.config.toccata_activation.is_active(pp_header.daa_score) {
-            consensus.async_set_pruning_smt_stable().await;
-            return Ok(());
-        }
 
         consensus.async_clear_pruning_smt_stores().await;
 
@@ -733,11 +697,7 @@ impl IbdFlow {
             .async_get_header(shortcut_block)
             .await
             .map_err(|_| ProtocolError::Other("inactivity_shortcut_block header not found"))?;
-        let inactivity_shortcut = if !self.ctx.config.toccata_activation.is_active(shortcut_header.daa_score) {
-            kaspa_hashes::ZERO_HASH
-        } else {
-            shortcut_header.accepted_id_merkle_root
-        };
+        let inactivity_shortcut = shortcut_header.accepted_id_merkle_root;
 
         verify_smt_metadata(
             &SmtMetadata {
@@ -810,7 +770,7 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
-        let chunk: HeadersChunk = Versioned(self.header_format, msg).try_into()?;
+        let chunk: HeadersChunk = msg.try_into()?;
         let jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
         try_join_all(jobs).await?;
@@ -873,11 +833,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
     async fn sync_missing_trusted_bodies(&mut self, consensus: &ConsensusProxy) -> Result<(), ProtocolError> {
         info!("downloading pruning point anticone missing block data");
         let diesembodied_hashes = consensus.async_get_body_missing_anticone().await;
-        if self.body_only_ibd_permitted {
-            self.sync_missing_trusted_bodies_no_headers(consensus, diesembodied_hashes).await?
-        } else {
-            self.sync_missing_trusted_bodies_full_blocks(consensus, diesembodied_hashes).await?;
-        }
+        self.sync_missing_trusted_bodies_no_headers(consensus, diesembodied_hashes).await?;
         consensus.async_clear_body_missing_anticone_set().await;
         Ok(())
     }
@@ -909,44 +865,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                     return Err(ProtocolError::OtherOwned(format!("sent empty block body for block {}", hash)));
                 }
                 let block = Block { header: blk_header, transactions: blk_body.into() };
-                // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
-                // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
-                // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
-                jobs.push(
-                    consensus
-                        .validate_and_insert_trusted_block(TrustedBlock::new(block, consensus.async_get_ghostdag_data(hash).await?))
-                        .virtual_state_task,
-                );
-            }
-            try_join_all(jobs).await?; // TODO (relaxed): be more efficient with batching as done with block bodies in general
-        }
-        Ok(())
-    }
-    async fn sync_missing_trusted_bodies_full_blocks(
-        &mut self,
-        consensus: &ConsensusProxy,
-        diesembodied_hashes: Vec<Hash>,
-    ) -> Result<(), ProtocolError> {
-        let iter = diesembodied_hashes.chunks(IBD_BATCH_SIZE);
-        for chunk in iter {
-            self.router
-                .enqueue(make_message!(
-                    Payload::RequestIbdBlocks,
-                    RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
-                ))
-                .await?;
-            let mut jobs = Vec::with_capacity(chunk.len());
-
-            for &hash in chunk.iter() {
-                // TODO: change to BodyOnly requests when incorporated
-                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let block: Block = Versioned(self.header_format, msg).try_into()?;
-                if block.hash() != hash {
-                    return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", hash, block.hash())));
-                }
-                if block.is_header_only() {
-                    return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-                }
                 // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
                 // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
                 // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
@@ -1016,48 +934,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         consensus: &ConsensusProxy,
         chunk: &[Hash],
     ) -> Result<QueueChunkOutput, ProtocolError> {
-        if self.body_only_ibd_permitted {
-            self.queue_block_processing_chunk_body_only(consensus, chunk).await
-        } else {
-            self.queue_block_processing_chunk_full_block(consensus, chunk).await
-        }
-    }
-
-    async fn queue_block_processing_chunk_full_block(
-        &mut self,
-        consensus: &ConsensusProxy,
-        chunk: &[Hash],
-    ) -> Result<QueueChunkOutput, ProtocolError> {
-        let mut jobs = Vec::with_capacity(chunk.len());
-        let mut current_daa_score = 0;
-        let mut current_timestamp = 0;
-        self.router
-            .enqueue(make_message!(
-                Payload::RequestIbdBlocks,
-                RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
-            ))
-            .await?;
-        for &expected_hash in chunk {
-            let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-            let block: Block = Versioned(self.header_format, msg).try_into()?;
-            if block.hash() != expected_hash {
-                return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
-            }
-            if block.is_header_only() {
-                return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-            }
-            current_daa_score = block.header.daa_score;
-            current_timestamp = block.header.timestamp;
-            jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
-        }
-        Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
-    }
-
-    async fn queue_block_processing_chunk_body_only(
-        &mut self,
-        consensus: &ConsensusProxy,
-        chunk: &[Hash],
-    ) -> Result<QueueChunkOutput, ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());
         let mut current_daa_score = 0;
         let mut current_timestamp = 0;
@@ -1086,163 +962,5 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
         }
         Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
-    }
-}
-
-/// [Toccata] Fresh nodes cannot easily identify outdated peers after activation, so we guard
-/// against syncers advertising pruning points that are clearly stale.
-///
-/// TODO(post-toccata): remove or adjust this stale pruning-point guard once Toccata is cleaned up.
-fn validate_pruning_point_freshness_for_toccata(
-    params: &Params,
-    pp_hash: Hash,
-    pp_timestamp: u64,
-    pp_daa_score: u64,
-    now: u64,
-) -> Result<(), ProtocolError> {
-    // No activation is expected.
-    if params.toccata_activation == ForkActivation::never() {
-        return Ok(());
-    }
-
-    // If the pruning point is post-activation, its header is validated as part of the pruning proof.
-    if params.toccata_activation.is_active(pp_daa_score) {
-        return Ok(());
-    }
-
-    // Otherwise, protect fresh nodes from outdated syncers with stale pre-activation pruning points.
-
-    let activation_daa_score = params.toccata_activation.daa_score();
-
-    // Reject if:
-    // 1. the syncer's pruning point is still pre-activation;
-    // 2. based on its timestamp and DAA score, activation should have happened long enough ago
-    //    for the syncer to already expose a post-activation pruning point.
-    const ONE_DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
-    let millis_per_block = params.target_time_per_block();
-
-    let pp_to_activation_blocks = activation_daa_score.saturating_sub(pp_daa_score);
-    let pp_to_activation_millis = pp_to_activation_blocks.saturating_mul(millis_per_block);
-    let estimated_activation_time = pp_timestamp.saturating_add(pp_to_activation_millis);
-
-    let pruning_period_millis = params.pruning_depth().saturating_add(params.finality_depth()).saturating_mul(millis_per_block);
-    // The oldest activation estimate for which a pre-activation pruning point is still tolerated.
-    let stale_activation_time_cutoff = now.saturating_sub(pruning_period_millis).saturating_sub(ONE_DAY_MILLIS);
-
-    // If activation should have happened before this cutoff, the syncer should already
-    // expose a post-activation pruning point.
-    if estimated_activation_time < stale_activation_time_cutoff {
-        return Err(ProtocolError::OtherOwned(format!(
-            "syncer pruning point {} is stale: DAA score {} is below Toccata activation DAA score {}, but based on its timestamp {} a post-activation pruning point is expected by now",
-            pp_hash, pp_daa_score, activation_daa_score, pp_timestamp
-        )));
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use kaspa_consensus_core::config::params::MAINNET_PARAMS;
-
-    fn params_with_toccata_activation(activation_daa_score: u64) -> Params {
-        let mut params = MAINNET_PARAMS.clone();
-        params.toccata_activation = ForkActivation::new(activation_daa_score);
-        params
-    }
-
-    fn params_without_toccata_activation() -> Params {
-        let mut params = MAINNET_PARAMS.clone();
-        params.toccata_activation = ForkActivation::never();
-        params
-    }
-
-    fn pruning_period_millis(params: &Params) -> u64 {
-        params.pruning_depth().saturating_add(params.finality_depth()).saturating_mul(params.target_time_per_block())
-    }
-
-    #[test]
-    fn test_toccata_pruning_point_staleness_guard() {
-        const ONE_DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
-        let activation_daa_score = 10_000_000;
-        let params = params_with_toccata_activation(activation_daa_score);
-        let blocks_per_day = ONE_DAY_MILLIS / params.target_time_per_block();
-        let pp_hash = Hash::from_u64_word(1);
-        let pp_daa_score = activation_daa_score - 10;
-        let pp_timestamp = 1_000_000_000_000;
-        let pp_to_activation_millis = 10 * params.target_time_per_block();
-        let estimated_activation_time = pp_timestamp + pp_to_activation_millis;
-        let stale_after = estimated_activation_time + pruning_period_millis(&params) + ONE_DAY_MILLIS;
-
-        // No activation is configured:
-        // PP(pre-activation by score) ---- estimated activation ---- pruning period + margin ---- now
-        assert!(
-            validate_pruning_point_freshness_for_toccata(
-                &params_without_toccata_activation(),
-                pp_hash,
-                pp_timestamp,
-                pp_daa_score,
-                stale_after + 1
-            )
-            .is_ok()
-        );
-
-        // Normal pre-activation IBD: activation is still ten days away.
-        // PP/now -------- 10d -------- activation
-        let pp_ten_days_before_activation = activation_daa_score - 10 * blocks_per_day;
-        assert!(
-            validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_ten_days_before_activation, pp_timestamp)
-                .is_ok()
-        );
-
-        // The syncer's pruning point is already post-activation, so the staleness guard is done:
-        // PP(post-activation by score) ----------------------------------------------- now
-        assert!(
-            validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, activation_daa_score, stale_after + 1)
-                .is_ok()
-        );
-
-        // Last tolerated instant for a pre-activation pruning point:
-        // PP ---- estimated activation ---- pruning period + margin == now
-        assert!(validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_daa_score, stale_after).is_ok());
-
-        // One millisecond later, the same pre-activation pruning point is stale:
-        // PP ---- estimated activation ---- pruning period + margin < now
-        assert!(validate_pruning_point_freshness_for_toccata(&params, pp_hash, pp_timestamp, pp_daa_score, stale_after + 1).is_err());
-
-        // Stale IBD: the syncer's pruning point is three days before activation, and now is
-        // six days after that pruning point. Activation should have happened long enough ago
-        // for the syncer to already expose a post-activation pruning point.
-        // PP -------- 3d -------- activation -------- 3d -------- now
-        let pp_three_days_before_activation = activation_daa_score - 3 * blocks_per_day;
-        let now_six_days_after_pp = pp_timestamp + 6 * ONE_DAY_MILLIS;
-        assert!(
-            validate_pruning_point_freshness_for_toccata(
-                &params,
-                pp_hash,
-                pp_timestamp,
-                pp_three_days_before_activation,
-                now_six_days_after_pp
-            )
-            .is_err()
-        );
-
-        // Normal IBD: two days after activation, a pruning point just before activation is
-        // still expected because pruning points trail the live chain by the pruning period.
-        // PP - activation -------- 2d -------- now
-        let pp_just_before_activation = activation_daa_score - 1;
-        let pp_just_before_activation_timestamp = pp_timestamp + 3 * ONE_DAY_MILLIS - params.target_time_per_block();
-        let now_two_days_after_activation = pp_timestamp + 5 * ONE_DAY_MILLIS;
-        assert!(
-            validate_pruning_point_freshness_for_toccata(
-                &params,
-                pp_hash,
-                pp_just_before_activation_timestamp,
-                pp_just_before_activation,
-                now_two_days_after_activation
-            )
-            .is_ok()
-        );
     }
 }

@@ -135,7 +135,7 @@ mod tests {
     use kaspa_txscript_errors::TxScriptError;
 
     fn stack_with_groth_fields(vk: Vec<u8>, proof: Vec<u8>, inputs: Vec<Vec<u8>>) -> Stack {
-        let mut stack = Stack::new(Vec::new(), true);
+        let mut stack = Stack::new(Vec::new());
         for input in inputs.iter().rev() {
             stack.push(input.clone().into()).unwrap();
         }
@@ -201,7 +201,7 @@ mod tests {
     fn verify_zk_rejects_arity_mismatch_before_meter_charge() {
         let vk_bytes = vk_with_gamma_abc_count(5);
 
-        let mut stack = Stack::new(Vec::new(), true);
+        let mut stack = Stack::new(Vec::new());
         stack.push_item(0i32).unwrap();
         stack.push(vec![0u8; 128].into()).unwrap();
         stack.push(vk_bytes.into()).unwrap();
@@ -221,7 +221,7 @@ mod tests {
         const COUNT: usize = 5;
         let vk_bytes = vk_with_gamma_abc_count(COUNT);
 
-        let mut stack = Stack::new(Vec::new(), true);
+        let mut stack = Stack::new(Vec::new());
         for _ in 0..COUNT - 1 {
             stack.push(vec![0u8; 32].into()).unwrap();
         }
@@ -257,7 +257,7 @@ mod tests {
         let vk_bytes = vk_with_gamma_abc_count(6); // 5 pub inputs + 1
         let oversized_input = vec![0u8; 64];
 
-        let mut stack = Stack::new(Vec::new(), true);
+        let mut stack = Stack::new(Vec::new());
         for _ in 0..4 {
             stack.push(vec![0u8; 32].into()).unwrap();
         }

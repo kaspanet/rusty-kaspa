@@ -27,7 +27,7 @@ use kaspa_consensus_core::block::{Block, MutableBlock};
 use kaspa_consensus_core::blockhash::{self, new_unique};
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TOCCATA_BLOCK_VERSION, TRANSIENT_BYTE_TO_MASS_FACTOR};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing;
@@ -51,7 +51,7 @@ use kaspa_rpc_core::RpcHeader;
 use kaspa_seq_commit::hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, smt_leaf_hash};
 use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
 use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
-use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA, pay_to_script_hash_script};
+use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
 use kaspa_utils::arc::ArcExtensions;
 
 use crate::common;
@@ -81,7 +81,7 @@ use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_txscript::opcodes::codes::{Op0, OpCat, OpChainblockSeqCommit, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
 use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
 use kaspa_txscript::{
-    EngineCtx, EngineFlags, TxScriptEngine,
+    EngineCtx, TxScriptEngine,
     caches::Cache,
     opcodes::codes::OpZkPrecompile,
     pay_to_script_hash_signature_script,
@@ -498,7 +498,9 @@ async fn header_in_isolation_validation_test() {
 }
 
 #[tokio::test]
-async fn header_version_is_enforced_by_activation() {
+async fn header_version_is_enforced_test() {
+    const WRONG_BLOCK_VERSION: u16 = BLOCK_VERSION - 1;
+
     fn set_block_version(mut block: MutableBlock, version: u16) -> MutableBlock {
         block.header.version = version;
         block.header.finalize();
@@ -506,45 +508,20 @@ async fn header_version_is_enforced_by_activation() {
     }
 
     init_allocator_with_default_settings();
-    let activation = MAINNET_PARAMS.genesis.daa_score + 10;
-    let config = ConfigBuilder::new(MAINNET_PARAMS)
-        .skip_proof_of_work()
-        .edit_consensus_params(|p| p.toccata_activation = ForkActivation::new(activation))
-        .build();
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    let mut parent = config.genesis.hash;
-    let mut next_hash = 2u64;
-    let active_block = loop {
-        let block = consensus.build_header_only_block_with_parents(next_hash.into(), vec![parent]);
-        next_hash += 1;
-        if block.header.daa_score >= activation {
-            break block;
-        }
+    let block = consensus.build_header_only_block_with_parents(2.into(), vec![config.genesis.hash]);
+    assert_eq!(block.header.version, BLOCK_VERSION);
 
-        assert_eq!(block.header.version, BLOCK_VERSION);
-        let wrong_version_block = set_block_version(block.clone(), TOCCATA_BLOCK_VERSION);
-        assert_match!(
-            consensus.validate_and_insert_block(wrong_version_block.to_immutable()).block_task.await,
-            Err(RuleError::WrongBlockVersion(TOCCATA_BLOCK_VERSION, BLOCK_VERSION))
-        );
-
-        parent = block.header.hash;
-        assert_match!(consensus.validate_and_insert_block(block.to_immutable()).block_task.await, Ok(BlockStatus::StatusHeaderOnly));
-    };
-
-    let wrong_post_activation_block = set_block_version(active_block.clone(), BLOCK_VERSION);
+    let wrong_version_block = set_block_version(block.clone(), WRONG_BLOCK_VERSION);
     assert_match!(
-        consensus.validate_and_insert_block(wrong_post_activation_block.to_immutable()).block_task.await,
-        Err(RuleError::WrongBlockVersion(BLOCK_VERSION, TOCCATA_BLOCK_VERSION))
+        consensus.validate_and_insert_block(wrong_version_block.to_immutable()).block_task.await,
+        Err(RuleError::WrongBlockVersion(WRONG_BLOCK_VERSION, BLOCK_VERSION))
     );
 
-    let active_block = set_block_version(active_block, TOCCATA_BLOCK_VERSION);
-    assert_match!(
-        consensus.validate_and_insert_block(active_block.to_immutable()).block_task.await,
-        Ok(BlockStatus::StatusHeaderOnly)
-    );
+    assert_match!(consensus.validate_and_insert_block(block.to_immutable()).block_task.await, Ok(BlockStatus::StatusHeaderOnly));
 
     consensus.shutdown(wait_handles);
 }
@@ -1593,7 +1570,6 @@ async fn seqcommit_sp_context_threshold_edge_test() {
             // KIP-21: the seqcommit look-back equals `finality_depth`; set it to 1 so a
             // single follow-up block is still within the threshold during template validation.
             p.finality_depth = 1;
-            p.toccata_activation = ForkActivation::always();
         })
         .build();
 
@@ -1764,7 +1740,6 @@ async fn kip10_test() {
             p.genesis.hash = genesis_header.hash;
 
             p.crescendo_activation = ForkActivation::always();
-            p.toccata_activation = ForkActivation::never();
         })
         .build();
 
@@ -1793,28 +1768,26 @@ async fn kip10_test() {
         vec![],
     );
     tx.finalize();
-    let tx_id = tx.id();
 
     let mut tx = MutableTransaction::from_tx(tx);
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
     let tx = tx.tx.unwrap_or_clone();
     // Verify the transaction with KIP-10 opcodes is accepted
-    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![config.genesis.hash], vec![tx.clone()]).await;
+    let tx_block_hash: Hash = (index + 1).into();
+    let status = consensus.add_utxo_valid_block_with_parents(tx_block_hash, vec![config.genesis.hash], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // Toccata is not active yet, so accepted_id_digests contains txid
+
+    // Mine virtual so seqcommit data is available in the SMT stores.
+    let accepting_block: Hash = (index + 2).into();
+    let status = consensus.add_utxo_valid_block_with_parents(accepting_block, vec![tx_block_hash], vec![]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+    assert_tx_in_chain_seq_commit(&consensus, accepting_block, &tx);
 }
 
 #[tokio::test]
-async fn toccata_activation_test() {
-    const ACTIVATION_DAA_SCORE: u64 = 3;
-    let config = ConfigBuilder::new(DEVNET_PARAMS)
-        .skip_proof_of_work()
-        .edit_consensus_params(|p| {
-            p.coinbase_maturity = 0;
-            p.toccata_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
-        })
-        .build();
+async fn covenant_opcode_accepted_test() {
+    let config = ConfigBuilder::new(DEVNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.coinbase_maturity = 0).build();
 
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -1823,7 +1796,7 @@ async fn toccata_activation_test() {
     let mut next_id: u64 = 1;
     let mut tip = config.genesis.hash;
 
-    // Redeem script that uses OpCat (disabled before Toccata activation, enabled after)
+    // Redeem script that uses the OpCat covenant opcode
     let redeem_script = ScriptBuilder::new()
         .add_data(&[0xaa])
         .unwrap()
@@ -1862,14 +1835,6 @@ async fn toccata_activation_test() {
     tip = block2_hash;
     next_id += 1;
 
-    // Advance chain until just before activation (DAA score = ACTIVATION_DAA_SCORE - 1)
-    while consensus.get_virtual_daa_score() < ACTIVATION_DAA_SCORE - 1 {
-        consensus.add_utxo_valid_block_with_parents(next_id.into(), vec![tip], vec![]).await.unwrap();
-        tip = next_id.into();
-        next_id += 1;
-    }
-    assert_eq!(consensus.get_virtual_daa_score(), ACTIVATION_DAA_SCORE - 1);
-
     // Transaction spending the test UTXO using the covenant opcode
     let mut tx = Transaction::new(
         0,
@@ -1886,27 +1851,6 @@ async fn toccata_activation_test() {
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
     let tx = tx.tx.unwrap_or_clone();
 
-    // Pre-activation: inserting block with the covenant opcode should be rejected
-    {
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        let mut block = consensus.build_utxo_valid_block_with_parents(next_id.into(), vec![tip], miner_data.clone(), vec![]);
-
-        block.transactions.push(tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
-        assert_eq!(consensus.lkg_virtual_state.load().daa_score, ACTIVATION_DAA_SCORE - 1);
-    }
-
-    next_id += 1;
-
-    // Advance to activation
-    consensus.add_utxo_valid_block_with_parents(next_id.into(), vec![tip], vec![]).await.unwrap();
-    tip = next_id.into();
-    next_id += 1;
-
-    // Post-activation: same transaction should now be accepted
     let tx_block_hash = next_id.into();
     let status = consensus.add_utxo_valid_block_with_parents(tx_block_hash, vec![tip], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)), "status = {:?}", status);
@@ -1927,20 +1871,17 @@ async fn toccata_activation_test() {
 }
 
 #[tokio::test]
-async fn push_limit_activation_test() {
+async fn push_limit_enforced_test() {
     kaspa_core::log::try_init_logger("info");
 
-    const ACTIVATION_DAA_SCORE: u64 = 4;
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
-            let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA as u64;
-            p.prior_block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
-            p.new_transient_mass_limit = mass_limit;
-            p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA;
+            let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
+            p.block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
+            p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE;
             p.storage_mass_parameter = 1;
-            p.toccata_activation = ForkActivation::new(ACTIVATION_DAA_SCORE)
         })
         .build();
 
@@ -1976,94 +1917,19 @@ async fn push_limit_activation_test() {
     let block2_hash = next_id.into();
     let block2 = consensus.build_utxo_valid_block_with_parents(block2_hash, vec![tip], miner_data.clone(), vec![]);
     consensus.validate_and_insert_block(block2.to_immutable()).virtual_state_task.await.unwrap();
-    let (funding_outpoint1, funding_amount1) = {
+    let (funding_outpoint, funding_amount) = {
         let cb = &consensus.get_block(block2_hash).unwrap().transactions[0];
         (TransactionOutpoint::new(cb.id(), 0), cb.outputs[0].value)
     };
     tip = block2_hash;
     next_id += 1;
 
-    // Third block creates another coinbase that pays to the previous block's miner SPK.
-    let block3_hash = next_id.into();
-    let block3 = consensus.build_utxo_valid_block_with_parents(block3_hash, vec![tip], miner_data.clone(), vec![]);
-    consensus.validate_and_insert_block(block3.to_immutable()).virtual_state_task.await.unwrap();
-    let (funding_outpoint2, funding_amount2) = {
-        let cb = &consensus.get_block(block3_hash).unwrap().transactions[0];
-        (TransactionOutpoint::new(cb.id(), 0), cb.outputs[0].value)
-    };
-    tip = block3_hash;
-    next_id += 1;
-
-    // Advance chain until just before activation (DAA score = ACTIVATION_DAA_SCORE - 1)
-    while consensus.get_virtual_daa_score() < ACTIVATION_DAA_SCORE - 1 {
-        consensus.add_utxo_valid_block_with_parents(next_id.into(), vec![tip], vec![]).await.unwrap();
-        tip = next_id.into();
-        next_id += 1;
-    }
-    assert_eq!(consensus.get_virtual_daa_score(), ACTIVATION_DAA_SCORE - 1);
-
-    // Pre-activation: inserting block with a transaction that pushes more than the max script element size onto the stack should be accepted
+    // A transaction that pushes more than the max script element size onto the stack is rejected
     {
-        // Transaction spending the UTXO that pushes more than the max script element size onto the stack
         let mut tx = Transaction::new(
             0,
-            vec![TransactionInput::new(funding_outpoint2, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
-            vec![TransactionOutput::new(
-                funding_amount2 - 5000,
-                ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA + 1]),
-            )],
-            0,
-            SUBNETWORK_ID_NATIVE,
-            0,
-            vec![],
-        );
-        tx.finalize();
-        let mut tx = MutableTransaction::from_tx(tx);
-        // This triggers storage mass population
-        let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
-        let tx = tx.tx.unwrap_or_clone();
-
-        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        let tx_block_hash = next_id.into();
-        let mut block = consensus.build_utxo_valid_block_with_parents(tx_block_hash, vec![tip], miner_data.clone(), vec![]);
-
-        block.transactions.push(tx.clone());
-        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusUTXOValid)));
-        tip = tx_block_hash;
-        next_id += 1;
-
-        // Mine virtual so seqcommit data is available in the SMT stores.
-        let accepting_block = next_id.into();
-        let block_status = consensus.add_utxo_valid_block_with_parents(accepting_block, vec![tip], vec![]).await;
-        assert!(matches!(block_status, Ok(BlockStatus::StatusUTXOValid)));
-        // Use the persisted SMT stores to verify tx inclusion in the seqcommit.
-        assert_tx_in_chain_seq_commit(&consensus, accepting_block, &tx);
-        tip = accepting_block;
-        next_id += 1;
-
-        let vs = consensus.lkg_virtual_state.load();
-        assert_eq!(vs.accepted_id_digests.len(), 1);
-    }
-
-    // Advance to activation
-    while consensus.get_virtual_daa_score() < ACTIVATION_DAA_SCORE {
-        consensus.add_utxo_valid_block_with_parents(next_id.into(), vec![tip], vec![]).await.unwrap();
-        tip = next_id.into();
-        next_id += 1;
-    }
-
-    // Post-activation: a similar transaction should now be rejected
-    {
-        // Transaction spending the UTXO that pushes more than the max script element size onto the stack
-        let mut tx = Transaction::new(
-            0,
-            vec![TransactionInput::new(funding_outpoint1, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
-            vec![TransactionOutput::new(
-                funding_amount1 - 5000,
-                ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE_POST_TOCCATA + 1]),
-            )],
+            vec![TransactionInput::new(funding_outpoint, ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(), 0, 0)],
+            vec![TransactionOutput::new(funding_amount - 5000, ScriptPublicKey::from_vec(0, vec![0u8; MAX_SCRIPT_ELEMENT_SIZE + 1]))],
             0,
             SUBNETWORK_ID_NATIVE,
             0,
@@ -2119,7 +1985,7 @@ async fn payload_test() {
     };
 
     consensus.validate_and_insert_block(funding_block.to_immutable()).virtual_state_task.await.unwrap();
-    let transient_limit = config.params.block_mass_limits().before().transient;
+    let transient_limit = config.params.block_mass_limits.transient;
     let mut txx = Transaction::new(
         0,
         vec![TransactionInput::new(TransactionOutpoint { transaction_id: cb_id, index: 0 }, vec![], 0, 0)],
@@ -2178,8 +2044,6 @@ async fn payload_for_native_tx_test() {
             p.genesis.utxo_commitment = genesis_multiset.finalize();
             let genesis_header: Header = (&p.genesis).into();
             p.genesis.hash = genesis_header.hash;
-
-            p.toccata_activation = ForkActivation::never();
         })
         .build();
 
@@ -2190,7 +2054,7 @@ async fn payload_for_native_tx_test() {
     consensus.init();
 
     // Create transaction with large payload
-    let transient_limit = config.params.block_mass_limits().before().transient;
+    let transient_limit = config.params.block_mass_limits.transient;
     let large_payload = vec![0u8; (transient_limit / TRANSIENT_BYTE_TO_MASS_FACTOR / 2) as usize];
     let mut tx_with_payload = Transaction::new(
         0,
@@ -2207,17 +2071,22 @@ async fn payload_for_native_tx_test() {
         large_payload,
     );
     tx_with_payload.finalize();
-    let tx_id = tx_with_payload.id();
 
     let mut tx = MutableTransaction::from_tx(tx_with_payload.clone());
     // This triggers storage mass population
     let _ = consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default());
+    let tx = tx.tx.unwrap_or_clone();
 
-    // Test 2: Verify the same transaction is accepted after activation
-    let status = consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![tx.tx.unwrap_or_clone()]).await;
-
+    // Verify the transaction carrying a large native payload is accepted
+    let tx_block_hash: Hash = 1.into();
+    let status = consensus.add_utxo_valid_block_with_parents(tx_block_hash, vec![config.genesis.hash], vec![tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
-    assert!(consensus.lkg_virtual_state.load().accepted_id_digests.contains(&tx_id)); // Toccata is not active yet, so accepted_id_digests contains txid
+
+    // Mine virtual so seqcommit data is available in the SMT stores.
+    let accepting_block: Hash = 2.into();
+    let status = consensus.add_utxo_valid_block_with_parents(accepting_block, vec![tx_block_hash], vec![]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+    assert_tx_in_chain_seq_commit(&consensus, accepting_block, &tx);
 }
 
 fn build_p2pk_block(
@@ -2257,9 +2126,7 @@ fn build_p2pk_block(
             let genesis_header: Header = (&p.genesis).into();
             p.genesis.hash = genesis_header.hash;
             p.mass_per_sig_op = mass_per_sig_op;
-            p.prior_block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
-            p.new_transient_mass_limit = u64::MAX;
-            p.toccata_activation = ForkActivation::always();
+            p.block_mass_limits = BlockMassLimits { compute: 10_000, storage: u64::MAX, transient: u64::MAX };
         })
         .build();
 
@@ -2300,14 +2167,14 @@ fn build_p2pk_block(
     (consensus, wait_handles, transactions, block.to_immutable())
 }
 
-fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
+fn init_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
     let redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
     let stark_spk = pay_to_script_hash_script(&redeem_script);
     let output_spk = ScriptPublicKey::from_vec(0, vec![OpTrue]);
 
     let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
-    let stark_signature_prefix = ScriptBuilder::with_flags(EngineFlags { covenants_enabled: true, ..Default::default() })
+    let stark_signature_prefix = ScriptBuilder::with_flags(Default::default())
         .add_data(&claim)
         .unwrap()
         .add_data(&control_index)
@@ -2348,7 +2215,7 @@ fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<(
             0,
             &utxo_entry,
             EngineCtx::new(&sig_cache).with_reused(&reused_values),
-            EngineFlags { covenants_enabled: true, ..Default::default() },
+            Default::default(),
         );
         vm.execute().expect("expected Stark proof to verify");
         vm.used_script_units()
@@ -2373,7 +2240,6 @@ fn init_toccata_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<(
 
     let mut params = TESTNET_PARAMS;
     params.crescendo_activation = ForkActivation::always();
-    params.toccata_activation = ForkActivation::always();
 
     let config = ConfigBuilder::new(params)
         .skip_proof_of_work()
@@ -2454,10 +2320,10 @@ async fn mass_per_sig_op_does_not_change_block_capacity() {
 }
 
 #[tokio::test]
-async fn toccata_accepts_one_valid_stark_proof_but_rejects_two() {
+async fn accepts_one_valid_stark_proof_but_rejects_two() {
     init_allocator_with_default_settings();
 
-    let (consensus, wait_handles, genesis_hash, transactions) = init_toccata_stark_fixture();
+    let (consensus, wait_handles, genesis_hash, transactions) = init_stark_fixture();
     let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
     let one_stark_block = consensus
         .build_utxo_valid_block_with_parents(new_unique(), vec![genesis_hash], miner_data.clone(), vec![transactions[0].clone()])
@@ -2474,7 +2340,7 @@ async fn toccata_accepts_one_valid_stark_proof_but_rejects_two() {
         .to_immutable();
     assert_match!(
         consensus.validate_and_insert_block(two_stark_block).virtual_state_task.await,
-        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == consensus.params().block_mass_limits().after().compute
+        Err(RuleError::ExceedsComputeMassLimit(_, limit)) if limit == consensus.params().block_mass_limits.compute
     );
     consensus.shutdown(wait_handles);
 }

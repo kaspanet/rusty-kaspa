@@ -14,6 +14,5 @@
         "finality_depth": 100,
         "pruning_depth": 200,
         "coinbase_maturity": 10
-    },
-    "toccata_activation": 0
+    }
 }

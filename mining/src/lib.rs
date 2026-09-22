@@ -15,7 +15,7 @@ pub mod mempool;
 pub mod model;
 pub mod monitor;
 #[cfg(test)]
-mod toccata_transient_mass_activation_tests;
+mod template_limits_tests;
 
 // Exposed for benchmarks
 pub use block_template::policy::Policy;

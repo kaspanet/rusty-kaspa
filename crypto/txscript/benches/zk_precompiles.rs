@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     tx::PopulatedTransaction,
 };
 use kaspa_txscript::{
-    EngineFlags, TxScriptEngine,
+    TxScriptEngine,
     caches::Cache,
     zk_precompiles::tests::helpers::{build_groth_script, build_stark_script, execute_zk_script},
 };
@@ -57,7 +57,7 @@ fn benchmark_r0_batch_parallelism(c: &mut Criterion) {
                             script,
                             &reused_values,
                             &cache,
-                            EngineFlags { covenants_enabled: true, ..Default::default() },
+                            Default::default(),
                         );
                         vm.execute().is_ok()
                     })
