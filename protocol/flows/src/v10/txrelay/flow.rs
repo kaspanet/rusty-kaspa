@@ -99,7 +99,12 @@ impl RelayTransactionsFlow {
 
         loop {
             let now = unix_now();
-            if now > 10000 + throttling_state.last_checked_time {
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "ARITH-SAFETY(TIMESTAMP): last_checked_time is sampled locally by unix_now(); the interval is 10 seconds."
+            )]
+            let next_check_time = 10000 + throttling_state.last_checked_time;
+            if now > next_check_time {
                 let next_snapshot = self.ctx.mining_manager().clone().p2p_tx_count_sample();
                 check_tx_throttling(&mut throttling_state, next_snapshot);
                 throttling_state.last_checked_time = now;
@@ -141,7 +146,12 @@ impl RelayTransactionsFlow {
         // To reduce the P2P TPS to below the threshold, we need to request up to a max of
         // whatever the balances overage. If MAX_TPS_THRESHOLD is 3000 and the current TPS is 4000,
         // then we can only request up to 2000 (MAX - (4000 - 3000)) to average out into the threshold.
-        let curr_p2p_tps = 1000 * snapshot_delta.low_priority_tx_counts / (snapshot_delta.elapsed_time.as_millis().max(1) as u64);
+        let curr_p2p_tps = snapshot_delta
+            .low_priority_tx_counts
+            .saturating_mul(1000)
+            .checked_div(snapshot_delta.elapsed_time.as_millis().max(1) as u64)
+            .unwrap_or(u64::MAX);
+        #[allow(clippy::arithmetic_side_effects, reason = "The subtraction is evaluated only when curr_p2p_tps > MAX_TPS_THRESHOLD.")]
         let overage = if should_throttle && curr_p2p_tps > MAX_TPS_THRESHOLD { curr_p2p_tps - MAX_TPS_THRESHOLD } else { 0 };
 
         let limit = MAX_TPS_THRESHOLD.saturating_sub(overage);
@@ -231,7 +241,10 @@ impl RelayTransactionsFlow {
                     return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
                 }
                 Err(MiningManagerError::MempoolError(RuleError::RejectNonStandard(..))) => {
-                    self.spam_counter += 1;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        self.spam_counter += 1;
+                    }
                     if self.spam_counter.is_multiple_of(100) {
                         kaspa_core::warn!("Peer {} has shared {} spam/non-standard txs ({:?})", self.router, self.spam_counter, res);
                     }
@@ -313,7 +326,12 @@ fn check_tx_throttling(throttling_state: &mut ThrottlingState, next_snapshot: P2
     throttling_state.curr_snapshot = next_snapshot;
 
     if snapshot_delta.low_priority_tx_counts > 0 {
-        let tps = 1000 * snapshot_delta.low_priority_tx_counts / snapshot_delta.elapsed_time.as_millis().max(1) as u64;
+        // We know that the numerator is at least 1, so it won't be 0/0, so we don't get any NaN-like result.
+        let tps = snapshot_delta
+            .low_priority_tx_counts
+            .saturating_mul(1000)
+            .checked_div(snapshot_delta.elapsed_time.as_millis() as u64)
+            .unwrap_or(u64::MAX);
         if !throttling_state.should_throttle && tps > MAX_TPS_THRESHOLD {
             warn!("P2P tx relay threshold exceeded. Throttling relay. Current: {}, Max: {}", tps, MAX_TPS_THRESHOLD);
             throttling_state.should_throttle = true;

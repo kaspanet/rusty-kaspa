@@ -73,14 +73,18 @@ impl RequestPruningPointProofFlow {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
-    use kaspa_consensus_core::header::Header;
+    use kaspa_consensus_core::header::{CompressedParents, Header};
     use kaspa_hashes::Hash;
 
     fn header_with_parents(levels: u8, parents_per_level: usize, nonce: u64) -> Arc<Header> {
         let mut header = Header::from_precomputed_hash(Default::default(), vec![]);
-        header.parents_by_level = vec![(levels, vec![Hash::from(1u64); parents_per_level])].try_into().unwrap();
+        let compressed_parents = (0..levels)
+            .map(|level| (level + 1, vec![Hash::from(u64::from(level)); parents_per_level]))
+            .collect::<Vec<(u8, Vec<Hash>)>>();
+        header.parents_by_level = CompressedParents::try_from(compressed_parents).unwrap();
         header.nonce = nonce;
         Arc::new(header)
     }
@@ -120,7 +124,7 @@ mod tests {
 
     #[test]
     fn header_chunks_allow_a_single_header_larger_than_the_budget() {
-        let oversized = header_with_parents(250, 2500, 1);
+        let oversized = header_with_parents(u8::MAX, 2_048, 1);
         let chunks = header_chunks(std::iter::once(oversized.clone()), 1).collect::<Vec<_>>();
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], vec![oversized.as_ref().into()]);

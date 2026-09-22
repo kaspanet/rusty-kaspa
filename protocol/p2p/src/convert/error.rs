@@ -6,6 +6,9 @@ pub enum ConversionError {
     #[error("General p2p conversion error")]
     General,
 
+    #[error("p2p conversion size too large error")]
+    Size,
+
     #[error("Optional field is None while expected to be Some")]
     NoneValue,
 

@@ -70,7 +70,9 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                 {
                     let count = chunk.headers.len();
                     self.router.enqueue(make_response!(Payload::TrustedDataChunk, chunk, request_id)).await?;
-                    info!("Sent trusted data chunk #{}: {} DAA blocks, estimated size {} bytes", i + 1, count, chunk_size);
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    let i = i + 1; // We start counting chunks from 1.
+                    info!("Sent trusted data chunk #{}: {} DAA blocks, estimated size {} bytes", i, count, chunk_size);
                 }
                 self.router.enqueue(make_response!(Payload::TrustedDataChunksEnd, TrustedDataChunksEndMessage {}, request_id)).await?;
             } else {
@@ -111,6 +113,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
                         request_id
                     ))
                     .await?;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
                 let sent = i + 1;
                 if sent.is_multiple_of(IBD_BATCH_SIZE) {
                     // No timeout here, as we don't care if the syncee takes its time computing,
@@ -129,6 +132,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
     }
 }
 
+#[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
 fn estimated_trusted_header_size(header: &TrustedHeader) -> usize {
     // A nested protobuf Hash has a tag and length for both the message and its 32-byte value.
     const HASH_SIZE: usize = 32 + 4;
@@ -142,7 +146,10 @@ fn estimated_trusted_header_size(header: &TrustedHeader) -> usize {
         + ghostdag.blues_anticone_sizes.len() * ANTICONE_ENTRY_SIZE;
 
     // Include the header, ghostdag and DaaBlockV4 message tags and length prefixes.
-    estimated_header_size(&header.header) + ghostdag_size + 3 * (1 + 5)
+    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+    {
+        estimated_header_size(&header.header) + ghostdag_size + 3 * (1 + 5)
+    }
 }
 
 fn trusted_data_chunks(
@@ -153,18 +160,21 @@ fn trusted_data_chunks(
     std::iter::from_fn(move || {
         headers.peek()?;
         let mut chunk_headers = Vec::new();
-        let mut chunk_size = 0;
+        let mut chunk_size: usize = 0;
         while let Some(&header) = headers.peek() {
             let header_size = estimated_trusted_header_size(header);
             // As with proof headers, let the receiver decide whether to accept a single oversized entry.
-            if !chunk_headers.is_empty() && chunk_size + header_size > max_chunk_size {
+            if !chunk_headers.is_empty() && chunk_size.saturating_add(header_size) > max_chunk_size {
                 break;
             }
             if header_size > max_chunk_size {
                 warn!("Trusted header {} exceeds the chunk size budget ({} > {})", header.header.hash, header_size, max_chunk_size);
             }
             chunk_headers.push(header.into());
-            chunk_size += header_size;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+            {
+                chunk_size += header_size;
+            }
             headers.next();
         }
         Some((TrustedDataChunkMessage { headers: chunk_headers }, chunk_size))

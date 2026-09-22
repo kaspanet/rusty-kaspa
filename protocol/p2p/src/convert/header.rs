@@ -1,4 +1,5 @@
 use crate::pb as protowire;
+use kaspa_consensus_core::header::CompressedParents;
 use kaspa_consensus_core::{BlueWorkType, header::Header};
 use kaspa_hashes::Hash;
 
@@ -44,7 +45,7 @@ impl From<&Header> for protowire::BlockHeader {
 impl TryFrom<protowire::BlockHeader> for Header {
     type Error = ConversionError;
     fn try_from(item: protowire::BlockHeader) -> Result<Self, Self::Error> {
-        let parents_by_level = item
+        let parents_by_level: CompressedParents = item
             .parents
             .into_iter()
             .map(|p| {
@@ -76,6 +77,7 @@ impl TryFrom<protowire::BlockHeader> for Header {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_consensus_core::errors::header::CompressedParentsError;
 
     #[test]
     fn compressed_parents_wire_roundtrip() {
@@ -105,5 +107,16 @@ mod tests {
         let decoded: Header = wire.try_into().unwrap();
         assert_eq!(decoded.parents_by_level, header.parents_by_level);
         assert_eq!(decoded.hash, header.hash);
+    }
+
+    #[test]
+    fn oversized_compressed_parents_wire_returns_error() {
+        let parent = protowire::Hash { bytes: vec![0; 32] };
+        let wire = protowire::BlockHeader {
+            parents: vec![protowire::BlockLevelParents { cumulative_level: u8::MAX.into(), parent_hashes: vec![parent; 2049] }],
+            ..Default::default()
+        };
+
+        assert!(matches!(Header::try_from(wire), Err(ConversionError::CompressedParentsError(CompressedParentsError::SizeExceeded))));
     }
 }

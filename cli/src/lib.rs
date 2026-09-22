@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 extern crate self as kaspa_cli;
 
 mod cli;

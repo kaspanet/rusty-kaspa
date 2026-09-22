@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use ark_snark::SNARK;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use kaspa_consensus_core::{

@@ -31,10 +31,9 @@ pub(crate) async fn receive_trusted_data(
     }
 
     let mut pkg = TrustedDataPackage::new(Vec::new(), Vec::new());
-    let mut chunk_count = 0;
     let mut cumulative_size = 0;
     let started_at = Instant::now();
-    loop {
+    for chunk_count in 1u64.. {
         let msg = tokio::time::timeout(DEFAULT_TIMEOUT, incoming_route.recv())
             .await
             .map_err(|_| ProtocolError::Timeout(DEFAULT_TIMEOUT))?
@@ -48,7 +47,6 @@ pub(crate) async fn receive_trusted_data(
                     return Err(ProtocolError::Other("Received an empty trusted data chunk"));
                 }
                 add_trusted_data_chunk_size(&mut cumulative_size, chunk.encoded_len())?;
-                chunk_count += 1;
                 info!("Received trusted data chunk #{}: {} DAA blocks", chunk_count, chunk.headers.len());
                 for header in chunk.headers {
                     pkg.daa_window.push(header.try_into()?);
@@ -63,6 +61,7 @@ pub(crate) async fn receive_trusted_data(
             }
         }
     }
+    unreachable!()
 }
 
 #[cfg(test)]

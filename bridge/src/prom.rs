@@ -224,18 +224,21 @@ pub fn record_internal_cpu_miner_snapshot(hashes_tried: u64, blocks_submitted: u
 
     if let Some(c) = INTERNAL_CPU_HASHES_TRIED_TOTAL.get() {
         let current = c.get() as u64;
+        #[allow(clippy::arithmetic_side_effects, reason = "The guard establishes hashes_tried > current before subtracting.")]
         if hashes_tried > current {
             c.inc_by((hashes_tried - current) as f64);
         }
     }
     if let Some(c) = INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL.get() {
         let current = c.get() as u64;
+        #[allow(clippy::arithmetic_side_effects, reason = "The guard establishes blocks_submitted > current before subtracting.")]
         if blocks_submitted > current {
             c.inc_by((blocks_submitted - current) as f64);
         }
     }
     if let Some(c) = INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL.get() {
         let current = c.get() as u64;
+        #[allow(clippy::arithmetic_side_effects, reason = "The guard establishes blocks_accepted > current before subtracting.")]
         if blocks_accepted > current {
             c.inc_by((blocks_accepted - current) as f64);
         }
@@ -319,17 +322,37 @@ fn try_read_static_file(url_path: &str) -> Option<(String, Vec<u8>)> {
     // URL layout expected by the dashboard:
     // - / -> index.html
     // - /raw.html
-    // - /static/... -> maps to bridge/static/... (strip leading /static/)
+    // - /static/... -> maps to bridge/static/... (strip leading /static/ once)
     let rel = match url_path {
         "/" => "index.html".to_string(),
         "/index.html" => "index.html".to_string(),
         "/raw.html" => "raw.html".to_string(),
-        p if p.starts_with("/static/") => p.trim_start_matches("/static/").to_string(),
-        _ => return None,
+        p => p.strip_prefix("/static/")?.to_string(),
     };
 
-    // Prevent path traversal
-    if rel.contains("..") || rel.contains('\\') {
+    // Rebuild the path from `Normal` components only. This rejects:
+    // - absolute remainders, e.g. `/static//etc/passwd` leaves `/etc/passwd`
+    //   after stripping the `/static/` prefix; joining that directly would
+    //   replace the static root,
+    // - `..` components,
+    // - backslashes, to reject Windows-style path syntax on Unix,
+    // and collapses duplicate separators.
+    //
+    // The raw request target is intentionally not percent-decoded, so encoded
+    // traversal sequences such as `%2e%2e%2f` remain literal path components
+    // and therefore do not traverse directories.
+    if rel.contains('\\') {
+        return None;
+    }
+    let mut normal_parts: Vec<&str> = Vec::new();
+    for component in std::path::Path::new(&rel).components() {
+        match component {
+            std::path::Component::Normal(part) => normal_parts.push(part.to_str()?),
+            _ => return None,
+        }
+    }
+    let rel = normal_parts.join("/");
+    if rel.is_empty() {
         return None;
     }
 
@@ -341,8 +364,17 @@ fn try_read_static_file(url_path: &str) -> Option<(String, Vec<u8>)> {
         return Some((rel, f.contents().to_vec()));
     }
 
-    let file_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static").join(&rel);
-    let bytes = std::fs::read(&file_path).ok()?;
+    // The disk fallback is restricted to files beneath the canonicalized
+    // static root, so a symlinked asset inside the static tree cannot make
+    // the read escape it either.
+    let static_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("static");
+    let file_path = static_root.join(&rel);
+    let canonical_root = std::fs::canonicalize(&static_root).ok()?;
+    let canonical_file = std::fs::canonicalize(&file_path).ok()?;
+    if !canonical_file.starts_with(&canonical_root) {
+        return None;
+    }
+    let bytes = std::fs::read(&canonical_file).ok()?;
     Some((rel, bytes))
 }
 
@@ -456,6 +488,7 @@ async fn handle_http_request(
         }
 
         let body_start = request.find("\r\n\r\n").unwrap_or(request.len());
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
         let body = &request[body_start + 4..];
         let result = update_config_from_json(body).await;
         let json_response = if result.is_ok() {
@@ -1184,7 +1217,10 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
                             nonce,
                             bluescore,
                         });
-                        stats.totalBlocks += 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            stats.totalBlocks += 1;
+                        }
                     }
                 }
             }
@@ -1419,7 +1455,10 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
 
     stats.workers = active_workers;
     // Active workers are the number of Stratum workers, plus the internal CPU miner if present.
-    stats.activeWorkers = stats.workers.len() + stats.internalCpu.as_ref().map(|_| 1).unwrap_or(0);
+    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+    {
+        stats.activeWorkers = stats.workers.len() + stats.internalCpu.as_ref().map(|_| 1).unwrap_or(0);
+    }
 
     // The block gauge may have evicted older blocks; fall back to the monotonic counter total so the
     // "Total Blocks" card still reflects the full lifetime count.

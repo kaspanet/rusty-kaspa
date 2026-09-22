@@ -180,6 +180,7 @@ where
         if let Some(instance_start) = original_message.find("[Instance ")
             && let Some(instance_end) = original_message[instance_start..].find("]")
         {
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
             let instance_id_str = &original_message[instance_start..instance_start + instance_end + 1];
             if let Ok(registry) = INSTANCE_REGISTRY.lock()
                 && let Some(&num) = registry.get(instance_id_str)
@@ -259,8 +260,11 @@ where
             if let Some(instance_start) = message.find("[Instance ")
                 && let Some(instance_end) = message[instance_start..].find("]")
             {
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
                 let instance_str = &message[instance_start + 10..instance_start + instance_end];
-                if let Ok(inst_num) = instance_str.parse::<usize>() {
+                if let Ok(inst_num) = instance_str.parse::<usize>()
+                    && inst_num >= 1
+                {
                     // Apply instance color to the entire message
                     let color_code = LogColors::instance_color_code(inst_num);
                     write!(writer, "{}{}\x1b[0m", color_code, &message)?;
@@ -290,7 +294,9 @@ where
                 // Configuration lines - color the label part (e.g., "\tkaspad:          value")
                 if let Some(colon_pos) = message.find(':') {
                     // Find the end of the label (colon + whitespace)
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
                     let label_end = message[colon_pos + 1..].chars().take_while(|c| c.is_whitespace()).count();
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
                     let label_end_pos = colon_pos + 1 + label_end;
                     let label = &message[..label_end_pos];
                     let value = &message[label_end_pos..];

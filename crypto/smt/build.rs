@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 // Build script that precomputes empty subtree hashes for known BLAKE3 hashers.
 //
 // For each hasher, generates an `impl SmtHasher` block with a const array

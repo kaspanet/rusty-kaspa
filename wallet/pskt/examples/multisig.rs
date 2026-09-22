@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use kaspa_consensus_core::config::params::TESTNET_PARAMS;
 use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},

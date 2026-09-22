@@ -1,4 +1,4 @@
-use crate::{ConnectionInitializer, Peer, Router, common::ProtocolError, pb::KaspadMessage};
+use crate::{Peer, Router, common::ProtocolError, pb::KaspadMessage};
 use kaspa_core::{debug, info, warn};
 use parking_lot::RwLock;
 use std::{
@@ -32,40 +32,25 @@ impl Hub {
 
     /// Starts a loop for receiving central hub events from all peer routers. This mechanism is used for
     /// managing a collection of active peers and for supporting a broadcast operation.
-    pub(crate) fn start_event_loop(self, mut hub_receiver: MpscReceiver<HubEvent>, initializer: Arc<dyn ConnectionInitializer>) {
+    pub(crate) fn start_event_loop(self, mut hub_receiver: MpscReceiver<HubEvent>) {
         tokio::spawn(async move {
             while let Some(new_event) = hub_receiver.recv().await {
                 match new_event {
                     HubEvent::NewPeer(new_router) => {
-                        // If peer is outbound then connection initialization was already performed as part of the connect logic
-                        if new_router.is_outbound() {
-                            info!("P2P Connected to outgoing peer {} (outbound: {})", new_router, self.peers_query(true) + 1);
-                            self.insert_new_router(new_router).await;
-                        } else {
-                            match initializer.initialize_connection(new_router.clone()).await {
-                                Ok(()) => {
-                                    info!("P2P Connected to incoming peer {} (inbound: {})", new_router, self.peers_query(false) + 1);
-                                    self.insert_new_router(new_router).await;
-                                }
-                                Err(err) => {
-                                    new_router.try_sending_reject_message(&err).await;
-                                    // Ignoring the new router
-                                    new_router.close().await;
-
-                                    match err {
-                                        ProtocolError::LoopbackConnection(_)
-                                        | ProtocolError::PeerAlreadyExists(_)
-                                        | ProtocolError::VersionMismatch(_, ..=6) => {
-                                            // version 6 and below is prior crescendo, silencing logs on deprecated versions
-                                            debug!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
-                                        }
-                                        _ => {
-                                            warn!("P2P, handshake failed for inbound peer {}: {}", new_router, err);
-                                        }
-                                    }
-                                }
-                            }
+                        // PeerClosing may be handled before NewPeer, so avoid inserting a router whose close event was already consumed.
+                        if new_router.is_closed() {
+                            continue;
                         }
+
+                        let is_outbound = new_router.is_outbound();
+                        self.insert_new_router(new_router.clone()).await;
+                        info!(
+                            "P2P Connected to {} peer {} ({}: {})",
+                            if is_outbound { "outgoing" } else { "incoming" },
+                            new_router,
+                            if is_outbound { "outbound" } else { "inbound" },
+                            self.peers_query(is_outbound)
+                        );
                     }
                     HubEvent::PeerClosing(router) => {
                         if let Occupied(entry) = self.peers.write().entry(router.key()) {
@@ -96,17 +81,19 @@ impl Hub {
     fn select_some_peers(&self, num_peers: usize) -> impl Iterator<Item = Arc<Router>> {
         let peers = self.peers.read();
         let total_outbound = peers.values().filter(|peer| peer.is_outbound()).count();
+
+        #[allow(clippy::arithmetic_side_effects, reason = "`total_outbound <= peers.len()`.")]
         let total_inbound = peers.len() - total_outbound;
 
         let mut outbound_count = num_peers.div_ceil(2).min(total_outbound);
 
         // If there won't be enough inbound peers to meet the num_peers after we've selected only half for outbound,
         // try to require more outbound peers for the difference
-        if total_inbound + outbound_count < num_peers {
-            outbound_count = (num_peers - total_inbound).min(total_outbound);
+        if total_inbound.saturating_add(outbound_count) < num_peers {
+            outbound_count = num_peers.saturating_sub(total_inbound).min(total_outbound);
         }
 
-        let inbound_count = (num_peers - outbound_count).min(total_inbound);
+        let inbound_count = num_peers.saturating_sub(outbound_count).min(total_inbound);
 
         let thread_rng = &mut rand::thread_rng();
 

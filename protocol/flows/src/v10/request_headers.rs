@@ -40,6 +40,8 @@ impl RequestHeadersFlow {
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         const MAX_BLOCKS: usize = 1 << 10;
         // Internal consensus logic requires that `max_blocks > mergeset_size_limit`
+
+        #[allow(clippy::arithmetic_side_effects, reason = "self.ctx.config.mergeset_size_limit() << usize::MAX")]
         let max_blocks = max(MAX_BLOCKS, self.ctx.config.mergeset_size_limit() as usize + 1);
         loop {
             let (msg, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestHeaders)?;
@@ -103,6 +105,7 @@ impl RequestHeadersFlow {
     }
 }
 
+#[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
 pub(super) fn estimated_header_size(header: &Header) -> usize {
     const TAG_SIZE: usize = 1; // All BlockHeader and nested-message field numbers are below 16.
     const MAX_U32_VARINT_SIZE: usize = 5;
@@ -142,6 +145,7 @@ pub(crate) fn header_chunks<T: AsRef<Header>>(
 ) -> impl Iterator<Item = Vec<pb::BlockHeader>> {
     let mut headers = headers.map(move |header| {
         // Account for the repeated BlockHeader field's tag and length prefix in the containing chunk message.
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
         let header_size = 1 + 4 + estimated_header_size(header.as_ref());
         (header, header_size)
     });
@@ -150,13 +154,13 @@ pub(crate) fn header_chunks<T: AsRef<Header>>(
     std::iter::from_fn(move || {
         next_header.as_ref()?;
         let mut chunk = Vec::new();
-        let mut chunk_size = 0;
+        let mut chunk_size: usize = 0;
 
         while let Some((header, header_size)) = next_header.take() {
             // We allow a single header to exceed the chunk size budget. The rationale is that the receiver can
             // change its message size policy to accommodate the large header, so we let the receiver decide
             // whether to accept it or not.
-            if !chunk.is_empty() && chunk_size + header_size > max_chunk_size {
+            if !chunk.is_empty() && chunk_size.saturating_add(header_size) > max_chunk_size {
                 next_header = Some((header, header_size));
                 break;
             }
@@ -168,7 +172,11 @@ pub(crate) fn header_chunks<T: AsRef<Header>>(
                     max_chunk_size
                 );
             }
-            chunk_size += header_size;
+
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+            {
+                chunk_size += header_size;
+            }
             chunk.push(header.as_ref().into());
             next_header = headers.next();
         }

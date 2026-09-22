@@ -162,7 +162,10 @@ fn log_bridge_configuration(config: &BridgeConfig) {
     tracing::info!("\thealth check:    {}", config.global.health_check_port);
 
     for (idx, instance) in config.instances.iter().enumerate() {
-        tracing::info!("\t--- Instance {} ---", idx + 1);
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+        {
+            tracing::info!("\t--- Instance {} ---", idx + 1);
+        }
         tracing::info!("\t  stratum:       {}", instance.stratum_port);
         tracing::info!("\t  min diff:      {}", instance.min_share_diff);
         if let Some(ref prom_port) = instance.prom_port {
@@ -252,6 +255,7 @@ async fn main() -> Result<(), anyhow::Error> {
             assert!(cli.appdir.is_none(), "appdir should not be specified both in bridge args and kaspad args");
         }
 
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
         argv.push(OsString::from("kaspad"));
         argv.extend(node_args.iter().map(OsString::from));
@@ -358,6 +362,10 @@ async fn main() -> Result<(), anyhow::Error> {
                         }
 
                         let now = tokio::time::Instant::now();
+                        #[allow(
+                            clippy::arithmetic_side_effects,
+                            reason = "Tokio Instant subtraction uses saturating_duration_since, yielding zero if the clock samples are reversed."
+                        )]
                         let dt = (now - last_ts).as_secs_f64().max(0.001);
                         last_ts = now;
 
@@ -385,6 +393,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mut instance_handles = Vec::new();
     for (idx, instance_config) in config.instances.iter().enumerate() {
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
         let instance_num = idx + 1;
         let instance = instance_config.clone();
         let global = config.global.clone();

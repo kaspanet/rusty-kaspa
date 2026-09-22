@@ -77,7 +77,10 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
 
         // Request the next batch only if the stream is still live
         if let Ok(Some(_)) = res {
-            self.i += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.i += 1;
+            }
             if self.i.is_multiple_of(IBD_BATCH_SIZE) {
                 self.router
                     .enqueue(make_message!(
@@ -137,7 +140,10 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
 
         // Request the next batch only if the stream is still live
         if let Ok(Some(_)) = res {
-            self.i += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.i += 1;
+            }
             self.router.enqueue(make_message!(Payload::RequestNextHeaders, RequestNextHeadersMessage {})).await?;
         }
 
@@ -193,8 +199,14 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
 
         // Request the next batch only if the stream is still live
         if let Ok(Some(chunk)) = res {
-            self.i += 1;
-            self.utxo_count += chunk.len();
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.i += 1;
+            }
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.utxo_count += chunk.len();
+            }
             if self.i.is_multiple_of(IBD_BATCH_SIZE) {
                 info!("Received {} UTXO set chunks so far, totaling in {} UTXOs", self.i, self.utxo_count);
                 self.router
@@ -299,6 +311,7 @@ impl<'a, 'b> SmtStream<'a, 'b> {
             return Err(ProtocolError::Other("SmtLaneChunk exceeds SMT_CHUNK_SIZE"));
         }
 
+        #[allow(clippy::arithmetic_side_effects, reason = "next_chunk() returned above if lane_count >= expected_count.")]
         let remaining = self.expected_count - self.lane_count;
         if payload.entries.len() as u64 > remaining {
             return Err(ProtocolError::Other("received more SMT lane entries than active_lanes_count"));
@@ -328,10 +341,16 @@ impl<'a, 'b> SmtStream<'a, 'b> {
             };
 
             lanes.push(kaspa_consensus_core::api::ImportLane { lane_key, lane_tip, blue_score: entry.blue_score, proof });
-            self.lane_count += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+            {
+                self.lane_count += 1;
+            }
         }
 
-        self.chunks_received += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            self.chunks_received += 1;
+        }
 
         // Enqueue RequestNext for the next window — but only if more lanes remain.
         // When `lane_count == expected_count` the caller will stop iterating and the

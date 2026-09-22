@@ -226,10 +226,16 @@ impl OrphanBlocksPool {
                     // to i in the next iteration. Loop will progress because len is shorter now.
                     self.orphans.swap_remove_index(i);
                 } else {
-                    i += 1;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                    {
+                        i += 1;
+                    }
                 }
             } else {
-                i += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    i += 1;
+                }
             }
         }
 

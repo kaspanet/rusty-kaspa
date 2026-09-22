@@ -23,6 +23,8 @@
 // Tests are designed to be educational, helping developers understand the codebase.
 // ============================================================================
 
+#![allow(clippy::arithmetic_side_effects)]
+
 #[cfg(test)]
 use crate::cli::{parse_bool, parse_instance_spec};
 #[cfg(test)]
@@ -1366,6 +1368,16 @@ mod comprehensive_tests {
         // Verify extranonce was assigned (empty for default handler)
         let _extranonce = ctx.extranonce.lock().clone();
         // Extranonce assignment requires ClientHandler, so it may be empty here
+    }
+
+    #[tokio::test]
+    async fn test_subscribe_rejects_oversized_extranonce() {
+        let ctx = create_test_context().await;
+        *ctx.extranonce.lock() = "00".repeat(9);
+        let event = JsonRpcEvent::new(Some("1".to_string()), "mining.subscribe", vec![json!("Bitmain")]);
+
+        let err = handle_subscribe(ctx, event, None).await.unwrap_err();
+        assert_eq!(err.to_string(), "extranonce exceeds the 8-byte nonce size");
     }
 
     #[tokio::test]

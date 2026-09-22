@@ -5,6 +5,7 @@
 //! This includes extended key generation and derivation.
 //!
 
+#![allow(clippy::arithmetic_side_effects)]
 pub mod derivation;
 pub mod derivation_path;
 pub mod error;
