@@ -10,7 +10,7 @@ use crate::imports::*;
 ///
 /// Extended public key (XPub).
 ///
-/// This class allows accepts another XPub and and provides
+/// This class accepts another XPub and provides
 /// functions for derivation of dependent child public keys.
 ///
 /// Please note that Kaspa extended public keys use `kpub` prefix.
