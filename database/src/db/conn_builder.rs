@@ -182,6 +182,29 @@ impl ConnBuilder<PathBuf, false, Unspecified, i32> {
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open_for_read_only(&opts, &self.db_path, false)?, guard));
         Ok(db)
     }
+
+    /// Opens the database as a RocksDB secondary instance.
+    ///
+    /// The secondary path stores the secondary instance metadata and must be private to this instance. RocksDB secondary
+    /// instances require an unlimited `max_open_files` setting, so the process file descriptor limit must be large enough
+    /// to open all SST files in the primary database.
+    pub fn build_secondary(self, secondary_path: PathBuf) -> Result<Arc<DB>, Box<dyn std::error::Error>> {
+        if !self.db_path.exists() {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("database path does not exist: {}", self.db_path.display()),
+            )));
+        }
+
+        let (mut opts, guard) =
+            default_opts!(self).map_err(|err: kaspa_utils::fd_budget::Error| -> Box<dyn std::error::Error> { Box::new(err) })?;
+        opts.create_if_missing(false);
+        opts.set_max_open_files(-1);
+
+        let db = <DBWithThreadMode<MultiThreaded>>::open_as_secondary(&opts, &self.db_path, &secondary_path)?;
+        db.try_catch_up_with_primary()?;
+        Ok(Arc::new(DB::new(db, guard)))
+    }
 }
 
 impl ConnBuilder<PathBuf, true, Unspecified, i32> {
@@ -201,5 +224,34 @@ impl ConnBuilder<PathBuf, true, u32, i32> {
         opts.set_stats_dump_period_sec(self.stats_period);
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
         Ok(db)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ConnBuilder;
+
+    #[test]
+    fn secondary_db_catches_up_with_primary() {
+        let root = tempfile::tempdir().unwrap();
+        let primary_path = root.path().join("primary");
+        let secondary_path = root.path().join("secondary");
+
+        let primary = ConnBuilder::default().with_db_path(primary_path.clone()).with_files_limit(10).build().unwrap();
+        primary.put(b"key", b"first").unwrap();
+        primary.flush().unwrap();
+
+        let secondary = ConnBuilder::default()
+            .with_db_path(primary_path)
+            .with_files_limit(10)
+            .build_secondary(secondary_path)
+            .unwrap();
+        assert_eq!(secondary.get(b"key").unwrap().as_deref(), Some(b"first".as_slice()));
+
+        primary.put(b"key", b"second").unwrap();
+        primary.flush().unwrap();
+        secondary.try_catch_up_with_primary().unwrap();
+
+        assert_eq!(secondary.get(b"key").unwrap().as_deref(), Some(b"second".as_slice()));
     }
 }
