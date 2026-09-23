@@ -9,9 +9,9 @@ use kaspa_txscript::pay_to_address_script;
 #[wasm_bindgen(typescript_custom_section)]
 const TS_PAYMENT_OUTPUTS: &'static str = r#"
 /**
- * 
+ *
  * Defines a single payment output.
- * 
+ *
  * @see {@link IGeneratorSettingsObject}, {@link Generator}
  * @category Wallet SDK
  */
@@ -25,6 +25,11 @@ export interface IPaymentOutput {
      * Output amount in SOMPI.
      */
     amount: bigint;
+    /**
+     * Optional covenant binding for the output. Requires transaction version >= 1.
+     * Warning: isn't supported by the transaction generator, instead use createTransaction()
+     */
+    covenant?: ICovenantBinding | CovenantBinding;
 }
 "#;
 
@@ -79,18 +84,7 @@ impl TryCastFromJs for PaymentOutput {
         R: AsRef<JsValue> + 'a,
     {
         Self::resolve(value, || {
-            if let Some(array) = value.as_ref().dyn_ref::<Array>() {
-                let length = array.length();
-                if length != 2 {
-                    Err(Error::Custom("Invalid payment output".to_string()))
-                } else {
-                    let address = Address::try_owned_from(array.get(0))?;
-                    let amount = array.get(1).try_as_u64()?;
-                    let covenant = array.get(2);
-                    let covenant = if covenant.is_undefined() || covenant.is_null() { None } else { Some(covenant.try_into_owned()?) };
-                    Ok(Self { address, amount, covenant })
-                }
-            } else if let Some(object) = Object::try_from(value.as_ref()) {
+            if let Some(object) = Object::try_from(value.as_ref()) {
                 let address = object.cast_into::<Address>("address")?;
                 let amount = object.get_u64("amount")?;
                 let covenant = object
@@ -183,12 +177,12 @@ impl TryCastFromJs for PaymentOutputs {
     {
         Self::resolve(value, || {
             let outputs = if let Some(output_array) = value.as_ref().dyn_ref::<js_sys::Array>() {
+                // it's an array, expected to be of PaymentOutput
                 let vec = output_array.to_vec();
                 vec.into_iter().map(PaymentOutput::try_owned_from).collect::<Result<Vec<_>, _>>()?
-            } else if let Some(object) = value.as_ref().dyn_ref::<js_sys::Object>() {
-                Object::entries(object).iter().map(PaymentOutput::try_owned_from).collect::<Result<Vec<_>, _>>()?
-            } else if let Some(map) = value.as_ref().dyn_ref::<js_sys::Map>() {
-                map.entries().into_iter().flat_map(|v| v.map(PaymentOutput::try_owned_from)).collect::<Result<Vec<_>, _>>()?
+            } else if Object::try_from(value.as_ref()).is_some() {
+                // it's an object, expected to be a PaymentOutput directly
+                vec![PaymentOutput::try_owned_from(value)?]
             } else {
                 return Err(Error::Custom("payment outputs must be an array or an object".to_string()));
             };
@@ -227,5 +221,63 @@ impl From<&[(&Address, u64)]> for PaymentOutputs {
     fn from(outputs: &[(&Address, u64)]) -> Self {
         let outputs = outputs.iter().map(|(address, amount)| PaymentOutput::new((*address).clone(), *amount)).collect();
         PaymentOutputs { outputs }
+    }
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use kaspa_hashes::Hash;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn test_payment_output_try_cast_from_plain_object_with_covenant() {
+        let address = Address::try_from("kaspatest:qqz22l98sf8jun72rwh5rqe2tm8lhwtdxdmynrz4ypwak427qed5juktjt7ju").unwrap();
+        let amount = 1234;
+        let covenant_id = Hash::from_bytes([0xab; 32]);
+
+        let covenant = Object::new();
+        covenant.set("authorizingInput", &JsValue::from(2)).unwrap();
+        covenant.set("covenantId", &JsValue::from_str(&covenant_id.to_string())).unwrap();
+
+        let output = Object::new();
+        output.set("address", &JsValue::from_str(&address.to_string())).unwrap();
+        output.set("amount", &JsValue::from(amount)).unwrap();
+        output.set("covenant", &covenant.into()).unwrap();
+
+        let output = PaymentOutput::try_owned_from(output).expect("try_cast_from should accept an IPaymentOutput object");
+        let covenant = output.covenant.expect("covenant should be present");
+
+        assert_eq!(output.address, address);
+        assert_eq!(output.amount, amount);
+        assert_eq!(covenant.get_authorizing_input(), 2);
+        assert_eq!(covenant.get_covenant_id(), covenant_id);
+    }
+
+    #[wasm_bindgen_test]
+    fn test_payment_outputs_try_cast_from_single_and_array_objects() {
+        let address = Address::try_from("kaspatest:qqz22l98sf8jun72rwh5rqe2tm8lhwtdxdmynrz4ypwak427qed5juktjt7ju").unwrap();
+
+        let output = Object::new();
+        output.set("address", &JsValue::from_str(&address.to_string())).unwrap();
+        output.set("amount", &JsValue::from(1000)).unwrap();
+
+        let single = PaymentOutputs::try_owned_from(output.clone()).expect("try_cast_from should accept one IPaymentOutput object");
+        assert_eq!(single.outputs.len(), 1);
+        assert_eq!(single.outputs[0].address, address);
+        assert_eq!(single.outputs[0].amount, 1000);
+
+        let output_2 = Object::new();
+        output_2.set("address", &JsValue::from_str(&address.to_string())).unwrap();
+        output_2.set("amount", &JsValue::from(2000)).unwrap();
+
+        let outputs = Array::new();
+        outputs.push(&output.into());
+        outputs.push(&output_2.into());
+
+        let outputs = PaymentOutputs::try_owned_from(outputs).expect("try_cast_from should accept an IPaymentOutput array");
+        assert_eq!(outputs.outputs.len(), 2);
+        assert_eq!(outputs.outputs[0].amount, 1000);
+        assert_eq!(outputs.outputs[1].amount, 2000);
     }
 }

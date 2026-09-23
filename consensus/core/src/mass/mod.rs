@@ -39,7 +39,7 @@ pub fn transaction_estimated_serialized_size(tx: &Transaction) -> u64 {
     size
 }
 
-fn transaction_input_estimated_serialized_size(input: &TransactionInput, version: u16) -> u64 {
+pub fn transaction_input_estimated_serialized_size(input: &TransactionInput, version: u16) -> u64 {
     let mut size = 0;
     size += outpoint_estimated_serialized_size();
 
@@ -185,6 +185,20 @@ impl NonContextualMasses {
     /// Returns transient mass normalized to the compute-mass scale.
     pub fn normalized_transient(&self, cofactors: &MassCofactors) -> u64 {
         (self.transient_mass as f64 * cofactors.transient).ceil() as u64
+    }
+}
+
+impl std::ops::Add for NonContextualMasses {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::new(self.compute_mass + rhs.compute_mass, self.transient_mass + rhs.transient_mass)
+    }
+}
+
+impl std::ops::AddAssign for NonContextualMasses {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
     }
 }
 

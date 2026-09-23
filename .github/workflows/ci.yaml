@@ -348,6 +348,9 @@ jobs:
       - name: Run wasm tests for consensus/client
         run: wasm-pack test --node consensus/client --features wasm32-sdk
 
+      - name: Run wasm tests for wallet/core
+        run: wasm-pack test --node wallet/core --features wasm32-sdk
+
   build-wasm32:
     name: Build WASM32 SDK
     runs-on: ubuntu-latest
