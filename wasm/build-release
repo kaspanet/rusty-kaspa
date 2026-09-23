@@ -12,7 +12,6 @@ rm -rf release/*
 rm -rf web/*
 rm -rf nodejs/*
 rm -rf docs/*
-rm -rf examples/nodejs/typescript/lib
 
 mkdir -p release/kaspa-wasm32-sdk/web
 mkdir -p release/kaspa-wasm32-sdk/nodejs
@@ -65,20 +64,19 @@ cp -r docs/kaspa-rpc release/kaspa-wasm32-sdk/docs/kaspa-rpc
 cp -r docs/kaspa-core release/kaspa-wasm32-sdk/docs/kaspa-core
 cp -r docs/kaspa release/kaspa-wasm32-sdk/docs/kaspa
 
-mkdir -p release/kaspa-wasm32-sdk/examples/data
-cp -r examples/data/.gitignore release/kaspa-wasm32-sdk/examples/data/.gitignore
-cp -r examples/nodejs release/kaspa-wasm32-sdk/examples/
+mkdir -p release/kaspa-wasm32-sdk/examples
+cp -r examples/recipes release/kaspa-wasm32-sdk/examples/
+cp -r examples/shared release/kaspa-wasm32-sdk/examples/
 cp -r examples/web release/kaspa-wasm32-sdk/examples/
-cp -r examples/init.js release/kaspa-wasm32-sdk/examples/
-cp -r examples/jsconfig.json release/kaspa-wasm32-sdk/examples/
+cp -r examples/.gitignore release/kaspa-wasm32-sdk/examples/
 cp -r examples/package.json release/kaspa-wasm32-sdk/examples/
+cp -r examples/README.md release/kaspa-wasm32-sdk/examples/
+cp -r examples/tsconfig.json release/kaspa-wasm32-sdk/examples/
 
 pushd .
 cd release/kaspa-wasm32-sdk/examples
 npm install
 popd
-
-# tsc release/kaspa-wasm32-sdk/examples/nodejs/typescript/
 
 cp index.html release/kaspa-wasm32-sdk/index.html
 cp README.md release/kaspa-wasm32-sdk/README.md
