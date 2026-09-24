@@ -172,6 +172,10 @@ impl Server {
         if let Some(rpc_core) = &self.inner.rpc_core { rpc_core.service.clone() } else { connection.grpc_client() }
     }
 
+    pub fn core_service(&self) -> Option<&Arc<RpcCoreService>> {
+        self.inner.rpc_core.as_ref().map(|x| &x.service)
+    }
+
     pub async fn start_notify(&self, connection: &Connection, scope: Scope) -> RpcResult<()> {
         let listener_id = if let Some(listener_id) = connection.listener_id() {
             listener_id

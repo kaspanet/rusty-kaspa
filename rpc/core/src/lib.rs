@@ -15,6 +15,7 @@
 #![recursion_limit = "256"]
 
 pub mod api;
+pub mod auth;
 pub mod convert;
 pub mod error;
 pub mod model;

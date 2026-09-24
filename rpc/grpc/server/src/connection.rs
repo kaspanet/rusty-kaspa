@@ -84,6 +84,9 @@ struct Inner {
 
     /// When true, stops sending messages to the outgoing route
     is_closed: AtomicBool,
+
+    /// Whether this connection provided a valid auth token
+    authenticated: bool,
 }
 
 impl Drop for Inner {
@@ -220,7 +223,13 @@ impl Connection {
         manager_sender: MpscSender<ManagerEvent>,
         mut incoming_stream: Streaming<KaspadRequest>,
         outgoing_route: GrpcSender,
+        auth_token: Option<String>,
     ) -> Self {
+        let authenticated = auth_token
+            .as_ref()
+            .and_then(|token| server_context.auth_config.as_ref().map(|auth| auth.verify_token(token)))
+            .unwrap_or(false);
+
         let (shutdown_sender, mut shutdown_receiver) = oneshot_channel();
         let mut router = Router::new(server_context.clone(), interface.clone());
         let connection = Self {
@@ -232,6 +241,7 @@ impl Connection {
                 server_context,
                 mutable_state: Mutex::new(InnerMutableState::new(Some(shutdown_sender))),
                 is_closed: AtomicBool::new(false),
+                authenticated,
             }),
         };
         let connection_clone = connection.clone();
@@ -396,6 +406,15 @@ fn match_for_h2_no_error(err_status: &tonic::Status) -> bool {
 pub enum GrpcEncoding {
     #[default]
     ProtowireResponse = 0,
+}
+
+impl kaspa_rpc_core::api::connection::RpcConnection for Connection {
+    fn id(&self) -> u64 {
+        self.inner.connection_id.as_u128() as u64
+    }
+    fn is_authenticated(&self) -> bool {
+        self.inner.authenticated
+    }
 }
 
 #[async_trait::async_trait]
