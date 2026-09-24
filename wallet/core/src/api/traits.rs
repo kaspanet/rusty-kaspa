@@ -287,6 +287,16 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// around this call.
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
 
+    /// Wrapper around [`accounts_remove_call()`](Self::accounts_remove_call)
+    async fn accounts_remove(self: Arc<Self>, account_id: AccountId, wallet_secret: Secret) -> Result<()> {
+        self.accounts_remove_call(AccountsRemoveRequest { account_id, wallet_secret }).await?;
+        Ok(())
+    }
+    /// Remove an account and its associated private key data from the wallet storage.
+    /// If the account has a non-zero balance, this call will return an error.
+    /// Private key data is only removed if no other accounts reference it.
+    async fn accounts_remove_call(self: Arc<Self>, request: AccountsRemoveRequest) -> Result<AccountsRemoveResponse>;
+
     /// Wrapper around [`accounts_select_call()`](Self::accounts_select_call)
     async fn accounts_select(self: Arc<Self>, account_id: Option<AccountId>) -> Result<()> {
         self.accounts_select_call(AccountsSelectRequest { account_id }).await?;

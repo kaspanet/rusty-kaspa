@@ -94,7 +94,7 @@ pub struct Context {
     /// removed from the context by the UTXO change notification.
     pub(crate) outgoing: AHashMap<TransactionId, OutgoingTransaction>,
     /// Total balance of all UTXOs in this context (mature, pending)
-    balance: Option<Balance>,
+    pub(crate) balance: Option<Balance>,
     /// Addresses monitored by this UTXO context
     addresses: Arc<DashSet<Arc<Address>>>,
 }
