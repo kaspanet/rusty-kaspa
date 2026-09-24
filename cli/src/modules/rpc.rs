@@ -65,10 +65,15 @@ impl Rpc {
             //     let result = rpc.submit_block_call(SubmitBlockRequest {  }).await?;
             //     self.println(&ctx, result);
             // }
-            // RpcApiOps::GetBlockTemplate => {
-            //     let result = rpc.get_block_template_call(GetBlockTemplateRequest {  }).await?;
-            //     self.println(&ctx, result);
-            // }
+            RpcApiOps::GetBlockTemplate => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Please specify a valid mining address (and optional extra data)"));
+                }
+                let pay_address: Address = argv.remove(0).try_into()?;
+                let extra_data = argv.first().cloned().unwrap_or_default().bytes().collect();
+                let result = rpc.get_block_template_call(None, GetBlockTemplateRequest::new(pay_address, extra_data)).await?;
+                self.println(&ctx, result);
+            }
             RpcApiOps::GetPeerAddresses => {
                 let result = rpc.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await?;
                 self.println(&ctx, result);
@@ -82,12 +87,13 @@ impl Rpc {
             //     self.println(&ctx, result);
             // }
             RpcApiOps::GetMempoolEntries => {
-                // TODO
+                let (include_orphan_pool, filter_transaction_pool) = match argv.first().map(|s| s.as_str()) {
+                    Some("orphans") => (true, true), // Orphans only
+                    Some("txs") => (false, false),   // Non-orphans only
+                    _ => (true, false),              // Default to all
+                };
                 let result = rpc
-                    .get_mempool_entries_call(
-                        None,
-                        GetMempoolEntriesRequest { include_orphan_pool: true, filter_transaction_pool: true },
-                    )
+                    .get_mempool_entries_call(None, GetMempoolEntriesRequest { include_orphan_pool, filter_transaction_pool })
                     .await?;
                 self.println(&ctx, result);
             }
@@ -100,7 +106,7 @@ impl Rpc {
                     return Err(Error::custom("Usage: rpc addpeer <ip:port> [true|false for 'is_permanent']"));
                 }
                 let peer_address = argv.remove(0).parse::<RpcContextualPeerAddress>()?;
-                let is_permanent = argv.remove(0).parse::<bool>().unwrap_or(false);
+                let is_permanent = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or(false);
                 let result = rpc.add_peer_call(None, AddPeerRequest { peer_address, is_permanent }).await?;
                 self.println(&ctx, result);
             }
@@ -226,7 +232,7 @@ impl Rpc {
                 }
                 let addresses = argv.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
                 let include_orphan_pool = true;
-                let filter_transaction_pool = true;
+                let filter_transaction_pool = false;
                 let result = rpc
                     .get_mempool_entries_by_addresses_call(
                         None,
