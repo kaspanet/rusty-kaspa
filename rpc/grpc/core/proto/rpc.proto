@@ -70,7 +70,7 @@ message RpcTransaction {
   uint64 gas = 6;
   string payload = 8;
   RpcTransactionVerboseData verboseData = 9;
-  uint64 mass = 10;
+  uint64 storage_mass = 10;
 }
 
 message RpcTransactionVerboseData {
@@ -87,6 +87,8 @@ message RpcTransactionInput {
   uint64 sequence = 3;
   uint32 sigOpCount = 5;
   RpcTransactionInputVerboseData verboseData = 4;
+  // Replaces sigop count for tx version >= 1.
+  uint32 computeBudget = 6;
 }
 
 message RpcTransactionInputVerboseData {
@@ -99,6 +101,7 @@ message RpcUtxoEntry {
   uint64 blockDaaScore = 3;
   bool isCoinbase = 4;
   RpcUtxoEntryVerboseData verboseData = 5;
+  string covenant_id = 6;
 }
 
 message RpcUtxoEntryVerboseData {
@@ -115,6 +118,12 @@ message RpcTransactionOutput {
   uint64 amount = 1;
   RpcScriptPublicKey scriptPublicKey = 2;
   RpcTransactionOutputVerboseData verboseData = 3;
+  optional RpcCovenantBinding covenant = 4;
+}
+
+message RpcCovenantBinding {
+  uint32 authorizing_input = 1;
+  string covenant_id = 2;
 }
 
 message RpcOutpoint {
@@ -1012,6 +1021,7 @@ message RpcOptionalUtxoEntry {
   optional uint64 blockDaaScore = 4;
   optional bool isCoinbase = 5;
   optional RpcOptionalUtxoEntryVerboseData verboseData = 6;
+  optional string CovenantId = 7;
 }
 
 message RpcOptionalTransactionInputVerboseData {
@@ -1024,6 +1034,8 @@ message RpcOptionalTransactionInput {
   optional uint64 sequence = 4;
   optional uint32 sigOpCount = 5;
   optional RpcOptionalTransactionInputVerboseData verboseData = 6;
+  // Replaces sigop count for tx version >= 1.
+  optional uint32 computeBudget = 7;
 }
 
 message RpcOptionalTransactionOutputVerboseData {
@@ -1031,10 +1043,15 @@ message RpcOptionalTransactionOutputVerboseData {
   optional string scriptPublicKeyAddress = 3;
 }
 
+message RpcNullableCovenantBinding {
+  optional RpcCovenantBinding covenant = 1;
+}
+
 message RpcOptionalTransactionOutput {
   optional uint64 value = 2;
   optional RpcScriptPublicKey scriptPublicKey = 3;
   optional RpcOptionalTransactionOutputVerboseData verboseData = 4;
+  optional RpcNullableCovenantBinding covenant = 5;
 }
 
 message RpcOptionalTransactionVerboseData {
@@ -1090,6 +1107,58 @@ message GetCurrentBlockColorRequestMessage {
 
 message GetCurrentBlockColorResponseMessage {
   bool blue = 1;
+
+  RPCError error = 1000;
+}
+
+enum BlockColor {
+  UNKNOWN = 0;
+  BLUE = 1;
+  RED = 2;
+}
+
+message GetBlockRewardInfoRequestMessage {
+  string hash = 1;
+}
+
+message GetBlockRewardInfoResponseMessage {
+  RpcBlockHeader header = 1;
+  BlockColor blockColor = 2;
+  optional uint64 confirmationCount = 3;
+  optional string mergingChainBlockHash = 4;
+  optional uint64 rewardAmount = 5;
+
+  RPCError error = 1000;
+}
+
+// GetSeqCommitLaneProofRequestMessage requests the witness needed to prove a
+// single KIP-21 lane against the seq_commit carried in blockHash's header.
+//
+// blockHash must be a chain (selected-parent-chain) block at or after the
+// current pruning point.
+message GetSeqCommitLaneProofRequestMessage {
+  // Block hash whose header carries the seq_commit to verify against (32 bytes).
+  bytes blockHash = 1;
+  // The 32-byte lane key.
+  bytes laneKey = 2;
+}
+
+message GetSeqCommitLaneProofResponseMessage {
+  // OwnedSmtProof wire format (bitmap || terminal || siblings).
+  bytes smtProof = 1;
+  // 32 bytes iff the lane has an entry in the active-lanes SMT at this POV,
+  // otherwise None (non-inclusion proof).
+  optional bytes laneTip = 2;
+  // Only meaningful when laneTip is present.
+  optional uint64 laneBlueScore = 3;
+  // H_seq(mergeset_context_hash, miner_payload_root) for the block (32 bytes).
+  bytes payloadAndCtxDigest = 4;
+  // seq_commit of the selected parent (= parent header's accepted_id_merkle_root, 32 bytes).
+  bytes parentSeqCommit = 5;
+  // KIP-21 activity_root anchor: the accepted_id_merkle_root of the
+  // inactivity-shortcut block (32 bytes). Folded as
+  // activity_root = H_activity_root(inactivityShortcut, lanes_root).
+  bytes inactivityShortcut = 6;
 
   RPCError error = 1000;
 }

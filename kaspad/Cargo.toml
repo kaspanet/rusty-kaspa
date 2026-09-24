@@ -19,6 +19,7 @@ kaspa-alloc.workspace = true # This changes the global allocator for all of the 
 
 kaspa-addresses.workspace = true
 kaspa-addressmanager.workspace = true
+kaspa-build-info.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
@@ -36,6 +37,7 @@ kaspa-p2p-mining.workspace = true
 kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
+kaspa-system-info.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
@@ -60,9 +62,9 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
 serde_json.workspace = true
+serde_with.workspace = true
 
 toml = "0.8.10"
-serde_with = "3.7.0"
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]

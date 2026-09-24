@@ -38,6 +38,7 @@ pub struct ClientHandler {
 
 impl ClientHandler {
     pub fn new(share_handler: Arc<ShareHandler>, min_share_diff: f64, extranonce_size: i8, instance_id: String) -> Self {
+        #[allow(clippy::arithmetic_side_effects, reason = "extranonce_size.min(3) <= 3")]
         let max_extranonce = if extranonce_size > 0 { (2_f64.powi(8 * extranonce_size.min(3) as i32) - 1.0) as i32 } else { 0 };
 
         Self {
@@ -73,10 +74,18 @@ impl ClientHandler {
         let ctx_clone = Arc::clone(&ctx);
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
-            if !ctx_clone.worker_name.lock().is_empty() {
+            if !ctx_clone.wallet_addr.lock().is_empty() {
                 share_handler.get_create_stats(&ctx_clone);
             }
         });
+    }
+
+    /// Sync Prometheus session metrics for an authorized worker (hashrate/uptime labels).
+    pub fn sync_worker_prom_metrics(&self, ctx: &StratumContext) {
+        if ctx.wallet_addr.lock().is_empty() {
+            return;
+        }
+        self.share_handler.get_create_stats(ctx);
     }
 
     /// Assign extranonce to a client based on detected miner type
@@ -97,6 +106,7 @@ impl ClientHandler {
             // Calculate max extranonce for size 2
             let max_extranonce = (2_f64.powi(16) - 1.0) as i32; // 2 bytes = 16 bits = 65535
 
+            #[allow(clippy::arithmetic_side_effects, reason = "val + 1 is evaluated only for val < max_extranonce = 65535.")]
             let next = GLOBAL_NEXT_EXTRANONCE
                 .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
 
@@ -105,6 +115,10 @@ impl ClientHandler {
             }
 
             let extranonce_val = next.unwrap_or(0);
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "required_extranonce_size is selected from {0, 2}, so the product is at most 4."
+            )]
             let extranonce_str = format!("{:0width$x}", extranonce_val, width = (required_extranonce_size * 2) as usize);
             debug!(
                 "[AUTO-EXTRANONCE] Assigned extranonce '{}' (value: {}, size: {} bytes) to {} miner '{}'",
@@ -145,13 +159,7 @@ impl ClientHandler {
 
         let is_unauthed = wallet_addr.is_empty() && worker_name.is_empty();
         if !is_unauthed {
-            record_disconnect(&crate::prom::WorkerContext {
-                instance_id: self.instance_id.clone(),
-                worker_name: worker_name.clone(),
-                miner: remote_app,
-                wallet: wallet_addr.clone(),
-                ip: format!("{}:{}", ctx.remote_addr(), ctx.remote_port()),
-            });
+            record_disconnect(&WorkerContext::from_stratum(&self.instance_id, ctx, &remote_app));
         }
     }
 
@@ -233,7 +241,7 @@ impl ClientHandler {
                         debug!("  bits_changed: {}", old_header.bits != block.header.bits);
                         debug!("    old: 0x{:08x}, new: 0x{:08x}", old_header.bits, block.header.bits);
                         debug!("  timestamp_changed: {}", old_header.timestamp != block.header.timestamp);
-                        debug!("    delta: {} ms", block.header.timestamp - old_header.timestamp);
+                        debug!("    delta: {} ms", (block.header.timestamp as i64).saturating_sub(old_header.timestamp as i64));
                         debug!("  daa_score_changed: {}", old_header.daa_score != block.header.daa_score);
                         debug!("  version_changed: {}", old_header.version != block.header.version);
                     } else {
@@ -308,28 +316,18 @@ impl ClientHandler {
                 stratum_diff.set_diff_value_for_miner(min_diff, &remote_app_clone);
                 state.set_stratum_diff(stratum_diff);
 
-                // Update worker difficulty metric
-                let wallet_addr = client_clone.wallet_addr.lock().clone();
-                let worker_name = client_clone.worker_name.lock().clone();
-                update_worker_difficulty(
-                    &WorkerContext {
-                        instance_id: instance_id.clone(),
-                        worker_name: worker_name.clone(),
-                        miner: remote_app_clone.clone(),
-                        wallet: wallet_addr.clone(),
-                        ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                    },
-                    min_diff,
-                );
+                update_worker_difficulty(&WorkerContext::from_stratum(&instance_id, &client_clone, &remote_app_clone), min_diff);
 
                 let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                 let target_bytes = target.to_bytes_be();
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+                let target_bits = target_bytes.len() * 8;
                 debug!(
                     "send_immediate_job: Initialized MiningState with difficulty: {}, target: {:x} ({} bytes, {} bits)",
                     min_diff,
                     target,
                     target_bytes.len(),
-                    target_bytes.len() * 8
+                    target_bits
                 );
             }
 
@@ -340,19 +338,7 @@ impl ClientHandler {
 
             // Update metric to ensure displayed difficulty matches what we're sending
             // (This handles the case where state was already initialized but metric wasn't updated)
-            let wallet_addr = client_clone.wallet_addr.lock().clone();
-            let worker_name = client_clone.worker_name.lock().clone();
-            let remote_app = client_clone.remote_app.lock().clone();
-            update_worker_difficulty(
-                &WorkerContext {
-                    instance_id: instance_id.clone(),
-                    worker_name: worker_name.clone(),
-                    miner: remote_app.clone(),
-                    wallet: wallet_addr.clone(),
-                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                },
-                current_diff,
-            );
+            update_worker_difficulty(&WorkerContext::from_stratum(&instance_id, &client_clone, &remote_app), current_diff);
 
             debug!("[DIFFICULTY] ===== SENDING DIFFICULTY TO {} =====", client_clone.remote_addr);
             debug!("[DIFFICULTY] Difficulty value: {} (from state: {})", current_diff, state.stratum_diff().is_some());
@@ -473,15 +459,7 @@ impl ClientHandler {
                 }
                 debug!("[JOB] ===== JOB SEND FAILED FOR {} =====", client_clone.remote_addr);
             } else {
-                let wallet_addr_str = wallet_addr.clone();
-                let worker_name = client_clone.worker_name.lock().clone();
-                record_new_job(&crate::prom::WorkerContext {
-                    instance_id: instance_id.clone(),
-                    worker_name: worker_name.clone(),
-                    miner: String::new(),
-                    wallet: wallet_addr_str.clone(),
-                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                });
+                record_new_job(&WorkerContext::from_stratum(&instance_id, &client_clone, ""));
                 debug!("[JOB] Successfully sent job ID {} to client {}", job_id, client_clone.remote_addr);
                 debug!("[JOB] ===== JOB SENT SUCCESSFULLY TO {} =====", client_clone.remote_addr);
             }
@@ -505,7 +483,7 @@ impl ClientHandler {
 
         // Collect addresses for balance checking
         let mut addresses: Vec<String> = Vec::new();
-        let mut client_count = 0;
+        let mut client_count: usize = 0;
 
         for client in clients {
             if !client.connected() {
@@ -515,7 +493,11 @@ impl ClientHandler {
             if client_count > 0 {
                 tokio::time::sleep(Duration::from_micros(500)).await;
             }
-            client_count += 1;
+
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                client_count += 1;
+            }
 
             // Collect wallet address for balance checking
             {
@@ -642,28 +624,18 @@ impl ClientHandler {
                     stratum_diff.set_diff_value_for_miner(min_diff, &remote_app);
                     state.set_stratum_diff(stratum_diff);
 
-                    // Update worker difficulty metric
-                    let wallet_addr = client_clone.wallet_addr.lock().clone();
-                    let worker_name = client_clone.worker_name.lock().clone();
-                    update_worker_difficulty(
-                        &WorkerContext {
-                            instance_id: instance_id.clone(),
-                            worker_name: worker_name.clone(),
-                            miner: remote_app.clone(),
-                            wallet: wallet_addr.clone(),
-                            ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                        },
-                        min_diff,
-                    );
+                    update_worker_difficulty(&WorkerContext::from_stratum(&instance_id, &client_clone, &remote_app), min_diff);
 
                     let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                     let target_bytes = target.to_bytes_be();
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+                    let target_bits = target_bytes.len() * 8;
                     debug!(
                         "Initialized per-client MiningState with difficulty: {}, target: {:x} ({} bytes, {} bits)",
                         min_diff,
                         target,
                         target_bytes.len(),
-                        target_bytes.len() * 8
+                        target_bits
                     );
                     send_client_diff(&instance_id, &client_clone, &state, min_diff);
                     share_handler.set_client_vardiff(&client_clone, min_diff);
@@ -688,19 +660,7 @@ impl ClientHandler {
                             stratum_diff.set_diff_value_for_miner(var_diff, &remote_app);
                             state.set_stratum_diff(stratum_diff);
 
-                            // Update worker difficulty metric
-                            let wallet_addr = client_clone.wallet_addr.lock().clone();
-                            let worker_name = client_clone.worker_name.lock().clone();
-                            update_worker_difficulty(
-                                &WorkerContext {
-                                    instance_id: instance_id.clone(),
-                                    worker_name: worker_name.clone(),
-                                    miner: remote_app.clone(),
-                                    wallet: wallet_addr.clone(),
-                                    ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                                },
-                                var_diff,
-                            );
+                            update_worker_difficulty(&WorkerContext::from_stratum(&instance_id, &client_clone, &remote_app), var_diff);
 
                             send_client_diff(&instance_id, &client_clone, &state, var_diff);
                             share_handler.start_client_vardiff(&client_clone);
@@ -802,15 +762,7 @@ impl ClientHandler {
                         error!("new_block_available: failed to send job {} to client {}: {}", job_id, client_clone.remote_addr, e);
                     }
                 } else {
-                    let wallet_addr_str = wallet_addr.clone();
-                    let worker_name = client_clone.worker_name.lock().clone();
-                    record_new_job(&crate::prom::WorkerContext {
-                        instance_id: instance_id.clone(),
-                        worker_name: worker_name.clone(),
-                        miner: String::new(),
-                        wallet: wallet_addr_str.clone(),
-                        ip: format!("{}:{}", client_clone.remote_addr(), client_clone.remote_port()),
-                    });
+                    record_new_job(&WorkerContext::from_stratum(&instance_id, &client_clone, ""));
                     debug!("new_block_available: successfully sent job ID {} to client {}", job_id, client_clone.remote_addr);
                 }
             });

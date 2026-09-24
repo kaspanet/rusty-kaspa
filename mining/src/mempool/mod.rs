@@ -19,6 +19,7 @@ use kaspa_consensus_core::{
 use kaspa_core::time::Stopwatch;
 use std::sync::Arc;
 
+pub(crate) mod check_transaction_limits;
 pub(crate) mod check_transaction_standard;
 pub mod config;
 pub mod errors;
@@ -44,7 +45,7 @@ pub(crate) mod validate_and_insert_transaction;
 ///   They are owned by the node, they never expire in the mempool and the node
 ///   rebroadcasts them once in a while.
 /// - Transactions received through P2P have **low-priority**. They expire after
-///   60 seconds and are removed if not inserted in a block for mining.
+///   24 hours and are removed if not inserted in a block for mining.
 pub(crate) struct Mempool {
     config: Arc<Config>,
     transaction_pool: TransactionsPool,
@@ -107,10 +108,16 @@ impl Mempool {
     pub(crate) fn transaction_count(&self, query: TransactionQuery) -> usize {
         let mut count = 0;
         if query.include_transaction_pool() {
-            count += self.transaction_pool.len()
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                count += self.transaction_pool.len()
+            }
         }
         if query.include_orphan_pool() {
-            count += self.orphan_pool.len()
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                count += self.orphan_pool.len()
+            }
         }
         count
     }
@@ -167,7 +174,9 @@ impl Mempool {
 pub mod tx {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Priority {
+        /// Provenance is P2P
         Low,
+        /// Provenance is RPC submit
         High,
     }
 

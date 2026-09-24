@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use async_channel::unbounded;
 use clap::Parser;
 use futures::{Future, future::try_join_all};
@@ -31,11 +32,10 @@ use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
 use kaspa_perf_monitor::{builder::Builder, counters::CountersSnapshot};
 use kaspa_utils::fd_budget;
-use simulator::network::KaspaNetworkSimulator;
+use simpa::simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 mod blocks_json;
-pub mod simulator;
 
 /// Kaspa Network Simulator
 #[derive(Parser, Debug)]

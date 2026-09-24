@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 //!
 //! # Client-side consensus primitives.
 //!
@@ -12,6 +14,7 @@
 //! async / threaded environments and WASM bindings.
 //!
 
+mod covenant;
 pub mod error;
 mod imports;
 mod input;
@@ -21,6 +24,7 @@ pub mod result;
 mod serializable;
 mod transaction;
 mod utxo;
+pub use covenant::*;
 pub use input::*;
 pub use outpoint::*;
 pub use output::*;
@@ -36,6 +40,7 @@ cfg_if::cfg_if! {
         mod sign;
         mod parents;
         mod optional_header;
+        mod block;
 
         pub use header::*;
         pub use utils::*;

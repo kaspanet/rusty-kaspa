@@ -159,7 +159,10 @@ impl KaspaApi {
         let mut backoff_ms: u64 = 250;
 
         let client = loop {
-            attempt += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                attempt += 1;
+            }
             let connect_fut = GrpcClient::connect_with_args(
                 NotificationMode::Direct,
                 grpc_address.clone(),
@@ -217,7 +220,10 @@ impl KaspaApi {
         let mut attempt: u64 = 0;
         let mut backoff_ms: u64 = 250;
         loop {
-            attempt += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                attempt += 1;
+            }
             let notify_fut = client.start_notify(ListenerId::default(), NewBlockTemplateScope {}.into());
 
             let res = tokio::select! {
@@ -662,8 +668,17 @@ impl KaspaApi {
                 Ok(r) => r,
                 Err(e) => {
                     if attempt < max_retries - 1 {
-                        warn!("Failed to get block template (attempt {}/{}): {}, retrying...", attempt + 1, max_retries, e);
-                        sleep(Duration::from_millis(100 * (attempt + 1) as u64)).await;
+                        #[allow(clippy::arithmetic_side_effects, reason = "attempt is in 0..3, so attempt + 1 <= 3.")]
+                        {
+                            warn!("Failed to get block template (attempt {}/{}): {}, retrying...", attempt + 1, max_retries, e);
+                        }
+                        #[allow(
+                            clippy::arithmetic_side_effects,
+                            reason = "attempt is in 0..3, so the backoff is at most 300 milliseconds."
+                        )]
+                        {
+                            sleep(Duration::from_millis(100 * (attempt + 1) as u64)).await;
+                        }
                         continue;
                     }
                     return Err(anyhow::anyhow!("Failed to get block template after {} attempts: {}", max_retries, e));
@@ -691,12 +706,21 @@ impl KaspaApi {
                             if error_str.contains("Odd number of digits") {
                                 last_error = Some(format!("Block has malformed hash field: {}", error_str));
                                 if attempt < max_retries - 1 {
-                                    warn!(
-                                        "Block template has malformed hash field (attempt {}/{}), retrying...",
-                                        attempt + 1,
-                                        max_retries
-                                    );
-                                    sleep(Duration::from_millis(100 * (attempt + 1) as u64)).await;
+                                    #[allow(clippy::arithmetic_side_effects, reason = "attempt is in 0..3, so attempt + 1 <= 3.")]
+                                    {
+                                        warn!(
+                                            "Block template has malformed hash field (attempt {}/{}), retrying...",
+                                            attempt + 1,
+                                            max_retries
+                                        );
+                                    }
+                                    #[allow(
+                                        clippy::arithmetic_side_effects,
+                                        reason = "attempt is in 0..3, so the backoff is at most 300 milliseconds."
+                                    )]
+                                    {
+                                        sleep(Duration::from_millis(100 * (attempt + 1) as u64)).await;
+                                    }
                                     continue;
                                 }
                             }
@@ -709,12 +733,21 @@ impl KaspaApi {
                     let error_str = format!("{:?}", e);
                     last_error = Some(error_str.clone());
                     if error_str.contains("Odd number of digits") && attempt < max_retries - 1 {
-                        warn!(
-                            "Block conversion failed with 'Odd number of digits' error (attempt {}/{}), retrying...",
-                            attempt + 1,
-                            max_retries
-                        );
-                        sleep(Duration::from_millis(100 * (attempt + 1) as u64)).await;
+                        #[allow(clippy::arithmetic_side_effects, reason = "attempt is in 0..3, so attempt + 1 <= 3.")]
+                        {
+                            warn!(
+                                "Block conversion failed with 'Odd number of digits' error (attempt {}/{}), retrying...",
+                                attempt + 1,
+                                max_retries
+                            );
+                        }
+                        #[allow(
+                            clippy::arithmetic_side_effects,
+                            reason = "attempt is in 0..3, so the backoff is at most 300 milliseconds."
+                        )]
+                        {
+                            sleep(Duration::from_millis(100 * (attempt + 1) as u64)).await;
+                        }
                         continue;
                     }
                     // If the error contains "Odd number of digits", provide more context
@@ -754,7 +787,8 @@ impl KaspaApi {
             if let Some(address) = entry.address {
                 let addr_str = address.to_string();
                 let amount = entry.utxo_entry.amount;
-                *balance_map.entry(addr_str).or_insert(0) += amount;
+                let balance = balance_map.entry(addr_str).or_insert(0);
+                *balance = balance.checked_add(amount).context("address balance exceeds u64::MAX")?;
             }
         }
         let balances: Vec<(String, u64)> = balance_map.into_iter().collect();

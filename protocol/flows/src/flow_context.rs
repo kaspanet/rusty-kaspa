@@ -3,7 +3,8 @@ use crate::flowcontext::{
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
-use crate::{v7, v8};
+use crate::user_agent_rule::{UserAgentRuleRejectReason, UserAgentRuleSet};
+use crate::{v10, v11};
 use async_trait::async_trait;
 use futures::future::join_all;
 use kaspa_addressmanager::AddressManager;
@@ -59,7 +60,7 @@ use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 use uuid::Uuid;
 
 /// The P2P protocol version.
-const PROTOCOL_VERSION: u32 = 9;
+const PROTOCOL_VERSION: u32 = 11;
 
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
@@ -90,7 +91,7 @@ pub struct BlockEventLogger {
 }
 
 impl BlockEventLogger {
-    pub fn new(bps: usize) -> Self {
+    fn new(bps: usize) -> Self {
         let (sender, receiver) = unbounded_channel();
         Self { bps, sender, receiver: Mutex::new(Some(receiver)) }
     }
@@ -101,6 +102,7 @@ impl BlockEventLogger {
 
     /// Start the logger listener. Must be called from an async tokio context
     fn start(&self) {
+        #[allow(clippy::arithmetic_side_effects, reason = "bps << usize::MAX")]
         let chunk_limit = self.bps * 10; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
         let receiver = self.receiver.lock().take().expect("expected to be called once");
         tokio::spawn(async move {
@@ -159,20 +161,35 @@ impl BlockEventLogger {
                 let summary = chunk.into_iter().fold(LogSummary::default(), |mut summary, ev| {
                     match ev {
                         BlockLogEvent::Relay(hash) => {
-                            summary.relay_count += 1;
-                            summary.relay_rep = Some(hash)
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                summary.relay_count += 1;
+                            }
+                            summary.relay_rep = Some(hash);
                         }
                         BlockLogEvent::Submit(hash) => {
-                            summary.submit_count += 1;
-                            summary.submit_rep = Some(hash)
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                summary.submit_count += 1;
+                            }
+                            summary.submit_rep = Some(hash);
                         }
                         BlockLogEvent::Orphaned(hash, roots_count) => {
-                            summary.orphan_roots_count += roots_count;
-                            summary.orphan_count += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                summary.orphan_roots_count += roots_count;
+                            }
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                summary.orphan_count += 1;
+                            }
                             summary.orphan_rep = Some(hash)
                         }
                         BlockLogEvent::Unorphaned(hash, count) => {
-                            summary.unorphan_count += count;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                summary.unorphan_count += count;
+                            }
                             summary.unorphan_rep = Some(hash)
                         }
                     }
@@ -186,7 +203,10 @@ impl BlockEventLogger {
                     (0, 1) => info!("Accepted block {} via relay", summary.relay()),
                     (0, m) => info!("Accepted {} blocks ...{} via relay", m, summary.relay()),
                     (n, m) => {
-                        info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, summary.submit(), m, n)
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, summary.submit(), m, n)
+                        }
                     }
                 }
 
@@ -221,6 +241,7 @@ pub struct FlowContextInner {
     mining_manager: MiningManagerProxy,
     pub(crate) tick_service: Arc<TickService>,
     notification_root: Arc<ConsensusNotificationRoot>,
+    user_agent_rules: UserAgentRuleSet,
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
     block_event_logger: Option<BlockEventLogger>,
@@ -309,11 +330,13 @@ impl FlowContext {
         mining_rule_engine: Arc<MiningRuleEngine>,
     ) -> Self {
         let bps = config.bps() as usize;
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (bps as f64).log2().ceil() as u32;
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE.saturating_add((bps as f64).log2().ceil() as u32);
+        let user_agent_rules = UserAgentRuleSet::parse_lossy(&config.user_agent_rules);
 
         // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
         // of how many orphans there can possibly be on average bounded by an upper bound.
-        let max_orphans = (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k() as usize).min(MAX_ORPHANS_UPPER_BOUND);
+        let max_orphans =
+            (2u64.pow(orphan_resolution_range) as usize).saturating_mul(config.ghostdag_k() as usize).min(MAX_ORPHANS_UPPER_BOUND);
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
@@ -330,6 +353,7 @@ impl FlowContext {
                 mining_manager,
                 tick_service,
                 notification_root,
+                user_agent_rules,
                 block_event_logger: Some(BlockEventLogger::new(bps)),
                 bps,
                 orphan_resolution_range,
@@ -340,6 +364,7 @@ impl FlowContext {
         }
     }
 
+    #[allow(clippy::arithmetic_side_effects, reason = "bps, channel size << usize::MAX")]
     pub fn block_invs_channel_size(&self) -> usize {
         self.bps * Router::incoming_flow_baseline_channel_size()
     }
@@ -412,6 +437,11 @@ impl FlowContext {
                     None
                 } else {
                     let now = Instant::now();
+
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "ARITH-SAFETY(TIMESTAMP): `REQUEST_SCOPE_WAIT_TIME` is small enough."
+                    )]
                     if now > e.get().timestamp + REQUEST_SCOPE_WAIT_TIME {
                         e.get_mut().timestamp = now;
                         Some(RequestScope::new(map.clone(), req))
@@ -698,6 +728,12 @@ impl FlowContext {
 #[async_trait]
 impl ConnectionInitializer for FlowContext {
     async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ProtocolError> {
+        // We only ban inbound connections here, since if we got to this stage with a banned outbound peer, it means
+        // the user has explicitly allowed it.
+        if !router.is_outbound() && self.address_manager.lock().is_banned(router.net_address().ip().into()) {
+            return Err(ProtocolError::Other("peer is banned"));
+        }
+
         // Build the handshake object and subscribe to handshake messages
         let mut handshake = KaspadHandshake::new(&router);
 
@@ -712,13 +748,12 @@ impl ConnectionInitializer for FlowContext {
         // Subnets are not currently supported
         let mut self_version_message = Version::new(local_address, self.node_id, network_name.clone(), None, PROTOCOL_VERSION);
         self_version_message.add_user_agent(name(), version(), &self.config.user_agent_comments);
-        // TODO: get number of live services
         // TODO: disable_relay_tx from config/cmd
 
         // Perform the handshake
         let peer_version_message = handshake.handshake(self_version_message.into()).await?;
         // Get time_offset as accurate as possible by computing right after the handshake
-        let time_offset = unix_now() as i64 - peer_version_message.timestamp;
+        let time_offset = (unix_now() as i64).saturating_sub(peer_version_message.timestamp);
 
         let peer_version: Version = peer_version_message.try_into()?;
         router.set_identity(peer_version.id);
@@ -735,23 +770,44 @@ impl ConnectionInitializer for FlowContext {
             return Err(ProtocolError::WrongNetwork(network_name, peer_version.network));
         }
 
+        if let Some(reason) = self.user_agent_rules.reject_reason(&peer_version.user_agent) {
+            match reason {
+                UserAgentRuleRejectReason::AllowanceExcluded => {
+                    info!(
+                        "Rejecting peer {} because user agent is outside configured allowance rules: {}",
+                        router, peer_version.user_agent
+                    );
+                }
+                UserAgentRuleRejectReason::Rejection(rule) => {
+                    info!(
+                        "Rejecting peer {} because user agent matched rejection rule `{}`: {}",
+                        router,
+                        rule.source(),
+                        peer_version.user_agent
+                    );
+                }
+            }
+            return Err(ProtocolError::OtherOwned(format!("peer user agent rejected: {}", peer_version.user_agent)));
+        }
+
         debug!("protocol versions - self: {}, peer: {}", PROTOCOL_VERSION, peer_version.protocol_version);
 
-        // Register all flows according to version
-        let (flows, applied_protocol_version) = match peer_version.protocol_version {
-            v if v >= PROTOCOL_VERSION => (v8::register(self.clone(), router.clone(), PROTOCOL_VERSION), PROTOCOL_VERSION),
-            8 => (v8::register(self.clone(), router.clone(), 8), 8),
-            7 => (v7::register(self.clone(), router.clone()), 7),
+        let peer_protocol_version = peer_version.protocol_version;
+
+        // Peers must advertise at least the current protocol version. Register all flows according to version.
+        let (flows, applied_protocol_version) = match peer_protocol_version {
+            v if v >= PROTOCOL_VERSION => (v11::register(self.clone(), router.clone()), PROTOCOL_VERSION),
+            10 => (v10::register(self.clone(), router.clone()), 10),
             v => return Err(ProtocolError::VersionMismatch(PROTOCOL_VERSION, v)),
         };
 
         // Build and register the peer properties
         let peer_properties = Arc::new(PeerProperties {
-            user_agent: peer_version.user_agent.to_owned(),
+            user_agent: peer_version.user_agent,
             advertised_protocol_version: peer_version.protocol_version,
             protocol_version: applied_protocol_version,
             disable_relay_tx: peer_version.disable_relay_tx,
-            subnetwork_id: peer_version.subnetwork_id.to_owned(),
+            subnetwork_id: peer_version.subnetwork_id,
             time_offset,
         });
         router.set_properties(peer_properties);

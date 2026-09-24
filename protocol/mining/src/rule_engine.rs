@@ -52,7 +52,7 @@ impl MiningRuleEngine {
             }
 
             let now = Instant::now();
-            let elapsed_time = now - last_log_time;
+            let elapsed_time = now.saturating_duration_since(last_log_time);
             if elapsed_time.as_secs() == 0 {
                 continue;
             }
@@ -131,7 +131,7 @@ impl MiningRuleEngine {
         let synced_threshold = self.config.expected_difficulty_window_duration_in_milliseconds() / 4;
 
         // Roughly 10mins in all networks
-        unix_now() < sink_timestamp + synced_threshold
+        unix_now() < sink_timestamp.saturating_add(synced_threshold)
     }
 
     fn has_sufficient_peer_connectivity(&self) -> bool {

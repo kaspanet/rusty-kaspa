@@ -15,6 +15,7 @@ futures.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
 tokio.workspace = true
 
 

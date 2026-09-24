@@ -22,7 +22,13 @@
 pub mod numeric;
 pub mod string;
 
+use crate::error::Error;
 use wasm_bindgen::prelude::*;
+
+fn invalid_input_mass_variant(field: &str, version: u16) -> Error {
+    Error::Custom(format!("TransactionInput.{field} is inconsistent with transaction version {version}"))
+}
+
 #[wasm_bindgen(typescript_custom_section)]
 const TS_TYPES: &'static str = r#"
 
@@ -51,6 +57,7 @@ export interface ISerializableTransactionInput {
     index: number;
     sequence: bigint;
     sigOpCount: number;
+    computeBudget?: number;
     signatureScript?: HexString;
     utxo: ISerializableUtxoEntry;
 }

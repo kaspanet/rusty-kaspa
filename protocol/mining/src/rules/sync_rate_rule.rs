@@ -70,6 +70,7 @@ impl SyncRateRule {
 /// Recovery: Sync rate is back above threshold
 impl MiningRule for SyncRateRule {
     fn check_rule(&self, delta: &ProcessingCountersSnapshot, extra_data: &ExtraData) {
+        #[allow(clippy::arithmetic_side_effects, reason = "`extra_data.target_time_per_block > 0`.")]
         let expected_blocks = (extra_data.elapsed_time.as_millis() as u64) / extra_data.target_time_per_block;
         let received_blocks = delta.body_counts.max(delta.header_counts);
 
@@ -82,7 +83,8 @@ impl MiningRule for SyncRateRule {
             (self.total_received_blocks.load(Ordering::SeqCst) as f64) / (self.total_expected_blocks.load(Ordering::SeqCst) as f64);
 
         // Finality point is considered "recent" if it is within 3 finality durations from the current time
-        let is_finality_recent = extra_data.finality_point_timestamp >= unix_now().saturating_sub(extra_data.finality_duration * 3);
+        let is_finality_recent =
+            extra_data.finality_point_timestamp >= unix_now().saturating_sub(extra_data.finality_duration.saturating_mul(3)); // It's safe to use saturating_mul, because in that case `extra_data.finality_duration*3 >> unix_now()`
 
         trace!(
             "Sync rate: {:.2} | Finality point recent: {} | Elapsed time: {}s | Connected: {} | Found/Expected blocks: {}/{}",

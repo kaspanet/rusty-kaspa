@@ -330,6 +330,7 @@ pub fn pskt_to_pending_transaction(
                             script_public_key: ue.script_public_key.clone(),
                             block_daa_score: ue.block_daa_score,
                             is_coinbase: ue.is_coinbase,
+                            covenant_id: ue.covenant_id,
                         }),
                     },
                     ue.amount,

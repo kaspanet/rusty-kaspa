@@ -1,10 +1,15 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
 use kaspa_consensus_core::{
+    mass::{ComputeBudget, SigopCount},
     subnets::SubnetworkId,
-    tx::{ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
+    tx::{
+        ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
+        TransactionOutput, UtxoEntry,
+    },
 };
 use kaspa_hashes::Hash;
+use prost::Message;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -46,14 +51,27 @@ impl From<&TransactionInput> for protowire::TransactionInput {
             previous_outpoint: Some((&input.previous_outpoint).into()),
             signature_script: input.signature_script.clone(),
             sequence: input.sequence,
-            sig_op_count: input.sig_op_count as u32,
+            compute_commit: match input.compute_commit {
+                ComputeCommit::SigopCount(count) => u8::from(count) as u32,
+                ComputeCommit::ComputeBudget(budget) => u16::from(budget) as u32,
+            },
         }
+    }
+}
+
+impl From<&CovenantBinding> for protowire::CovenantBinding {
+    fn from(covenant: &CovenantBinding) -> Self {
+        Self { authorizing_input: covenant.authorizing_input as u32, covenant_id: Some(covenant.covenant_id.into()) }
     }
 }
 
 impl From<&TransactionOutput> for protowire::TransactionOutput {
     fn from(output: &TransactionOutput) -> Self {
-        Self { value: output.value, script_public_key: Some((&output.script_public_key).into()) }
+        Self {
+            value: output.value,
+            script_public_key: Some((&output.script_public_key).into()),
+            covenant: output.covenant.as_ref().map(protowire::CovenantBinding::from),
+        }
     }
 }
 
@@ -67,7 +85,7 @@ impl From<&Transaction> for protowire::TransactionMessage {
             subnetwork_id: Some((&tx.subnetwork_id).into()),
             gas: tx.gas,
             payload: tx.payload.clone(),
-            mass: tx.mass(),
+            storage_mass: tx.storage_mass(),
         }
     }
 }
@@ -104,7 +122,13 @@ impl TryFrom<protowire::UtxoEntry> for UtxoEntry {
     type Error = ConversionError;
 
     fn try_from(value: protowire::UtxoEntry) -> Result<Self, Self::Error> {
-        Ok(Self::new(value.amount, value.script_public_key.try_into_ex()?, value.block_daa_score, value.is_coinbase))
+        Ok(Self::new(
+            value.amount,
+            value.script_public_key.try_into_ex()?,
+            value.block_daa_score,
+            value.is_coinbase,
+            value.covenant_id.map(|x| x.try_into()).transpose()?,
+        ))
     }
 }
 
@@ -116,11 +140,25 @@ impl TryFrom<protowire::OutpointAndUtxoEntryPair> for (TransactionOutpoint, Utxo
     }
 }
 
-impl TryFrom<protowire::TransactionInput> for TransactionInput {
+struct ProtoInputWithVersion {
+    version: u32,
+    input: protowire::TransactionInput,
+}
+
+impl TryFrom<ProtoInputWithVersion> for TransactionInput {
     type Error = ConversionError;
 
-    fn try_from(value: protowire::TransactionInput) -> Result<Self, Self::Error> {
-        Ok(Self::new(value.previous_outpoint.try_into_ex()?, value.signature_script, value.sequence, value.sig_op_count.try_into()?))
+    fn try_from(value: ProtoInputWithVersion) -> Result<Self, Self::Error> {
+        Ok(Self {
+            previous_outpoint: value.input.previous_outpoint.try_into_ex()?,
+            signature_script: value.input.signature_script,
+            sequence: value.input.sequence,
+            compute_commit: if ComputeCommit::version_expects_compute_budget_field(value.version as u16) {
+                ComputeBudget(u16::try_from(value.input.compute_commit)?).into()
+            } else {
+                SigopCount(u8::try_from(value.input.compute_commit)?).into()
+            },
+        })
     }
 }
 
@@ -128,24 +166,138 @@ impl TryFrom<protowire::TransactionOutput> for TransactionOutput {
     type Error = ConversionError;
 
     fn try_from(output: protowire::TransactionOutput) -> Result<Self, Self::Error> {
-        Ok(Self::new(output.value, output.script_public_key.try_into_ex()?))
+        Ok(Self::with_covenant(
+            output.value,
+            output.script_public_key.try_into_ex()?,
+            output.covenant.map(|c| c.try_into()).transpose()?,
+        ))
     }
 }
+
+impl TryFrom<protowire::CovenantBinding> for CovenantBinding {
+    type Error = ConversionError;
+
+    fn try_from(covenant: protowire::CovenantBinding) -> Result<Self, Self::Error> {
+        Ok(CovenantBinding {
+            authorizing_input: covenant.authorizing_input.try_into()?,
+            covenant_id: covenant.covenant_id.try_into_ex()?,
+        })
+    }
+}
+
+const MAX_TRANSACTION_SIZE: usize = 1024 * 1024;
 
 impl TryFrom<protowire::TransactionMessage> for Transaction {
     type Error = ConversionError;
 
     fn try_from(tx: protowire::TransactionMessage) -> Result<Self, Self::Error> {
+        if tx.encoded_len() > MAX_TRANSACTION_SIZE {
+            return Err(ConversionError::Size);
+        }
+        let version = tx.version;
         let transaction = Self::new(
             tx.version.try_into()?,
-            tx.inputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
+            tx.inputs
+                .into_iter()
+                .map(|i| ProtoInputWithVersion { version, input: i }.try_into())
+                .collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
             tx.outputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionOutput>, Self::Error>>()?,
             tx.lock_time,
             tx.subnetwork_id.try_into_ex()?,
             tx.gas,
             tx.payload,
         );
-        transaction.set_mass(tx.mass);
+        transaction.set_storage_mass(tx.storage_mass);
         Ok(transaction)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transaction_message_compute_budget_roundtrip() {
+        let tx = Transaction::new(
+            1,
+            vec![TransactionInput::new_with_mass(
+                TransactionOutpoint::new(Hash::from_u64_word(1), 0),
+                vec![],
+                0,
+                ComputeBudget(12_345).into(),
+            )],
+            vec![],
+            42,
+            SubnetworkId::from_bytes([3; 20]),
+            7,
+            vec![1, 2, 3],
+        );
+        tx.set_storage_mass(54_321);
+
+        let message: protowire::TransactionMessage = (&tx).into();
+        assert_eq!(message.inputs[0].compute_commit, 12_345);
+
+        let received = Transaction::try_from(message).unwrap();
+        assert_eq!(received.inputs.len(), 1);
+        assert_eq!(received.inputs[0].compute_commit.compute_budget(), Some(12_345));
+        assert_eq!(received.storage_mass(), 54_321);
+    }
+
+    #[test]
+    fn test_transaction_message_oversized_rejected() {
+        let mut message = protowire::TransactionMessage {
+            version: 1,
+            subnetwork_id: Some(SubnetworkId::from_bytes([3; 20]).into()),
+            ..Default::default()
+        };
+
+        // When payload is 1MB, encoded size exceeds 1MB due to protobuf field tag & length prefix
+        message.payload = vec![0u8; MAX_TRANSACTION_SIZE];
+        assert!(message.encoded_len() > MAX_TRANSACTION_SIZE);
+        assert!(matches!(Transaction::try_from(message), Err(ConversionError::Size)));
+    }
+
+    #[test]
+    fn test_p2p_max_transaction_size_larger_than_consensus() {
+        use kaspa_consensus_core::{
+            config::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS},
+            constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
+            subnets::SUBNETWORK_ID_COINBASE,
+        };
+
+        for (name, params) in
+            [("mainnet", &MAINNET_PARAMS), ("testnet", &TESTNET_PARAMS), ("devnet", &DEVNET_PARAMS), ("simnet", &SIMNET_PARAMS)]
+        {
+            // Non-coinbase transactions are capped by block transient mass limit
+            let consensus_max_non_coinbase_bytes = (params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR) as usize;
+
+            // Maximal version 1 coinbase transaction before virtual validation
+            let max_coinbase_outputs = params.ghostdag_k() as usize + 2;
+            let max_coinbase_tx = Transaction::new(
+                1,
+                vec![],
+                (0..max_coinbase_outputs)
+                    .map(|_| {
+                        TransactionOutput::with_covenant(
+                            u64::MAX,
+                            ScriptPublicKey::from_vec(0, vec![0u8; params.coinbase_payload_script_public_key_max_len as usize]),
+                            Some(CovenantBinding { authorizing_input: u16::MAX, covenant_id: Hash::from_bytes([0xff; 32]) }),
+                        )
+                    })
+                    .collect(),
+                u64::MAX,
+                SUBNETWORK_ID_COINBASE,
+                0,
+                vec![0u8; params.max_coinbase_payload_len],
+            );
+            let max_coinbase_proto_bytes = protowire::TransactionMessage::from(&max_coinbase_tx).encoded_len();
+
+            let consensus_max_tx_bytes = consensus_max_non_coinbase_bytes + max_coinbase_proto_bytes;
+
+            assert!(
+                MAX_TRANSACTION_SIZE >= 2 * consensus_max_tx_bytes,
+                "[{name}] P2P MAX_TRANSACTION_SIZE ({MAX_TRANSACTION_SIZE}) must be at least 2x consensus limit ({consensus_max_tx_bytes})"
+            );
+        }
     }
 }

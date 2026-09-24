@@ -14,9 +14,11 @@ mod manager_tests;
 pub mod mempool;
 pub mod model;
 pub mod monitor;
+#[cfg(test)]
+mod template_limits_tests;
 
 // Exposed for benchmarks
-pub use block_template::{policy::Policy, selector::RebalancingWeightedTransactionSelector};
+pub use block_template::policy::Policy;
 pub use mempool::model::frontier::{Frontier, feerate_key::FeerateTransactionKey, search_tree::SearchTree};
 
 #[cfg(test)]
@@ -63,7 +65,7 @@ impl Default for MiningCounters {
 impl MiningCounters {
     pub fn snapshot(&self) -> MempoolCountersSnapshot {
         MempoolCountersSnapshot {
-            elapsed_time: (Instant::now() - self.creation_time),
+            elapsed_time: (Instant::now().saturating_duration_since(self.creation_time)),
             high_priority_tx_counts: self.high_priority_tx_counts.load(Ordering::Relaxed),
             low_priority_tx_counts: self.low_priority_tx_counts.load(Ordering::Relaxed),
             block_tx_counts: self.block_tx_counts.load(Ordering::Relaxed),
@@ -80,7 +82,7 @@ impl MiningCounters {
 
     pub fn p2p_tx_count_sample(&self) -> P2pTxCountSample {
         P2pTxCountSample {
-            elapsed_time: (Instant::now() - self.creation_time),
+            elapsed_time: (Instant::now().saturating_duration_since(self.creation_time)),
             low_priority_tx_counts: self.low_priority_tx_counts.load(Ordering::Relaxed),
         }
     }
@@ -115,7 +117,10 @@ pub struct MempoolCountersSnapshot {
 
 impl MempoolCountersSnapshot {
     pub fn in_tx_counts(&self) -> u64 {
-        self.high_priority_tx_counts + self.low_priority_tx_counts
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            self.high_priority_tx_counts + self.low_priority_tx_counts
+        }
     }
 
     /// Indicates whether this snapshot has any TPS activity which is worth logging
@@ -159,9 +164,13 @@ impl core::ops::Sub for &MempoolCountersSnapshot {
             tx_evicted_counts: self.tx_evicted_counts.saturating_sub(rhs.tx_evicted_counts),
             input_counts: self.input_counts.saturating_sub(rhs.input_counts),
             output_counts: self.output_counts.saturating_sub(rhs.output_counts),
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
             ready_txs_sample: (self.ready_txs_sample + rhs.ready_txs_sample) / 2,
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
             txs_sample: (self.txs_sample + rhs.txs_sample) / 2,
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
             orphans_sample: (self.orphans_sample + rhs.orphans_sample) / 2,
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
             accepted_sample: (self.accepted_sample + rhs.accepted_sample) / 2,
         }
     }

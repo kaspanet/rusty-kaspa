@@ -85,7 +85,7 @@ impl MiningMonitor {
                     tx_script_cache_delta.hit_ratio()
                 );
             }
-            if delta.txs_sample + delta.orphans_sample > 0 {
+            if delta.txs_sample.saturating_add(delta.orphans_sample) > 0 {
                 debug!(
                     "Mempool sample: {} ready out of {} txs, {} orphans, {} cached as accepted",
                     delta.ready_txs_sample, delta.txs_sample, delta.orphans_sample, delta.accepted_sample

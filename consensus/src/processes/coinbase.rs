@@ -136,7 +136,7 @@ impl CoinbaseManager {
         let payload = self.serialize_coinbase_payload(&CoinbaseData { blue_score: ghostdag_data.blue_score, subsidy, miner_data })?;
 
         Ok(CoinbaseTransactionTemplate {
-            tx: Transaction::new(constants::TX_VERSION, vec![], outputs, 0, subnets::SUBNETWORK_ID_COINBASE, 0, payload),
+            tx: Transaction::new(constants::TX_VERSION_TOCCATA, vec![], outputs, 0, subnets::SUBNETWORK_ID_COINBASE, 0, payload),
             has_red_reward: red_reward > 0,
         })
     }
@@ -587,6 +587,20 @@ mod tests {
         let deserialized_data = cbm.deserialize_coinbase_payload(&payload).unwrap();
 
         assert_eq!(data2, deserialized_data);
+    }
+
+    #[test]
+    fn expected_coinbase_transaction_uses_toccata_version() {
+        let params = MAINNET_PARAMS.clone();
+        let cbm = create_manager(&params);
+        let miner_data = MinerData::new(ScriptPublicKey::new(0, scriptvec![1, 2, 3]), vec![4, 5, 6]);
+        let ghostdag_data = GhostdagData::default();
+        let mergeset_rewards = Default::default();
+        let mergeset_non_daa = Default::default();
+
+        let tx = cbm.expected_coinbase_transaction(100, miner_data, &ghostdag_data, &mergeset_rewards, &mergeset_non_daa).unwrap();
+
+        assert_eq!(tx.tx.version, constants::TX_VERSION_TOCCATA);
     }
 
     fn create_manager(params: &Params) -> CoinbaseManager {

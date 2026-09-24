@@ -30,7 +30,7 @@ mod de {
             D: serde::Deserializer<'de>,
         {
             struct OptionalVisitor<T, const N: usize> {
-                out: std::marker::PhantomData<T>,
+                out: core::marker::PhantomData<T>,
             }
 
             impl<'de, T, const N: usize> serde::de::Visitor<'de> for OptionalVisitor<T, N>
@@ -39,7 +39,7 @@ mod de {
             {
                 type Value = Option<T>;
 
-                fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                fn expecting(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
                     write!(f, "optional fixed-size byte array of size {N}")
                 }
 
@@ -59,7 +59,7 @@ mod de {
                 }
             }
 
-            let visitor = OptionalVisitor::<T, N> { out: std::marker::PhantomData };
+            let visitor = OptionalVisitor::<T, N> { out: core::marker::PhantomData };
             deserializer.deserialize_option(visitor)
         }
     }

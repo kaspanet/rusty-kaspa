@@ -611,6 +611,7 @@ impl KaspaCli {
 
             tprintln!(self);
 
+            #[allow(clippy::arithmetic_side_effects, reason = "The subtraction is evaluated only when flat_list.len() > 1.")]
             let range = if flat_list.len() > 1 { format!("[{}..{}] ", 0, flat_list.len() - 1) } else { "".to_string() };
 
             let text =
@@ -662,6 +663,7 @@ impl KaspaCli {
 
             tprintln!(self);
 
+            #[allow(clippy::arithmetic_side_effects, reason = "The subtraction is evaluated only when flat_list.len() > 1.")]
             let range = if flat_list.len() > 1 { format!("[{}..{}] ", 0, flat_list.len() - 1) } else { "".to_string() };
 
             let text =
@@ -787,6 +789,13 @@ impl KaspaCli {
                 SyncState::UtxoSync { total, .. } => {
                     Some([style("SYNC UTXO").red().to_string(), style(total.separated_string()).dim().to_string()].join(" "))
                 }
+                SyncState::SmtSync { processed, total } => Some(
+                    [
+                        style("SYNC SMT").red().to_string(),
+                        style(format!("{} of {}", processed.separated_string(), total.separated_string())).dim().to_string(),
+                    ]
+                    .join(" "),
+                ),
                 SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("UTXO").black().to_string()].join(" ")),
                 SyncState::NotSynced => Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" ")),
                 SyncState::Synced => None,
