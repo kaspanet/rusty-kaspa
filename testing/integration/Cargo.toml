@@ -77,6 +77,10 @@ kaspa-txscript-errors.workspace = true
 # exercise the SMT chunk / flow-control path without requiring thousands of lanes.
 kaspa-p2p-flows = { workspace = true, features = ["test-smt-small-chunks"] }
 
+[[bench]]
+name = "ibd_bench"
+harness = false
+
 [features]
 heap = ["dhat"]
 html_reports = []
