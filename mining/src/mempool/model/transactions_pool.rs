@@ -133,7 +133,7 @@ impl TransactionsPool {
         }
 
         self.utxo_set.add_transaction(&transaction.mtx);
-        self.estimated_size += transaction_size;
+        self.estimated_size = self.estimated_size.saturating_add(transaction_size);
         self.all_transactions.insert(id, transaction);
         trace!("Added transaction {}", id);
         Ok(())
@@ -178,7 +178,11 @@ impl TransactionsPool {
 
         // Remove the transaction from the mempool UTXO set
         self.utxo_set.remove_transaction(&removed_tx.mtx, &parent_ids);
-        self.estimated_size -= removed_tx.mtx.mempool_estimated_bytes();
+
+        #[allow(clippy::arithmetic_side_effects, reason = "removed_tx.mtx.mempool_estimated_bytes() <= self.estimated_size")]
+        {
+            self.estimated_size -= removed_tx.mtx.mempool_estimated_bytes();
+        }
 
         if self.all_transactions.is_empty() {
             assert_eq!(0, self.estimated_size, "Sanity test -- if tx pool is empty, estimated byte size should be zero");
@@ -190,9 +194,15 @@ impl TransactionsPool {
     pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
         if let Some(tx) = self.all_transactions.get_mut(&transaction.id()) {
             // Make sure to update the overall estimated size since the updated transaction might have a different size
-            self.estimated_size -= tx.mtx.mempool_estimated_bytes();
+            #[allow(clippy::arithmetic_side_effects, reason = "We remove an amount that was previously added")]
+            {
+                self.estimated_size -= tx.mtx.mempool_estimated_bytes();
+            }
             tx.mtx = transaction;
-            self.estimated_size += tx.mtx.mempool_estimated_bytes();
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.estimated_size += tx.mtx.mempool_estimated_bytes();
+            }
             true
         } else {
             false
@@ -233,7 +243,7 @@ impl TransactionsPool {
     ) -> RuleResult<Vec<TransactionId>> {
         // No eviction needed -- return
         if self.len() < self.config.maximum_transaction_count
-            && self.estimated_size + transaction_size <= self.config.mempool_size_limit
+            && self.estimated_size.saturating_add(transaction_size) <= self.config.mempool_size_limit
         {
             return Ok(Default::default());
         }
@@ -264,11 +274,20 @@ impl TransactionsPool {
             }
 
             txs_to_remove.push(tx.id());
-            selection_overall_size += tx.mtx.mempool_estimated_bytes();
-
-            if self.len() + 1 - txs_to_remove.len() <= self.config.maximum_transaction_count
-                && self.estimated_size + transaction_size - selection_overall_size <= self.config.mempool_size_limit
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
             {
+                selection_overall_size += tx.mtx.mempool_estimated_bytes();
+            }
+
+            #[allow(clippy::arithmetic_side_effects, reason = "txs_to_remove.len() <= self.len()")]
+            let new_tx_count = self.len() + 1 - txs_to_remove.len();
+
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "self.estimated_size, transaction_size << usize::MAX, and selection_overall_size <= self.estimated_size"
+            )]
+            let new_size = self.estimated_size + transaction_size - selection_overall_size;
+            if new_tx_count <= self.config.maximum_transaction_count && new_size <= self.config.mempool_size_limit {
                 return Ok(txs_to_remove);
             }
         }
@@ -323,8 +342,8 @@ impl TransactionsPool {
 
     pub(crate) fn collect_expired_low_priority_transactions(&mut self, virtual_daa_score: u64) -> Vec<TransactionId> {
         let now = unix_now();
-        if virtual_daa_score < self.last_expire_scan_daa_score + self.config.transaction_expire_scan_interval_daa_score
-            || now < self.last_expire_scan_time + self.config.transaction_expire_scan_interval_milliseconds
+        if virtual_daa_score < self.last_expire_scan_daa_score.saturating_add(self.config.transaction_expire_scan_interval_daa_score)
+            || now < self.last_expire_scan_time.saturating_add(self.config.transaction_expire_scan_interval_milliseconds)
         {
             return vec![];
         }
@@ -338,7 +357,7 @@ impl TransactionsPool {
             .values()
             .filter_map(|x| {
                 if (x.priority == Priority::Low)
-                    && virtual_daa_score > x.added_at_daa_score + self.config.transaction_expire_interval_daa_score
+                    && virtual_daa_score > x.added_at_daa_score.saturating_add(self.config.transaction_expire_interval_daa_score)
                 {
                     Some(x.id())
                 } else {

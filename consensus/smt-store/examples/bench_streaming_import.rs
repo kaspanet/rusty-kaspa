@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 //! Benchmark for streaming SMT import (stack-based).
 //!
 //! Usage:

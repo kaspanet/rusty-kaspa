@@ -390,16 +390,19 @@ impl ShareHandler {
 
         // Get current job counter for debugging
         let current_job_counter = state.current_job_counter();
-        debug!(
-            "[SUBMIT] Current job counter: {}, submitted job_id: {} (diff: {})",
-            current_job_counter,
-            job_id,
-            if job_id > current_job_counter {
-                format!("+{}", job_id - current_job_counter)
-            } else {
-                format!("-{}", current_job_counter - job_id)
-            }
-        );
+        #[allow(clippy::arithmetic_side_effects, reason = "Each branch subtracts the smaller job ID from the larger one.")]
+        {
+            debug!(
+                "[SUBMIT] Current job counter: {}, submitted job_id: {} (diff: {})",
+                current_job_counter,
+                job_id,
+                if job_id > current_job_counter {
+                    format!("+{}", job_id - current_job_counter)
+                } else {
+                    format!("-{}", current_job_counter - job_id)
+                }
+            );
+        }
 
         // Fail immediately if job doesn't exist
         //          if !exists { return nil, fmt.Errorf("job does not exist. stale?") }
@@ -445,6 +448,11 @@ impl ShareHandler {
             let extranonce = ctx.extranonce.lock();
             if !extranonce.is_empty() {
                 let extranonce_val = extranonce.clone();
+
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    reason = "extranonce is u16, so its hex representation is at most 4 hex chars."
+                )]
                 let extranonce2_len = 16 - extranonce_val.len();
 
                 // Only prepend extranonce if nonce is shorter than expected
@@ -845,8 +853,14 @@ impl ShareHandler {
                             for _ in 0..BLOCK_CONFIRM_MAX_ATTEMPTS {
                                 match kaspa_api.get_current_block_color(&block_hash_for_confirm).await {
                                     Ok(true) => {
-                                        *stats.blocks_found.lock() += 1;
-                                        *overall.blocks_found.lock() += 1;
+                                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                                        {
+                                            *stats.blocks_found.lock() += 1;
+                                        }
+                                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                                        {
+                                            *overall.blocks_found.lock() += 1;
+                                        }
                                         record_block_found(&prom_worker, nonce_val, blue_score, block_hash_for_confirm.clone());
                                         info!(
                                             "[{}] {} {}",
@@ -914,8 +928,14 @@ impl ShareHandler {
                             }
 
                             let stats = self.get_create_stats(&ctx);
-                            *stats.stale_shares.lock() += 1;
-                            *self.overall.stale_shares.lock() += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                *stats.stale_shares.lock() += 1;
+                            }
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                *self.overall.stale_shares.lock() += 1;
+                            }
 
                             record_stale_share(&self.worker_prom_context(&ctx, ""));
                             ctx.reply_stale_share(event.id.clone()).await?;
@@ -938,8 +958,14 @@ impl ShareHandler {
                             error!("{} {} {} {}", prefix, LogColors::block("[BLOCK]"), LogColors::error("Error:"), error_str);
 
                             let stats = self.get_create_stats(&ctx);
-                            *stats.invalid_shares.lock() += 1;
-                            *self.overall.invalid_shares.lock() += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                *stats.invalid_shares.lock() += 1;
+                            }
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                *self.overall.invalid_shares.lock() += 1;
+                            }
 
                             record_invalid_share(&self.worker_prom_context(&ctx, ""));
 
@@ -1010,13 +1036,19 @@ impl ShareHandler {
 
                 // Job ID workaround for Bitmain/IceRiver ASICs - try previous jobs
                 // Validate job ID: jobId == 1 || jobId%maxJobs == submitInfo.jobId%maxJobs+1
-                if current_job_id == 1 || (current_job_id % max_jobs == ((job_id % max_jobs) + 1) % max_jobs) {
+                let current_slot = current_job_id.checked_rem(max_jobs).ok_or("job history capacity is zero")?;
+                let next_submitted_slot = job_id
+                    .checked_rem(max_jobs)
+                    .and_then(|slot| slot.checked_add(1))
+                    .and_then(|slot| slot.checked_rem(max_jobs))
+                    .ok_or("invalid job history capacity or slot overflow")?;
+                if current_job_id == 1 || current_slot == next_submitted_slot {
                     // Exhausted all previous blocks (wrapped around or reached job 1)
                     debug!("Job ID loop exhausted: current_job_id={}, job_id={}, max_jobs={}", current_job_id, job_id, max_jobs);
                     break;
                 } else {
                     // Try previous job ID
-                    let prev_job_id = current_job_id - 1;
+                    let prev_job_id = current_job_id.checked_sub(1).ok_or("cannot try a previous job before job zero")?;
                     if let Some(prev_job) = state.get_job(prev_job_id) {
                         current_job_id = prev_job_id;
                         current_job = prev_job;
@@ -1054,8 +1086,14 @@ impl ShareHandler {
 
         if invalid_share {
             debug!("low diff share confirmed");
-            *stats.invalid_shares.lock() += 1;
-            *self.overall.invalid_shares.lock() += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                *stats.invalid_shares.lock() += 1;
+            }
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                *self.overall.invalid_shares.lock() += 1;
+            }
 
             record_weak_share(&self.worker_prom_context(&ctx, ""));
 
@@ -1079,8 +1117,14 @@ impl ShareHandler {
         //   sh.overall.SharesFound.Add(1)
         //   RecordShareFound(ctx, state.stratumDiff.hashValue)
         let stats = self.get_create_stats(&ctx);
-        *stats.shares_found.lock() += 1;
-        *stats.var_diff_shares_found.lock() += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            *stats.shares_found.lock() += 1;
+        }
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            *stats.var_diff_shares_found.lock() += 1;
+        }
 
         // Get hashValue from stratum_diff
         let hash_value = state.stratum_diff().map(|d| d.hash_value).unwrap_or(0.0);
@@ -1088,7 +1132,10 @@ impl ShareHandler {
         // Accumulate hashValue for hashrate calculation
         *stats.shares_diff.lock() += hash_value;
         *stats.last_share.lock() = Instant::now();
-        *self.overall.shares_found.lock() += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            *self.overall.shares_found.lock() += 1;
+        }
 
         record_share_found(&self.worker_prom_context(&ctx, ""), hash_value);
 
@@ -1335,12 +1382,24 @@ impl ShareHandler {
                         total_target = None;
                     }
 
-                    total_shares += *overall.shares_found.lock();
-                    total_stales += *overall.stale_shares.lock();
-                    total_invalids += *overall.invalid_shares.lock();
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_shares += *overall.shares_found.lock();
+                    }
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_stales += *overall.stale_shares.lock();
+                    }
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_invalids += *overall.invalid_shares.lock();
+                    }
                     // overall.blocks_found includes blocks from all workers (even pruned ones)
                     // Accumulate for the "Total" column (all-time blocks)
-                    total_blocks_all_time += *overall.blocks_found.lock();
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_blocks_all_time += *overall.blocks_found.lock();
+                    }
 
                     let stats_map = stats.lock();
                     for (_, v) in stats_map.iter() {
@@ -1360,11 +1419,17 @@ impl ShareHandler {
                         let min_diff = *v.min_diff.lock();
 
                         // Sum blocks from individual workers for "Blocks" column (online workers only)
-                        total_blocks += blocks;
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            total_blocks += blocks;
+                        }
 
                         let spm = if elapsed > 0.0 { (shares as f64) / (elapsed / 60.0) } else { 0.0 };
                         total_worker_spm += spm;
-                        total_worker_count += 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            total_worker_count += 1;
+                        }
                         let trend = if spm > *target_spm * 1.2 {
                             "up"
                         } else if spm < *target_spm * 0.8 {
@@ -1421,17 +1486,20 @@ impl ShareHandler {
                 let tip = node_status.tip_hash.as_deref().unwrap_or("-");
                 let mempool = node_status.mempool_size.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
 
+                #[allow(clippy::arithmetic_side_effects, reason = "tip.len() - 8 is evaluated only when tip.len() > 28.")]
                 let tip_short = if tip.len() > 28 { format!("{}...{}", &tip[..16], &tip[tip.len() - 8..]) } else { tip.to_string() };
 
                 let net_short = {
                     let mut network_type = None;
                     let mut suffix = None;
                     if let Some(pos) = net.find("network_type:") {
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
                         let s = &net[pos + "network_type:".len()..];
                         let s = s.trim_start();
                         network_type = s.split(&[',', '}'][..]).next().map(|v| v.trim());
                     }
                     if let Some(pos) = net.find("suffix:") {
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
                         let s = &net[pos + "suffix:".len()..];
                         let s = s.trim_start();
                         let raw = s.split(&[',', '}'][..]).next().map(|v| v.trim());
@@ -1516,11 +1584,26 @@ impl ShareHandler {
 
                 if let Some((ghs, acc, stl, inv, blocks)) = internal_totals {
                     total_rate += ghs;
-                    total_shares += acc;
-                    total_stales += stl;
-                    total_invalids += inv;
-                    total_blocks += blocks;
-                    total_blocks_all_time += blocks; // Also add to all-time total for the "Total" column
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_shares += acc;
+                    }
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_stales += stl;
+                    }
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_invalids += inv;
+                    }
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_blocks += blocks;
+                    }
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        total_blocks_all_time += blocks; // Also add to all-time total for the "Total" column
+                    }
                 }
 
                 let overall_spm = average_worker_spm(total_worker_spm, total_worker_count);

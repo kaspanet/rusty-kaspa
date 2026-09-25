@@ -107,7 +107,10 @@ impl Resolver for QueueResolver {
                 // The call to pending_calls.remove moves whichever end is closer to the
                 // removal point. So to prevent skipping items, we only increment index when
                 // no removal occurs.
-                index += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    index += 1;
+                }
             }
         }
     }

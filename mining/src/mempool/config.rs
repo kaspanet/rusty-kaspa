@@ -90,7 +90,11 @@ impl Config {
 
     /// Build a default config.
     /// The mass limits should be obtained from [`kaspa_consensus_core::config::params::Params::block_mass_limits`].
-    pub fn build_default(
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "If there's an overflow, the program will panic on startup, which is acceptable since it indicates a misconfiguration."
+    )]
+    pub const fn build_default(
         target_milliseconds_per_block: u64,
         relay_non_std_transactions: bool,
         mempool_block_mass_limits: BlockMassLimits,

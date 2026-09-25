@@ -27,6 +27,9 @@ pub enum RuleError {
     #[error("transaction {0} is already in the mempool")]
     RejectDuplicate(TransactionId),
 
+    #[error("coinbase transaction {0} cannot be added to the mempool")]
+    RejectCoinbase(TransactionId),
+
     #[error("output {0} already spent by transaction {1} in the mempool")]
     RejectDoubleSpendInMempool(TransactionOutpoint, TransactionId),
 

@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 pub mod collector;
 pub mod connection;
 pub mod notification;

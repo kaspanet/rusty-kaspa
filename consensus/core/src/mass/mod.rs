@@ -219,7 +219,7 @@ impl BlockMassLimits {
 
     /// Returns the mass cofactors derived from these limits.
     #[inline]
-    pub fn cofactors(&self) -> MassCofactors {
+    pub const fn cofactors(&self) -> MassCofactors {
         MassCofactors::new(self)
     }
 
@@ -253,7 +253,7 @@ pub struct MassCofactors {
 }
 
 impl MassCofactors {
-    pub fn new(limits: &BlockMassLimits) -> Self {
+    pub const fn new(limits: &BlockMassLimits) -> Self {
         let reference = limits.compute as f64;
         Self { storage: reference / limits.storage as f64, transient: reference / limits.transient as f64, reference: limits.compute }
     }

@@ -1,3 +1,6 @@
+// Wallet code is exempt from the arithmetic-side-effects lint.
+#![allow(clippy::arithmetic_side_effects)]
+
 use proc_macro::TokenStream;
 use proc_macro_error::proc_macro_error;
 mod handler;

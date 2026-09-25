@@ -127,7 +127,10 @@ impl SampleMassTracker {
         } else {
             // This tx increased raw sampled mass but did not shrink the greedy
             // pack gap. Bound how many such null attempts can keep sampling alive.
-            self.null_attempts += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.null_attempts += 1;
+            }
         }
     }
 }
@@ -166,7 +169,14 @@ impl Frontier {
         let lane = key.lane();
         if self.search_tree.insert(key.clone()) {
             self.by_lane.entry(lane).or_default().insert(key);
-            self.total_mass += mass;
+
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "test_maximum_mempool_mass_fits_u64_with_large_margin ensures that self.total_mass << u64::MAX, and mass <= max block size << u64::MAX, so self.total_mass + mass << u64::MAX"
+            )]
+            {
+                self.total_mass += mass;
+            }
             // A decaying average formula. Denote ɛ = 1 - AVG_MASS_DECAY_FACTOR. A transaction inserted N slots ago has
             // ɛ * (1 - ɛ)^N weight within the updated average. This gives some weight to the full mempool history while
             // giving higher importance to more recent samples.
@@ -190,7 +200,14 @@ impl Frontier {
             if remove_lane {
                 self.by_lane.remove(&lane);
             }
-            self.total_mass -= mass;
+
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "Removing mass that was previously added to total_mass, so this cannot underflow."
+            )]
+            {
+                self.total_mass -= mass;
+            }
             true
         } else {
             false
@@ -250,7 +267,10 @@ impl Frontier {
             let item = {
                 let mut item = self.search_tree.search(query);
                 while !cache.insert(item.tx.id()) {
-                    collisions += 1;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        collisions += 1;
+                    }
                     // Try to narrow the sampling space in order to reduce further sampling collisions
                     if cache.contains(&top.tx.id()) {
                         loop {
@@ -287,7 +307,10 @@ impl Frontier {
             self.finish_intra_lane_selection(&mut sequence, &cache, &lanes, &mut mass);
         }
         trace!("[mempool frontier sample inplace] collisions: {collisions}, cache: {}", cache.len());
-        *_collisions += collisions;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            *_collisions += collisions;
+        }
         sequence
     }
 
@@ -354,6 +377,7 @@ impl Frontier {
     /// full transaction selection in less than 150 µs even if the frontier has 1M entries (!!). See mining/benches
     /// for more details.
     pub fn build_selector(&self, policy: &Policy) -> Box<dyn TemplateTransactionSelector> {
+        #[allow(clippy::arithmetic_side_effects, reason = "policy.max_block_mass and COLLISION_FACTOR are small enough.")]
         if self.total_mass <= policy.max_block_mass {
             // TakeAll can still filter by LPB/gas, so feed it best-first.
             Box::new(TakeAllSelector::new(self.search_tree.descending_iter().map(|k| k.tx.clone()).collect(), policy.clone()))
@@ -435,10 +459,11 @@ impl Frontier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mempool::config::Config;
+    use crate::mempool::config::{Config, DEFAULT_MAXIMUM_TRANSACTION_COUNT};
     use feerate_key::tests::build_feerate_key;
     use itertools::Itertools;
     use kaspa_consensus_core::{
+        config::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS},
         mass::BlockMassLimits,
         subnets::SubnetworkId,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
@@ -553,6 +578,22 @@ mod tests {
             }
         }
         assert_eq!(frontier.total_mass(), frontier.search_tree.ascending_iter().map(|k| k.mass).sum::<u64>());
+    }
+
+    #[test]
+    fn test_maximum_mempool_mass_fits_u64_with_large_margin() {
+        const MINIMUM_HEADROOM_FACTOR: u64 = 1_000_000;
+
+        let maximum_transaction_count = u64::try_from(DEFAULT_MAXIMUM_TRANSACTION_COUNT).unwrap();
+        for params in [&MAINNET_PARAMS, &TESTNET_PARAMS, &SIMNET_PARAMS, &DEVNET_PARAMS] {
+            let maximum_mempool_mass = params
+                .block_mass_limits
+                .reference()
+                .checked_mul(maximum_transaction_count)
+                .expect("maximum mempool mass must fit in u64");
+            let headroom_factor = u64::MAX / maximum_mempool_mass;
+            assert!(headroom_factor >= MINIMUM_HEADROOM_FACTOR);
+        }
     }
 
     #[test]

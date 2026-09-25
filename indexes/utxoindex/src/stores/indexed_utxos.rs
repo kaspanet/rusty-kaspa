@@ -30,6 +30,7 @@ struct ScriptPublicKeyBucket(Vec<u8>);
 impl From<&ScriptPublicKey> for ScriptPublicKeyBucket {
     fn from(script_public_key: &ScriptPublicKey) -> Self {
         // version (2) + length (8) + dynamic script
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
         let mut bytes: Vec<u8> = Vec::with_capacity(VERSION_TYPE_SIZE + size_of::<u64>() + script_public_key.script().len());
         bytes.extend_from_slice(&script_public_key.version().to_le_bytes());
         bytes.extend_from_slice(&(script_public_key.script().len() as u64).to_le_bytes()); // TODO: Consider using a smaller integer
@@ -44,6 +45,7 @@ impl From<ScriptPublicKeyBucket> for ScriptPublicKey {
             <[u8; VERSION_TYPE_SIZE]>::try_from(&bucket.0[..VERSION_TYPE_SIZE]).expect("expected version size"),
         );
 
+        #[allow(clippy::arithmetic_side_effects, reason = "VERSION_TYPE_SIZE is 2 and size_of::<u64>() is 8; the endpoint is 10.")]
         let script_size =
             u64::from_le_bytes(bucket.0[VERSION_TYPE_SIZE..VERSION_TYPE_SIZE + size_of::<u64>()].try_into().unwrap()) as usize;
         let script =
@@ -135,6 +137,7 @@ impl UtxoEntryDbKey {
         daa_score_key: DaaScoreKey,
         transaction_outpoint_key: TransactionOutpointKey,
     ) -> Self {
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
         let mut bytes =
             Vec::with_capacity(DAA_SCORE_KEY_SIZE + TRANSACTION_OUTPOINT_KEY_SIZE + script_public_key_bucket.as_ref().len());
         bytes.extend_from_slice(script_public_key_bucket.as_ref());
@@ -251,7 +254,10 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                     )
                 }),
             );
-            entries_count += utxos_by_script_public_keys_inner.len();
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                entries_count += utxos_by_script_public_keys_inner.len();
+            }
             utxos_by_script_public_keys.insert(script_public_key, utxos_by_script_public_keys_inner);
         }
         debug!("IDXPRC, Executed a query for the utxo set of {} script public keys yielding {} entries", script_count, entries_count);
@@ -311,7 +317,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         // sort the script public keys in order to return them in a deterministic order
         script_public_keys.sort_unstable();
 
-        // 
+        //
         let spk_max = script_public_keys.last().unwrap().clone();
 
         let key_ranges = script_public_keys.into_iter().map(|script_public_key| {
@@ -385,7 +391,10 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                 .access
                 .seek_iterator(Some(script_public_key_bucket.as_ref()), None, None, usize::MAX, false)
                 .map(|res| {
-                    entries_count += 1;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        entries_count += 1;
+                    }
                     let (_, entry) = res.unwrap();
                     entry.amount
                 })

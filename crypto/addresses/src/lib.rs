@@ -57,6 +57,8 @@ pub enum AddressError {
     BadChecksum,
     #[error("The address payload is invalid")]
     BadPayload,
+    #[error("The address payload length is invalid: expected {expected} bytes, got {actual}")]
+    InvalidPayloadLength { expected: usize, actual: usize },
     #[error("The address is invalid")]
     InvalidAddress,
     #[error("The address array is invalid")]
@@ -227,6 +229,9 @@ impl fmt::Debug for Address {
 }
 
 impl Address {
+    /// # Deprecated
+    ///
+    /// Use [`Self::try_new`] instead.
     pub fn new(prefix: Prefix, version: Version, payload: &[u8]) -> Self {
         if !prefix.is_test() {
             assert_eq!(payload.len(), version.public_key_len());
@@ -234,10 +239,22 @@ impl Address {
         Self { prefix, payload: PayloadVec::from_slice(payload), version }
     }
 
+    pub fn try_new(prefix: Prefix, version: Version, payload: &[u8]) -> Result<Self, AddressError> {
+        let expected = version.public_key_len();
+        if !prefix.is_test() && payload.len() != expected {
+            return Err(AddressError::InvalidPayloadLength { expected, actual: payload.len() });
+        }
+        Ok(Self { prefix, payload: PayloadVec::from_slice(payload), version })
+    }
+
     pub fn short(&self, n: usize) -> String {
         let payload = self.encode_payload();
         let n = cmp::min(n, payload.len() / 4);
-        format!("{}:{}....{}", self.prefix, &payload[0..n], &payload[payload.len() - n..])
+
+        #[allow(clippy::arithmetic_side_effects)] // This can't panic because `n <= payload.len() / 4 <= payload.len()`
+        {
+            format!("{}:{}....{}", self.prefix, &payload[0..n], &payload[payload.len() - n..])
+        }
     }
 }
 
@@ -267,7 +284,8 @@ impl BorshDeserialize for Address {
         let prefix: Prefix = borsh::BorshDeserialize::deserialize_reader(reader)?;
         let version: Version = borsh::BorshDeserialize::deserialize_reader(reader)?;
         let payload: Vec<u8> = borsh::BorshDeserialize::deserialize_reader(reader)?;
-        Ok(Self::new(prefix, version, &payload))
+        Self::try_new(prefix, version, &payload)
+            .map_err(|err| borsh::io::Error::new(borsh::io::ErrorKind::InvalidData, err.to_string()))
     }
 }
 

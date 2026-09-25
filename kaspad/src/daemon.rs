@@ -243,7 +243,7 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
     // Calculate cache budget for HDD preset
     let cache_budget = if matches!(preset, RocksDbPreset::Hdd) {
         if let Some(cache_mb) = args.rocksdb_cache_size {
-            let cache_bytes = cache_mb * 1024 * 1024;
+            let cache_bytes = cache_mb.checked_mul(1024 * 1024).unwrap();
             info!("Custom RocksDB cache size: {} MB", cache_mb);
             Some(cache_bytes)
         } else {
@@ -282,11 +282,17 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
 
-    let mut fd_remaining = fd_total_budget;
-    let utxo_files_limit = if args.utxoindex {
+    let mut fd_remaining: u32 = fd_total_budget.try_into().unwrap();
+    let utxo_files_limit: i32 = if args.utxoindex {
         let utxo_files_limit = fd_remaining / 10;
-        fd_remaining -= utxo_files_limit;
-        utxo_files_limit
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "Dividing fd_remaining by 10 produces a value no greater than fd_remaining, so the subtraction cannot underflow."
+        )]
+        {
+            fd_remaining -= utxo_files_limit;
+        }
+        utxo_files_limit.try_into().unwrap()
     } else {
         0
     };
@@ -376,11 +382,11 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
         let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
         if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
-            let total_blocks = retention_period_milliseconds / target_time_per_block;
+            let total_blocks = retention_period_milliseconds.checked_div(target_time_per_block).unwrap();
             // This worst case usage only considers block space. It does not account for usage of
             // other stores (reachability, block status, mempool, etc.)
-            let worst_case_usage = ((total_blocks + finality_depth)
-                * (config.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR)) as f64
+            let worst_case_usage = ((total_blocks as f64 + finality_depth as f64)
+                * (config.block_mass_limits.transient as f64 / TRANSIENT_BYTE_TO_MASS_FACTOR as f64))
                 / ONE_GIGABYTE;
 
             info!(
@@ -484,7 +490,7 @@ Do you confirm? (y/n)";
 
                     let mut writer = DirectDbWriter::new(&consensus_db);
 
-                    let end_level: u8 = config.max_block_level + 1;
+                    let end_level: u8 = config.max_block_level.checked_add(1).expect("max_block_level + 1 should not overflow u8");
                     let end_level_bytes = end_level.to_le_bytes();
 
                     let start_parents_prefix_vec: Vec<_> =
@@ -593,7 +599,7 @@ Do you confirm? (y/n)";
         notification_root.clone(),
         processing_counters.clone(),
         tx_script_cache_counters.clone(),
-        fd_remaining,
+        fd_remaining.try_into().unwrap(),
         mining_rules.clone(),
         rocksdb_preset,
         wal_dir.clone(),

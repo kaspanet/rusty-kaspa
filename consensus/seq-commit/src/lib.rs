@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 //! # kaspa-seq-commit — Sequencing Commitment
 //!
 //! Types and hash functions for lane-based partitioned

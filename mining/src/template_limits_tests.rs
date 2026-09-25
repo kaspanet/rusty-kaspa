@@ -4,6 +4,7 @@
 //! every transaction admitted to the pool can fit into a block under the active consensus block
 //! limits.
 
+#![allow(clippy::arithmetic_side_effects)]
 use crate::{
     MiningCounters,
     errors::MiningManagerError,

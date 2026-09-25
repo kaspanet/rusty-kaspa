@@ -350,7 +350,7 @@ impl RpcApi for RpcCoreService {
             // and should not be accepted unless user explicitly requests.
             let difficulty_window_duration = self.config.difficulty_window_duration_in_block_units();
             if virtual_daa_score > difficulty_window_duration
-                && block.header.daa_score < virtual_daa_score - difficulty_window_duration
+                && block.header.daa_score.saturating_add(difficulty_window_duration) < virtual_daa_score
             {
                 // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
                 return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
@@ -495,6 +495,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
             // only a chain block has its own red-reward coinbase output, as an extra output
             // see CoinbaseManager::expected_coinbase_transaction
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
             if queried_coinbase.outputs.len() == queried_ghostdag.mergeset_blues.len() + 1 {
                 let own_red_reward_output =
                     queried_coinbase.outputs.last().ok_or_else(|| RpcError::General("missing own red reward output".to_string()))?;
@@ -1022,13 +1023,28 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
                     // estimate milliseconds = (daa_score * target_time_per_block)
-                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block())
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "The enclosing branch checks header.daa_score <= curr_daa_score."
+                    )]
+                    {
+                        (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block())
+                    }
                 } else {
                     // "next" header is the one that we processed last iteration
+                    #[allow(clippy::arithmetic_side_effects, reason = "This branch excludes header_idx == 0.")]
                     let next_header = &headers[header_idx - 1];
                     // Unlike DAA scores which are monotonic (over the selected chain), timestamps are not strictly monotonic, so we avoid assuming so
                     let time_between_headers = next_header.timestamp.saturating_sub(header.timestamp);
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "The enclosing branch checks header.daa_score <= curr_daa_score."
+                    )]
                     let score_between_query_and_header = (curr_daa_score - header.daa_score) as f64;
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "Headers are sorted by DAA score, so next_header.daa_score >= header.daa_score."
+                    )]
                     let score_between_headers = (next_header.daa_score - header.daa_score) as f64;
                     // Interpolate the timestamp delta using the estimated fraction based on DAA scores
                     ((time_between_headers as f64) * (score_between_query_and_header / score_between_headers)) as u64
@@ -1038,9 +1054,15 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 daa_score_timestamp_map.insert(curr_daa_score, daa_score_timestamp);
 
                 // Process the next daa score that's <= than current one (at earlier idx)
-                req_idx += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    req_idx += 1;
+                }
             } else {
-                header_idx += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    header_idx += 1;
+                }
             }
         }
 

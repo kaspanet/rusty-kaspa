@@ -9,6 +9,7 @@ use kaspa_consensus_core::{
     },
 };
 use kaspa_hashes::Hash;
+use prost::Message;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -184,10 +185,15 @@ impl TryFrom<protowire::CovenantBinding> for CovenantBinding {
     }
 }
 
+const MAX_TRANSACTION_SIZE: usize = 1024 * 1024;
+
 impl TryFrom<protowire::TransactionMessage> for Transaction {
     type Error = ConversionError;
 
     fn try_from(tx: protowire::TransactionMessage) -> Result<Self, Self::Error> {
+        if tx.encoded_len() > MAX_TRANSACTION_SIZE {
+            return Err(ConversionError::Size);
+        }
         let version = tx.version;
         let transaction = Self::new(
             tx.version.try_into()?,
@@ -235,5 +241,63 @@ mod tests {
         assert_eq!(received.inputs.len(), 1);
         assert_eq!(received.inputs[0].compute_commit.compute_budget(), Some(12_345));
         assert_eq!(received.storage_mass(), 54_321);
+    }
+
+    #[test]
+    fn test_transaction_message_oversized_rejected() {
+        let mut message = protowire::TransactionMessage {
+            version: 1,
+            subnetwork_id: Some(SubnetworkId::from_bytes([3; 20]).into()),
+            ..Default::default()
+        };
+
+        // When payload is 1MB, encoded size exceeds 1MB due to protobuf field tag & length prefix
+        message.payload = vec![0u8; MAX_TRANSACTION_SIZE];
+        assert!(message.encoded_len() > MAX_TRANSACTION_SIZE);
+        assert!(matches!(Transaction::try_from(message), Err(ConversionError::Size)));
+    }
+
+    #[test]
+    fn test_p2p_max_transaction_size_larger_than_consensus() {
+        use kaspa_consensus_core::{
+            config::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS},
+            constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
+            subnets::SUBNETWORK_ID_COINBASE,
+        };
+
+        for (name, params) in
+            [("mainnet", &MAINNET_PARAMS), ("testnet", &TESTNET_PARAMS), ("devnet", &DEVNET_PARAMS), ("simnet", &SIMNET_PARAMS)]
+        {
+            // Non-coinbase transactions are capped by block transient mass limit
+            let consensus_max_non_coinbase_bytes = (params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR) as usize;
+
+            // Maximal version 1 coinbase transaction before virtual validation
+            let max_coinbase_outputs = params.ghostdag_k() as usize + 2;
+            let max_coinbase_tx = Transaction::new(
+                1,
+                vec![],
+                (0..max_coinbase_outputs)
+                    .map(|_| {
+                        TransactionOutput::with_covenant(
+                            u64::MAX,
+                            ScriptPublicKey::from_vec(0, vec![0u8; params.coinbase_payload_script_public_key_max_len as usize]),
+                            Some(CovenantBinding { authorizing_input: u16::MAX, covenant_id: Hash::from_bytes([0xff; 32]) }),
+                        )
+                    })
+                    .collect(),
+                u64::MAX,
+                SUBNETWORK_ID_COINBASE,
+                0,
+                vec![0u8; params.max_coinbase_payload_len],
+            );
+            let max_coinbase_proto_bytes = protowire::TransactionMessage::from(&max_coinbase_tx).encoded_len();
+
+            let consensus_max_tx_bytes = consensus_max_non_coinbase_bytes + max_coinbase_proto_bytes;
+
+            assert!(
+                MAX_TRANSACTION_SIZE >= 2 * consensus_max_tx_bytes,
+                "[{name}] P2P MAX_TRANSACTION_SIZE ({MAX_TRANSACTION_SIZE}) must be at least 2x consensus limit ({consensus_max_tx_bytes})"
+            );
+        }
     }
 }

@@ -5,6 +5,7 @@
 //! multiple `PSKT` instances allowing for exchange of Kaspa sweep transactions.
 //!
 
+#![allow(clippy::arithmetic_side_effects)]
 pub mod bundle;
 pub mod error;
 pub mod global;

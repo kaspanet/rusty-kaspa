@@ -48,9 +48,9 @@ impl Adaptor {
     /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional`
     pub fn client_only(hub: Hub, initializer: Arc<dyn ConnectionInitializer>, counters: Arc<TowerConnectionCounters>) -> Arc<Self> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
-        let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone(), counters);
+        let connection_handler = ConnectionHandler::new(hub_sender, initializer, counters);
         let adaptor = Arc::new(Adaptor::new(None, connection_handler, hub));
-        adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
+        adaptor.hub.clone().start_event_loop(hub_receiver);
         adaptor
     }
 
@@ -62,10 +62,10 @@ impl Adaptor {
         counters: Arc<TowerConnectionCounters>,
     ) -> Result<Arc<Self>, ConnectionError> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
-        let connection_handler = ConnectionHandler::new(hub_sender, initializer.clone(), counters);
+        let connection_handler = ConnectionHandler::new(hub_sender, initializer, counters);
         let server_termination = connection_handler.serve(serve_address)?;
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, hub));
-        adaptor.hub.clone().start_event_loop(hub_receiver, initializer);
+        adaptor.hub.clone().start_event_loop(hub_receiver);
         Ok(adaptor)
     }
 

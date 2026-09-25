@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
     header::Header,
-    pruning::{PruningPointProof, PruningPointsList, PruningProofMetadata},
+    pruning::{PruningPointsList, PruningProofMetadata},
     trusted::TrustedBlock,
     tx::Transaction,
 };
@@ -21,15 +21,10 @@ use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
-    convert::{
-        header::{HeaderFormat, Versioned},
-        model::trusted::TrustedDataPackage,
-    },
     dequeue_with_timeout, make_message, make_request,
     pb::{
-        RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
-        RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
-        kaspad_message::Payload,
+        RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestPruningPointAndItsAnticoneMessage,
+        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage, kaspad_message::Payload,
     },
 };
 use kaspa_utils::channel::JobReceiver;
@@ -47,11 +42,10 @@ pub struct IbdFlow {
     pub(super) ctx: FlowContext,
     pub(super) router: Arc<Router>,
     pub(super) incoming_route: IncomingRoute,
-    pub(super) body_only_ibd_permitted: bool,
-    header_format: HeaderFormat,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
     relay_receiver: JobReceiver<Block>,
+    use_ibd_chunks: bool,
 }
 
 #[async_trait::async_trait]
@@ -84,10 +78,9 @@ impl IbdFlow {
         router: Arc<Router>,
         incoming_route: IncomingRoute,
         relay_receiver: JobReceiver<Block>,
-        body_only_ibd_permitted: bool,
-        header_format: HeaderFormat,
+        use_ibd_chunks: bool,
     ) -> Self {
-        Self { ctx, router, incoming_route, relay_receiver, body_only_ibd_permitted, header_format }
+        Self { ctx, router, incoming_route, relay_receiver, use_ibd_chunks }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -313,12 +306,16 @@ impl IbdFlow {
 
         let hst_header = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
         let pruning_depth = self.ctx.config.pruning_depth();
-        if relay_header.blue_score >= hst_header.blue_score + pruning_depth && relay_header.blue_work > hst_header.blue_work {
+        if relay_header.blue_score >= hst_header.blue_score.saturating_add(pruning_depth)
+            && relay_header.blue_work > hst_header.blue_work
+        {
             let finality_duration_in_milliseconds = self.ctx.config.finality_duration_in_milliseconds();
-            if unix_now() > consensus.async_creation_timestamp().await + finality_duration_in_milliseconds {
+            if unix_now() > consensus.async_creation_timestamp().await.saturating_add(finality_duration_in_milliseconds) {
                 let fp = consensus.async_finality_point().await;
                 let fp_ts = consensus.async_get_header(fp).await?.timestamp;
-                if unix_now() < fp_ts + finality_duration_in_milliseconds * 3 / 2 {
+
+                #[allow(clippy::arithmetic_side_effects, reason = "finality_duration_in_milliseconds << u64::MAX")]
+                if unix_now() < fp_ts.saturating_add(finality_duration_in_milliseconds * 3 / 2) {
                     // We reject the headers proof if the node has a relatively up-to-date finality point and current
                     // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
                     // since subsequent checks identify these violations as well
@@ -401,8 +398,7 @@ impl IbdFlow {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
-        let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPointProof, Duration::from_secs(600))?;
-        let proof: PruningPointProof = Versioned(self.header_format, msg).try_into()?;
+        let proof = super::proof::receive_pruning_point_proof(&mut self.incoming_route, self.use_ibd_chunks).await?;
         info!(
             "Received headers proof with overall {} headers ({} unique)",
             proof.iter().map(|l| l.len()).sum::<usize>(),
@@ -435,7 +431,7 @@ impl IbdFlow {
             .await?;
         // First, all pruning points up to the last are sent
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::PruningPoints)?;
-        let pruning_points: PruningPointsList = Versioned(self.header_format, msg).try_into()?;
+        let pruning_points: PruningPointsList = msg.try_into()?;
 
         if pruning_points.is_empty() || pruning_points.last().unwrap().hash != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the last pruning point in the list"));
@@ -470,11 +466,10 @@ impl IbdFlow {
         // point and its anticone.
         // The latter, the trusted data entries, each represent a block (with daa) from the anticone of the pruning point
         // (including the PP itself), alongside indexing denoting the respective metadata headers or ghostdag data
-        let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
-        let pkg: TrustedDataPackage = Versioned(self.header_format, msg).try_into()?;
+        let pkg = super::trusted_data::receive_trusted_data(&mut self.incoming_route, self.use_ibd_chunks).await?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
-        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route, self.header_format);
+        let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
         // The first entry of the trusted data is the pruning point itself.
         let Some(pruning_point_entry) = entry_stream.next().await? else {
             return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
@@ -494,13 +489,20 @@ impl IbdFlow {
         let mut header_only_chain_segment = Vec::new();
         // Each selected-chain block contributes at least one blue score, so F blue-depth back is bounded
         // by F chain blocks (plus 2K for noise/robustness).
+        #[allow(clippy::arithmetic_side_effects, reason = "ghostdag_k() returns u16; widening first bounds 2 * K + 1 by 131071.")]
         let max_header_only_chain_segment_len =
             self.ctx.config.finality_depth().saturating_add(2 * self.ctx.config.ghostdag_k() as u64 + 1);
         while let Some(entry) = entry_stream.next().await? {
             match entry.block.is_header_only() {
                 true => {
                     if header_only_chain_segment.is_empty() {
-                        info!("Finished downloading {} blocks from the pruning point anticone", entries.len() - 1);
+                        #[allow(
+                            clippy::arithmetic_side_effects,
+                            reason = "entries starts with pruning_point_entry and is only appended to."
+                        )]
+                        {
+                            info!("Finished downloading {} blocks from the pruning point anticone", entries.len() - 1);
+                        }
                         info!("Starting to download the pruning point chain segment");
                     }
                     header_only_chain_segment.push(entry.block.header.clone());
@@ -519,6 +521,10 @@ impl IbdFlow {
                 // We expect all header-only entries to be sent after all non-header-only entries
                 false if header_only_chain_segment.is_empty() => {
                     entries.push(entry);
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "entries starts nonempty and the preceding push adds another entry."
+                    )]
                     if (entries.len() - 1).is_multiple_of(1000) {
                         info!("Downloaded {} blocks from the pruning point anticone", entries.len() - 1);
                     }
@@ -531,7 +537,10 @@ impl IbdFlow {
 
         if header_only_chain_segment.is_empty() {
             // No chain segment means the anticone was not logged yet.
-            info!("Finished downloading {} blocks from the pruning point anticone", entries.len() - 1);
+            #[allow(clippy::arithmetic_side_effects, reason = "entries starts with pruning_point_entry and is only appended to.")]
+            {
+                info!("Finished downloading {} blocks from the pruning point anticone", entries.len() - 1);
+            }
         } else {
             info!("Finished downloading {} headers from the pruning point chain segment", header_only_chain_segment.len());
         }
@@ -593,12 +602,24 @@ impl IbdFlow {
             let now = Instant::now();
             let passed = now.duration_since(last_time);
             if passed > Duration::from_secs(1) {
-                info!("Processed {} trusted blocks in the last {:.2}s (total {})", i - last_index, passed.as_secs_f64(), i);
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    reason = "last_index starts at zero and is assigned only earlier values of i."
+                )]
+                {
+                    info!("Processed {} trusted blocks in the last {:.2}s (total {})", i - last_index, passed.as_secs_f64(), i);
+                }
                 last_time = now;
                 last_index = i;
             }
             // TODO (relaxed): queue and join in batches
             staging.validate_and_insert_trusted_block(tb).virtual_state_task.await?;
+        }
+        if staging.async_get_block_status(relay_block.hash()).await.is_some() {
+            return Err(ProtocolError::OtherOwned(format!(
+                "triggering relay block {} was processed as trusted data",
+                relay_block.hash()
+            )));
         }
         staging.async_clear_body_missing_anticone_set().await;
         info!("Done processing trusted blocks");
@@ -624,7 +645,7 @@ impl IbdFlow {
                 }
             ))
             .await?;
-        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route, self.header_format);
+        let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
         if let Some(chunk) = chunk_stream.next().await? {
             let (mut prev_daa_score, mut prev_timestamp) = {
@@ -779,7 +800,7 @@ impl IbdFlow {
             .await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
-        let chunk: HeadersChunk = Versioned(self.header_format, msg).try_into()?;
+        let chunk: HeadersChunk = msg.try_into()?;
         let jobs: Vec<BlockValidationFuture> =
             chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
         try_join_all(jobs).await?;
@@ -806,7 +827,7 @@ impl IbdFlow {
         let staging_hst = staging_consensus.async_get_header(staging_consensus.async_get_headers_selected_tip().await).await.unwrap();
         let current_hst = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
         // If staging is behind current or within 10 minutes ahead of it, then something is wrong and we reject the IBD
-        if staging_hst.timestamp < current_hst.timestamp || staging_hst.timestamp - current_hst.timestamp < 600_000 {
+        if staging_hst.timestamp < current_hst.timestamp || staging_hst.timestamp.saturating_sub(current_hst.timestamp) < 600_000 {
             Err(ProtocolError::OtherOwned(format!(
                 "The difference between the timestamp of the current selected tip ({}) and the 
 staging selected tip ({}) is too small or negative. Aborting IBD...",
@@ -842,11 +863,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
     async fn sync_missing_trusted_bodies(&mut self, consensus: &ConsensusProxy) -> Result<(), ProtocolError> {
         info!("downloading pruning point anticone missing block data");
         let diesembodied_hashes = consensus.async_get_body_missing_anticone().await;
-        if self.body_only_ibd_permitted {
-            self.sync_missing_trusted_bodies_no_headers(consensus, diesembodied_hashes).await?
-        } else {
-            self.sync_missing_trusted_bodies_full_blocks(consensus, diesembodied_hashes).await?;
-        }
+        self.sync_missing_trusted_bodies_no_headers(consensus, diesembodied_hashes).await?;
         consensus.async_clear_body_missing_anticone_set().await;
         Ok(())
     }
@@ -878,44 +895,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                     return Err(ProtocolError::OtherOwned(format!("sent empty block body for block {}", hash)));
                 }
                 let block = Block { header: blk_header, transactions: blk_body.into() };
-                // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
-                // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
-                // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
-                jobs.push(
-                    consensus
-                        .validate_and_insert_trusted_block(TrustedBlock::new(block, consensus.async_get_ghostdag_data(hash).await?))
-                        .virtual_state_task,
-                );
-            }
-            try_join_all(jobs).await?; // TODO (relaxed): be more efficient with batching as done with block bodies in general
-        }
-        Ok(())
-    }
-    async fn sync_missing_trusted_bodies_full_blocks(
-        &mut self,
-        consensus: &ConsensusProxy,
-        diesembodied_hashes: Vec<Hash>,
-    ) -> Result<(), ProtocolError> {
-        let iter = diesembodied_hashes.chunks(IBD_BATCH_SIZE);
-        for chunk in iter {
-            self.router
-                .enqueue(make_message!(
-                    Payload::RequestIbdBlocks,
-                    RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
-                ))
-                .await?;
-            let mut jobs = Vec::with_capacity(chunk.len());
-
-            for &hash in chunk.iter() {
-                // TODO: change to BodyOnly requests when incorporated
-                let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-                let block: Block = Versioned(self.header_format, msg).try_into()?;
-                if block.hash() != hash {
-                    return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", hash, block.hash())));
-                }
-                if block.is_header_only() {
-                    return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-                }
                 // TODO (relaxed): sending ghostdag data may be redundant, especially when the headers were already verified.
                 // Consider sending empty ghostdag data, simplifying a great deal. The result should be the same -
                 // a trusted task is sent, however the header is already verified, and hence only the block body will be verified.
@@ -981,48 +960,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
     }
 
     async fn queue_block_processing_chunk(
-        &mut self,
-        consensus: &ConsensusProxy,
-        chunk: &[Hash],
-    ) -> Result<QueueChunkOutput, ProtocolError> {
-        if self.body_only_ibd_permitted {
-            self.queue_block_processing_chunk_body_only(consensus, chunk).await
-        } else {
-            self.queue_block_processing_chunk_full_block(consensus, chunk).await
-        }
-    }
-
-    async fn queue_block_processing_chunk_full_block(
-        &mut self,
-        consensus: &ConsensusProxy,
-        chunk: &[Hash],
-    ) -> Result<QueueChunkOutput, ProtocolError> {
-        let mut jobs = Vec::with_capacity(chunk.len());
-        let mut current_daa_score = 0;
-        let mut current_timestamp = 0;
-        self.router
-            .enqueue(make_message!(
-                Payload::RequestIbdBlocks,
-                RequestIbdBlocksMessage { hashes: chunk.iter().map(|h| h.into()).collect() }
-            ))
-            .await?;
-        for &expected_hash in chunk {
-            let msg = dequeue_with_timeout!(self.incoming_route, Payload::IbdBlock)?;
-            let block: Block = Versioned(self.header_format, msg).try_into()?;
-            if block.hash() != expected_hash {
-                return Err(ProtocolError::OtherOwned(format!("expected block {} but got {}", expected_hash, block.hash())));
-            }
-            if block.is_header_only() {
-                return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
-            }
-            current_daa_score = block.header.daa_score;
-            current_timestamp = block.header.timestamp;
-            jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
-        }
-        Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
-    }
-
-    async fn queue_block_processing_chunk_body_only(
         &mut self,
         consensus: &ConsensusProxy,
         chunk: &[Hash],

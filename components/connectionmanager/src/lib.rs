@@ -138,17 +138,15 @@ impl ConnectionManager {
                         debug!("Failed connecting to peer request: {}, {}", address, err);
                         if request.is_permanent {
                             const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
+
+                            #[allow(clippy::arithmetic_side_effects, reason = "`retry_duration <= 30 * 2^4 = 480 seconds`.")]
                             let retry_duration =
                                 Duration::from_secs(30u64 * 2u64.pow(min(request.attempts, MAX_ACCOUNTABLE_ATTEMPTS)));
                             debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
-                            new_requests.insert(
-                                address,
-                                ConnectionRequest {
-                                    next_attempt: SystemTime::now() + retry_duration,
-                                    attempts: request.attempts + 1,
-                                    is_permanent: true,
-                                },
-                            );
+                            #[allow(clippy::arithmetic_side_effects, reason = "`retry_duration` is small enough.")]
+                            let next_attempt = SystemTime::now() + retry_duration;
+                            let attempts = request.attempts.saturating_add(1);
+                            new_requests.insert(address, ConnectionRequest { next_attempt, attempts, is_permanent: true });
                         }
                     }
                     Ok(_) if request.is_permanent => {
@@ -168,11 +166,15 @@ impl ConnectionManager {
     async fn handle_outbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
         let active_outbound: HashSet<kaspa_addressmanager::NetAddress> =
             peer_by_address.values().filter(|peer| peer.is_outbound()).map(|peer| peer.net_address().into()).collect();
-        if active_outbound.len() >= self.outbound_target {
+
+        let Some(mut missing_connections) = self.outbound_target.checked_sub(active_outbound.len()) else {
+            return;
+        };
+
+        if missing_connections == 0 {
             return;
         }
 
-        let mut missing_connections = self.outbound_target - active_outbound.len();
         let mut addr_iter = self.address_manager.lock().iterate_prioritized_random_addresses(active_outbound);
         let mut progressing = true;
         let mut connecting = true;
@@ -193,11 +195,13 @@ impl ConnectionManager {
                 jobs.push(self.p2p_adaptor.connect_peer(socket_addr.clone()));
             }
 
+            #[allow(clippy::arithmetic_side_effects, reason = "`missing_connections <= self.outbound_target`")]
+            let outgoing = self.outbound_target - missing_connections;
             if progressing && !jobs.is_empty() {
                 // Log only if progress was made
                 info!(
                     "Connection manager: has {}/{} outgoing P2P connections, trying to obtain {} additional connection(s)...",
-                    self.outbound_target - missing_connections,
+                    outgoing,
                     self.outbound_target,
                     jobs.len(),
                 );
@@ -205,7 +209,7 @@ impl ConnectionManager {
             } else {
                 debug!(
                     "Connection manager: outgoing: {}/{} , connecting: {}, iterator: {}",
-                    self.outbound_target - missing_connections,
+                    outgoing,
                     self.outbound_target,
                     jobs.len(),
                     addr_iter.len(),
@@ -215,7 +219,10 @@ impl ConnectionManager {
                 match res {
                     Ok(_) => {
                         self.address_manager.lock().mark_connection_success(net_addr);
-                        missing_connections -= 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "We checked above that `missing_connections > 0`.")]
+                        {
+                            missing_connections -= 1;
+                        }
                         progressing = true;
                     }
                     Err(ConnectionError::ProtocolError(ProtocolError::PeerAlreadyExists(_))) => {
@@ -237,6 +244,7 @@ impl ConnectionManager {
                 self.dns_seed_many(self.dns_seeders.len()).await;
             } else {
                 // Try to obtain at least twice the number of missing connections
+                #[allow(clippy::arithmetic_side_effects, reason = "`missing_connections <= self.outbound_target / 2`")]
                 self.dns_seed_with_address_target(2 * missing_connections).await;
             }
         }
@@ -245,12 +253,15 @@ impl ConnectionManager {
     async fn handle_inbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {
         let active_inbound = peer_by_address.values().filter(|peer| !peer.is_outbound()).collect_vec();
         let active_inbound_len = active_inbound.len();
-        if self.inbound_limit >= active_inbound_len {
+        let Some(inbounds_to_terminate) = active_inbound_len.checked_sub(self.inbound_limit) else {
+            return;
+        };
+        if inbounds_to_terminate == 0 {
             return;
         }
 
-        let mut futures = Vec::with_capacity(active_inbound_len - self.inbound_limit);
-        for peer in active_inbound.choose_multiple(&mut thread_rng(), active_inbound_len - self.inbound_limit) {
+        let mut futures = Vec::with_capacity(inbounds_to_terminate);
+        for peer in active_inbound.choose_multiple(&mut thread_rng(), inbounds_to_terminate) {
             debug!("Disconnecting from {} because we're above the inbound limit", peer.net_address());
             futures.push(self.p2p_adaptor.terminate(peer.key()));
         }
@@ -268,11 +279,13 @@ impl ConnectionManager {
         for &seeder in shuffled_dns_seeders {
             // Query seeders sequentially until reaching the desired number of addresses
             let addrs_len = self.dns_seed_single(seeder);
-            if addrs_len >= min_addresses_to_fetch {
+            let Some(new_min) = min_addresses_to_fetch.checked_sub(addrs_len) else {
                 break;
-            } else {
-                min_addresses_to_fetch -= addrs_len;
+            };
+            if new_min == 0 {
+                break;
             }
+            min_addresses_to_fetch = new_min;
         }
     }
 

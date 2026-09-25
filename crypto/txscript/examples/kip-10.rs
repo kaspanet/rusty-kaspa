@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     hashing::{
