@@ -33,8 +33,6 @@ pub use transaction::{TransactionData, TransactionId, TransactionKind, Transacti
 #[cfg(test)]
 mod tests {
 
-    use super::*;
-    use crate::account::variants::bip32::*;
     use crate::imports::*;
     use crate::storage::local::Payload;
     use crate::storage::local::WalletStorage;
