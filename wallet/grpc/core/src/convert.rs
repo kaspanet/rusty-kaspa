@@ -82,6 +82,7 @@ fn extract_tx_deserialized(
                     script_builder.add_data(pair.signature.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
                 }
                 if pairs_len < signed_input.minimum_signatures as usize {
+                    #[allow(clippy::arithmetic_side_effects)] // validated above: pairs_len < minimum_signatures
                     return Err(Status::invalid_argument(format!("missing {} signatures on input: {idx}", signed_input.minimum_signatures as usize - pairs_len)));
                 }
                 let redeem_script = partially_signed_input_multisig_redeem_script(signed_input, ecdsa, "m")?;
@@ -200,7 +201,7 @@ impl TryFrom<protoserialization::TransactionMessage> for RpcTransaction {
             subnetwork_id,
             gas: value.gas,
             payload: value.payload,
-            mass: 0,
+            storage_mass: 0,
             verbose_data: None,
         })
     }
@@ -216,6 +217,7 @@ impl TryFrom<protoserialization::TransactionInput> for RpcTransactionInput {
             signature_script: value.signature_script,
             sequence: value.sequence,
             sig_op_count,
+            compute_budget: 0,
             verbose_data: None,
         })
     }
@@ -229,6 +231,7 @@ impl TryFrom<protoserialization::TransactionOutput> for RpcTransactionOutput {
             value: value.value,
             script_public_key: value.script_public_key.ok_or(Status::invalid_argument("missing script public key"))?.try_into()?,
             verbose_data: None,
+            covenant: None,
         })
     }
 }

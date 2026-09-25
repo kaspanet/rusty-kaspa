@@ -103,7 +103,8 @@ impl Service {
     pub fn receive_addresses(&self) -> Vec<Address> {
         // TODO: move into WalletApi
         let manager = self.wallet.account().unwrap().as_derivation_capable().unwrap().derivation().receive_address_manager();
-        manager.get_range_with_args(0..manager.index() + 1, false).unwrap()
+        let end_exclusive = manager.index().checked_add(1).expect("receive address index overflow");
+        manager.get_range_with_args(0..end_exclusive, false).unwrap()
     }
 
     pub fn wallet(&self) -> Arc<Wallet> {
@@ -197,7 +198,7 @@ impl Service {
             change_address,
             account.sig_op_count(),
             account.minimum_signatures(),
-            PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![PaymentOutput { address: to, amount: output_amount }] }),
+            PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![PaymentOutput::new(to, output_amount)] }),
             Some(fee_rate),
             Fees::SenderPays(0), // FIXME: @zelenevn
             None,
