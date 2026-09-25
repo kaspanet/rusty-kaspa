@@ -1284,6 +1284,54 @@ try_from! ( args: GetUtxosByAddressesResponse, IGetUtxosByAddressesResponse, {
     Ok(response)
 });
 
+declare! {
+    IGetUtxosByAddressesV2Request,
+    "IGetUtxosByAddressesV2Request | Address[] | string[]",
+    r#"
+    /**
+     * Requests UTXOs for multiple addresses with optional inclusive DAA-score bounds.
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxosByAddressesV2Request {
+        addresses : Address[] | string[];
+        fromDaaScore? : bigint;
+        toDaaScore? : bigint;
+        startAddress? : Address | string;
+        startDaaScore? : bigint;
+        startOutpointHash? : HexString;
+        startOutpointIndex? : bigint;
+        limit? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: IGetUtxosByAddressesV2Request, GetUtxosByAddressesV2Request, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetUtxosByAddressesV2Response,
+    r#"
+    /**
+     *
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxosByAddressesV2Response {
+        entries : UtxoEntryReference[];
+        nextAddress? : Address | string;
+        nextDaaScore? : bigint;
+        nextOutpointHash? : HexString;
+        nextOutpointIndex? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: GetUtxosByAddressesV2Response, IGetUtxosByAddressesV2Response, {
+    Ok(to_value(&args)?.into())
+});
+
 // ---
 
 declare! {

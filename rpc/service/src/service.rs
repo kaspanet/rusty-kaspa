@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::daa_score_timestamp::DaaScoreTimestamp;
 use kaspa_consensus_core::errors::block::RuleError;
-use kaspa_consensus_core::tx::{TransactionQueryResult, TransactionType};
+use kaspa_consensus_core::tx::{TransactionOutpoint, TransactionQueryResult, TransactionType};
 use kaspa_consensus_core::utxo::utxo_inquirer::UtxoInquirerError;
 use kaspa_consensus_core::{
     block::Block,
@@ -56,6 +56,10 @@ use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
+use kaspa_rpc_core::api::rpc::{
+    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT,
+    MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE,
+};
 use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
     api::{
@@ -72,6 +76,9 @@ use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use kaspa_utxoindex::errors::UtxoIndexError;
+use kaspa_utxoindex::model::{OrderedUtxoEntriesPage, UtxoPageCursor};
+use std::ops::RangeInclusive;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -273,6 +280,26 @@ impl RpcCoreService {
             .get_balance_by_script_public_keys(addresses.map(pay_to_address_script).collect())
             .await
             .unwrap_or_default()
+    }
+
+    async fn get_ordered_utxo_set_by_script_public_key_page<'a>(
+        &self,
+        addresses: impl Iterator<Item = &'a RpcAddress>,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: Option<UtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> RpcResult<OrderedUtxoEntriesPage> {
+        self.utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_by_script_public_keys_by_daa_score_page(
+                addresses.map(pay_to_address_script).collect(),
+                daa_score_range,
+                cursor,
+                limit,
+            )
+            .await
+            .map_err(|e| RpcError::InvalidGetUtxosByAddressesV2Request(e.to_string()))
     }
 
     fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
@@ -801,6 +828,72 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         //       (the current impl does not retain an entry order matching the request addresses order)
         let entry_map = self.get_utxo_set_by_script_public_key(request.addresses.iter()).await;
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
+    }
+
+    async fn get_utxos_by_addresses_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxosByAddressesV2Request,
+    ) -> RpcResult<GetUtxosByAddressesV2Response> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+
+        // because the address list and limit is potentially unbounded, we require unsafe_rpc to be enabled for this call
+        if !self.config.unsafe_rpc {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+
+        // We define an empty address set as an invalid request, as the user should be aware proactively that this is an empty query. This is also a safety measure to prevent accidental unbounded queries, as the user may not be aware that this is an empty query.
+        // TODO: Potentially we could redefine this case to get all utxos in the DAA range, but this is somewhat of an engineering effort to implement.
+        if request.addresses.is_empty() {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request(UtxoIndexError::QueryingEmptyAddressSet.to_string()));
+        }
+
+        let limit = request.limit.unwrap_or(DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT);
+
+        if !self.config.unsafe_rpc && (request.addresses.len() > MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT) {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        if !self.config.unsafe_rpc && (limit > MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE) {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+
+        if limit == 0 {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("limit must be greater than zero".to_string()));
+        }
+
+        let from_daa_score = request.from_daa_score.unwrap_or(0);
+        let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
+
+        // a start defined outside of the specified range is invalid.
+        if request.cursor.as_ref().is_some_and(|c| c.start_daa_score < from_daa_score || c.start_daa_score > to_daa_score) {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request(format!(
+                "cursor.daa_score {} must be within from_daa_score and to_daa_score",
+                request.cursor.as_ref().map(|c| c.start_daa_score).unwrap_or(0)
+            )));
+        }
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let page = self
+            .get_ordered_utxo_set_by_script_public_key_page(
+                request.addresses.iter(),
+                from_daa_score..=to_daa_score,
+                request.cursor.map(|r| r.into()),
+                Some(limit),
+            )
+            .await?;
+
+        let next_cursor = page.next_cursor();
+        let entries = page.entries();
+        let entries = self.index_converter.get_ordered_utxos_by_addresses_entries(entries);
+
+        Ok(GetUtxosByAddressesV2Response::new(entries, next_cursor.map(|c| (c, self.config.prefix()).try_into()).transpose()?))
     }
 
     async fn get_balance_by_address_call(

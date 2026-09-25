@@ -322,6 +322,59 @@ impl Rpc {
 
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetUtxosByAddressesV2 => {
+                let mut args = argv;
+
+                if args.len() < 6 {
+                    return Err(Error::custom(
+                        "Usage: rpc get-utxos-by-addresses-v2 <addr...> <from_daa_score|None> <to_daa_score|None> <start_address|None> <start_daa_score|None> <limit|None> (limit is a soft cap at the script public key + DAA boundary)",
+                    ));
+                }
+
+                let parse_optional_usize = |value: String| -> Result<Option<usize>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(value.parse::<usize>()?)) }
+                };
+
+                let limit = parse_optional_usize(args.pop().unwrap())?;
+                let start_outpoint_index = args.pop().and_then(|arg| arg.parse::<u32>().ok());
+                let start_outpoint_transaction_id = args.pop().and_then(|arg| RpcHash::from_hex(arg.as_str()).ok());
+                let start_daa_score = args.pop().and_then(|arg| arg.parse::<u64>().ok());
+                let start_address = args.pop().and_then(|arg| Address::try_from(arg.as_str()).ok());
+                let to_daa_score = args.pop().and_then(|arg| arg.parse::<u64>().ok());
+                let from_daa_score = args.pop().and_then(|arg| arg.parse::<u64>().ok());
+
+                let cursor = if start_outpoint_index.is_none()
+                    && start_outpoint_transaction_id.is_none()
+                    && start_address.is_none()
+                    && start_daa_score.is_none()
+                {
+                    None
+                } else {
+                    Some(RpcGetUtxosByAddressesCursor::new(
+                        start_address.ok_or(RpcError::General("no start address specified".to_string()))?,
+                        start_daa_score.ok_or(RpcError::General("no start_daa_score specified for cursor".to_string()))?,
+                        Some(RpcTransactionOutpoint {
+                            transaction_id: start_outpoint_transaction_id
+                                .ok_or(RpcError::General("no start_outpoint_transaction_id specified for cursor".to_string()))?,
+                            index: start_outpoint_index
+                                .ok_or(RpcError::General("no start_outpoint_index specified for cursor".to_string()))?,
+                        }),
+                    ))
+                };
+
+                if args.is_empty() {
+                    return Err(Error::custom("Please specify at least one address"));
+                }
+
+                let addresses = args.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
+                let result = rpc
+                    .get_utxos_by_addresses_v2_call(
+                        None,
+                        GetUtxosByAddressesV2Request::new(addresses, from_daa_score, to_daa_score, cursor, limit),
+                    )
+                    .await?;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

@@ -1,6 +1,7 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::api::stats::BlockCount;
+use kaspa_consensus_core::tx::TransactionIndexType;
 use kaspa_core::debug;
 use kaspa_notify::subscription::{Command, context::SubscriptionContext, single::UtxosChangedSubscription};
 use kaspa_utils::hex::ToHex;
@@ -1503,6 +1504,90 @@ impl Deserializer for GetUtxosByAddressesResponse {
         let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
 
         Ok(Self { entries })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByAddressesV2Request {
+    /// Addresses to query UTXOs for.
+    pub addresses: Vec<RpcAddress>,
+    /// Inclusive DAA-score range start; None defaults to 0.
+    pub from_daa_score: Option<u64>,
+    /// Inclusive DAA-score range end; None defaults to u64::MAX.
+    pub to_daa_score: Option<u64>,
+    // Cursor start position; None starts from the beginning.
+    pub cursor: Option<RpcGetUtxosByAddressesCursor>,
+    /// Soft cap on entries; None means no limit, and a page may exceed this to finish the current script public key + DAA-score group.
+    pub limit: Option<usize>,
+}
+
+impl GetUtxosByAddressesV2Request {
+    pub fn new(
+        addresses: Vec<RpcAddress>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        cursor: Option<RpcGetUtxosByAddressesCursor>,
+        limit: Option<usize>,
+    ) -> Self {
+        Self { addresses, from_daa_score, to_daa_score, cursor, limit }
+    }
+}
+
+impl Serializer for GetUtxosByAddressesV2Request {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcAddress>, &self.addresses, writer)?;
+        store!(Option<u64>, &self.from_daa_score, writer)?;
+        store!(Option<u64>, &self.to_daa_score, writer)?;
+        store!(Option<RpcGetUtxosByAddressesCursor>, &self.cursor, writer)?;
+        store!(Option<usize>, &self.limit, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByAddressesV2Request {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let addresses = load!(Vec<RpcAddress>, reader)?;
+        let from_daa_score = load!(Option<u64>, reader)?;
+        let to_daa_score = load!(Option<u64>, reader)?;
+        let cursor = load!(Option<RpcGetUtxosByAddressesCursor>, reader)?;
+        let limit = load!(Option<usize>, reader)?;
+        Ok(Self { addresses, from_daa_score, to_daa_score, cursor, limit })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByAddressesV2Response {
+    /// UTXO entries for the requested addresses and DAA-score range.
+    pub entries: Vec<RpcUtxosByAddressesEntry>,
+    /// Cursor address for the next page; None means there is no next page.
+    pub next_cursor: Option<RpcGetUtxosByAddressesCursor>,
+}
+
+impl GetUtxosByAddressesV2Response {
+    pub fn new(entries: Vec<RpcUtxosByAddressesEntry>, next_cursor: Option<RpcGetUtxosByAddressesCursor>) -> Self {
+        Self { entries, next_cursor }
+    }
+}
+
+impl Serializer for GetUtxosByAddressesV2Response {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.entries, writer)?;
+        serialize!(Option<RpcGetUtxosByAddressesCursor>, &self.next_cursor, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByAddressesV2Response {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+        let next_cursor = deserialize!(Option<RpcGetUtxosByAddressesCursor>, reader)?;
+        Ok(Self { entries, next_cursor })
     }
 }
 

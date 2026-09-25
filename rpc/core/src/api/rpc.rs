@@ -15,6 +15,11 @@ use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
 
+// constants pertaining to the get_utxos_by_addresses_v2 RPC method
+pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE: usize = 5_000;
+pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT: usize = 1_000;
+pub const DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT: usize = 1_000;
+
 /// Client RPC Api
 ///
 /// The [`RpcApi`] trait defines RPC calls taking a request message as unique parameter.
@@ -368,6 +373,29 @@ pub trait RpcApi: Sync + Send + AnySync {
         connection: Option<&DynRpcConnection>,
         request: GetUtxosByAddressesRequest,
     ) -> RpcResult<GetUtxosByAddressesResponse>;
+
+    /// Requests UTXOs for multiple addresses, optionally filtered by an inclusive DAA-score range.
+    ///
+    /// This call is only available when this node was started with `--utxoindex`.
+    async fn get_utxos_by_addresses_v2(
+        &self,
+        addresses: Vec<RpcAddress>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        cursor: Option<RpcGetUtxosByAddressesCursor>,
+        limit: Option<usize>,
+    ) -> RpcResult<GetUtxosByAddressesV2Response> {
+        self.get_utxos_by_addresses_v2_call(
+            None,
+            GetUtxosByAddressesV2Request::new(addresses, from_daa_score, to_daa_score, cursor, limit),
+        )
+        .await
+    }
+    async fn get_utxos_by_addresses_v2_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetUtxosByAddressesV2Request,
+    ) -> RpcResult<GetUtxosByAddressesV2Response>;
 
     /// Requests the blue score of the current selected parent of the virtual block.
     async fn get_sink_blue_score(&self) -> RpcResult<u64> {

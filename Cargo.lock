@@ -3607,6 +3607,7 @@ dependencies = [
  "derive_more 0.99.18",
  "faster-hex 0.9.0",
  "futures",
+ "indexmap 2.14.0",
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-notify",
@@ -4290,6 +4291,7 @@ name = "kaspa-utxoindex"
 version = "2.1.0"
 dependencies = [
  "futures",
+ "itertools 0.13.0",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensusmanager",
@@ -4304,6 +4306,7 @@ dependencies = [
  "rocksdb",
  "serde",
  "thiserror 2.0.18",
+ "zerocopy 0.8.42",
 ]
 
 [[package]]
