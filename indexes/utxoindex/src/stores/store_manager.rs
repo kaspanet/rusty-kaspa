@@ -90,7 +90,7 @@ impl Store {
         limit: Option<u64>,
     ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys_by_daa_score_page(
-            script_public_keys.into_iter().collect(),
+            script_public_keys,
             daa_score_range,
             cursor,
             limit,

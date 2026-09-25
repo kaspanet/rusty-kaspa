@@ -293,14 +293,25 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             cursor.script_public_key.is_none() || spk >= cursor.script_public_key.as_ref().unwrap()
         });
 
-        // cursor is not pointing into the script public key set.
-        if !is_cursor_valid {
+        // if cursor is not pointing into the script public key set:
+        // TODO: consider if this is an invalid cursor, this depends on client usage patterns,
+        // and if we might expect them to update their address-set mid-flight.
+        // for now we will consider this valid, but keep the back-bone logic in place to change this.
+        /* if !is_cursor_valid {
             return Err(UtxoIndexError::InvalidCursor(cursor));
-        }
+        }*/
+
+        // TODO: if we use the is_cursor_valid check to determine if the cursor is valid,
+        // we may remove this check, as we are guranteed to have at least one script public key in the set.
+        if script_public_keys.is_empty() {
+            // after filtering, no script public keys remain, thus we return an empty result.
+            return Ok(OrderedUtxoEntriesPage::new(Arc::new(Vec::new()), None));
+        };
 
         // sort the script public keys in order to return them in a deterministic order
         script_public_keys.sort_unstable();
 
+        // 
         let spk_max = script_public_keys.last().unwrap().clone();
 
         let key_ranges = script_public_keys.into_iter().map(|script_public_key| {
