@@ -1,4 +1,3 @@
-use indexmap::IndexSet;
 use kaspa_consensus_core::{
     BlockHashSet,
     tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
@@ -31,10 +30,10 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     /// Retrieve ordered UTXOs for multiple script public keys with cursor pagination.
     fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
-        script_public_keys: IndexSet<ScriptPublicKey>,
+        script_public_keys: Vec<ScriptPublicKey>,
         daa_score_range: RangeInclusive<u64>,
-        cursor: UtxoPageCursor,
-        limit: Option<u64>,
+        cursor: Option<UtxoPageCursor>,
+        limit: Option<usize>,
     ) -> UtxoIndexResult<OrderedUtxoEntriesPage>;
 
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
@@ -86,10 +85,10 @@ impl UtxoIndexProxy {
 
     pub async fn get_utxos_by_script_public_keys_by_daa_score_page(
         self,
-        script_public_keys: IndexSet<ScriptPublicKey>,
+        script_public_keys: Vec<ScriptPublicKey>,
         daa_score_range: RangeInclusive<u64>,
-        cursor: UtxoPageCursor,
-        limit: Option<u64>,
+        cursor: Option<UtxoPageCursor>,
+        limit: Option<usize>,
     ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
         spawn_blocking(move || {
             self.inner.read().get_utxos_by_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)

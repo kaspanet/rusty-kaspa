@@ -30,7 +30,7 @@ impl IndexConverter {
     }
 
     pub fn get_ordered_utxos_by_addresses_entries(&self, item: &OrderedUtxoEntries) -> Vec<RpcUtxosByAddressesEntry> {
-        ordered_utxo_set_into_rpc(item, Some(self.config.prefix()))
+        ordered_utxo_set_into_rpc(item, self.config.prefix())
     }
 }
 

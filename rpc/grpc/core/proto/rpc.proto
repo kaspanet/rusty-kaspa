@@ -578,6 +578,7 @@ message GetUtxosByAddressesResponseMessage {
 // This call is only available when this kaspad was started with `--utxoindex`.
 message GetUtxosByAddressesV2RequestMessage {
   // Addresses to query UTXOs for. Note an empty set of addresses is considered an invalid query.
+  // max addresses without requiring --unsafe-rpc flag on the node is 1_000
   repeated string addresses = 1;
   // Inclusive DAA-score range start; omitted defaults to 0.
   optional uint64 fromDaaScore = 2;
@@ -585,16 +586,11 @@ message GetUtxosByAddressesV2RequestMessage {
   optional uint64 toDaaScore = 3;
 
   // ### Cursor based fields. ###
-  // Cursor start address; omitted starts from the first address.
-  optional string startAddress = 4;
-  // Cursor start DAA score for startAddress; omitted starts from fromDaaScore.
-  optional uint64 startDaaScore = 5;
-  // Cursor start pointing to outpoint hash; omitted starts from the first outpoint for startAddress and startDaaScore.,
-  optional string startOutpointHash = 6;
-  // Cursor start pointing to outpoint index; omitted starts from the first outpoint index for startOutpointHash, startAddress and startDaaScore.
-  optional uint32 startOutpointIndex = 7;
+  // if omitted, starts from scratch.
+  optional RpcGetUtxosByAddressesCursor Cursor = 4;
 
-  // limit on the number of entries to return; omitted means no limit.
+  // limit on the number of entries to return; omitted means default limit of 1_000
+  // max limit without requiring --unsafe-rpc flag on the node is 5_000
   optional uint64 limit = 8;
 }
 
@@ -602,15 +598,18 @@ message GetUtxosByAddressesV2ResponseMessage {
   // UTXO entries for the requested addresses and DAA-score range.
   repeated RpcUtxosByAddressesEntry entries = 1;
   // Cursor address for the next page; omitted means there is no next page.
-  optional string nextAddress = 2;
-  // Cursor DAA score for the next page; omitted means there is no next page.
-  optional uint64 nextDaaScore = 3;
-  // Cursor outpoint hash for the next page; omitted means there is no next page.
-  optional string nextOutpointHash = 4;
-  // Cursor outpoint index for the next page; omitted means there is no next page.
-  optional uint32 nextOutpointIndex = 5;
+  optional RpcGetUtxosByAddressesCursor nextCursor = 2;
 
   RPCError error = 1000;
+}
+
+message RpcGetUtxosByAddressesCursor {
+  // Cursor start address; omitted starts from the first address.
+  string startAddress = 1;
+  // Cursor start DAA score for startAddress; omitted starts from fromDaaScore.
+  uint64 startDaaScore = 2;
+  // transaction outpoint
+  RpcOutpoint startOutpoint = 3;
 }
 
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address

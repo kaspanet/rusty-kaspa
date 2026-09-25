@@ -4291,7 +4291,6 @@ name = "kaspa-utxoindex"
 version = "2.1.0"
 dependencies = [
  "futures",
- "indexmap 2.14.0",
  "itertools 0.13.0",
  "kaspa-consensus",
  "kaspa-consensus-core",
@@ -4307,6 +4306,7 @@ dependencies = [
  "rocksdb",
  "serde",
  "thiserror 2.0.18",
+ "zerocopy 0.8.42",
 ]
 
 [[package]]

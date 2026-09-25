@@ -1,6 +1,5 @@
 use std::{collections::HashSet, ops::RangeInclusive, sync::Arc};
 
-use indexmap::IndexSet;
 use kaspa_consensus_core::{
     BlockHashSet,
     tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
@@ -84,10 +83,10 @@ impl Store {
 
     pub fn get_utxos_by_script_public_keys_by_daa_score_page(
         &self,
-        script_public_keys: IndexSet<ScriptPublicKey>,
+        script_public_keys: Vec<ScriptPublicKey>,
         daa_score_range: RangeInclusive<u64>,
-        cursor: UtxoPageCursor,
-        limit: Option<u64>,
+        cursor: Option<UtxoPageCursor>,
+        limit: Option<usize>,
     ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
         self.utxos_by_script_public_key_store.get_utxos_from_script_public_keys_by_daa_score_page(
             script_public_keys,

@@ -42,17 +42,13 @@ impl UtxoEntryKeySuffixRecord {
 
 #[derive(Clone, Debug)]
 pub struct UtxoPageCursor {
-    pub script_public_key: Option<ScriptPublicKey>,
-    pub daa_score: Option<u64>,
-    pub transaction_outpoint: Option<TransactionOutpoint>,
+    pub script_public_key: ScriptPublicKey,
+    pub daa_score: u64,
+    pub transaction_outpoint: TransactionOutpoint,
 }
 
 impl UtxoPageCursor {
-    pub fn new(
-        script_public_key: Option<ScriptPublicKey>,
-        daa_score: Option<u64>,
-        transaction_outpoint: Option<TransactionOutpoint>,
-    ) -> Self {
+    pub fn new(script_public_key: ScriptPublicKey, daa_score: u64, transaction_outpoint: TransactionOutpoint) -> Self {
         Self { script_public_key, daa_score, transaction_outpoint }
     }
 }
@@ -61,7 +57,7 @@ impl Display for UtxoPageCursor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "UtxoPageCursor {{ script_public_key: {:?}, daa_score: {:?}, transaction_outpoint: {:?} }}",
+            "UtxoPageCursor {{ script_public_key: {:?}, daa_score: {}, transaction_outpoint: {} }}",
             self.script_public_key, self.daa_score, self.transaction_outpoint
         )
     }
@@ -205,7 +201,7 @@ mod tests {
     fn bytes_from_hex(hex: &str) -> Vec<u8> {
         let mut bytes = vec![0u8; hex.len() / 2];
         faster_hex::hex_decode(hex.as_bytes(), &mut bytes).unwrap();
-        bytes
+        bytes.to_vec()
     }
 
     fn pre_toccata_bytes() -> Vec<u8> {

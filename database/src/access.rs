@@ -485,9 +485,6 @@ where
     pub fn multi_range_seek_iterator<'a>(
         &'a self,
         mut seek_ranges: impl Iterator<Item = RangeInclusive<TKey>> + 'a,
-        seek_min: Option<TKey>,
-        seek_max: Option<TKey>,
-        limit: usize,
     ) -> impl Iterator<Item = KeyDataResult<TData>> + 'a
     where
         TKey: Clone + AsRef<[u8]>,
@@ -496,22 +493,14 @@ where
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(self.prefix.as_slice()));
 
-        if let Some(seek_min) = &seek_min {
-            read_opts.set_iterate_lower_bound(DbKey::new(&self.prefix, seek_min).as_ref());
-        }
-        if let Some(seek_max) = &seek_max {
-            read_opts.set_iterate_upper_bound(DbKey::new(&self.prefix, seek_max).as_ref());
-        }
-
         let mut db_iterator = self.db.raw_iterator_opt(read_opts);
-        let mut count = 0usize;
         // Use Option to unify the "no ranges" and "ranges exhausted" cases in a single return path.
         let mut current_seek_range = seek_ranges.next().inspect(|range| {
             db_iterator.seek(DbKey::new(&self.prefix, range.start().clone()).as_ref());
         });
 
         std::iter::from_fn(move || {
-            while db_iterator.valid() && count < limit && current_seek_range.is_some() {
+            while db_iterator.valid() && current_seek_range.is_some() {
                 let key_bytes: Box<[u8]> = db_iterator.key().unwrap()[self.prefix.len()..].into();
                 if key_bytes.as_ref() > current_seek_range.as_ref().unwrap().end().as_ref() {
                     current_seek_range = seek_ranges.next().inspect(|next_range| {
@@ -525,7 +514,6 @@ where
                     Err(err) => Some(Err(err.into())),
                 };
                 db_iterator.next();
-                count += 1;
                 return res;
             }
             None
@@ -812,7 +800,7 @@ mod tests {
         let access = CachedDbAccess::<Vec<u8>, u64>::new(db.clone(), CachePolicy::Count(10), vec![5]);
         access.write_many(DirectDbWriter::new(&db), &mut (0u64..10).map(|i| (range_key(i), i))).unwrap();
 
-        let results: Vec<_> = access.multi_range_seek_iterator(std::iter::empty(), None, None, 100).collect();
+        let results: Vec<_> = access.multi_range_seek_iterator(std::iter::empty()).collect();
         assert!(results.is_empty());
     }
 
@@ -823,7 +811,7 @@ mod tests {
         access.write_many(DirectDbWriter::new(&db), &mut (0u64..10).map(|i| (range_key(i), i))).unwrap();
 
         let ranges = [range_key(2)..=range_key(5)];
-        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter(), None, None, 100).map(|r| r.unwrap()).collect();
+        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter()).map(|r| r.unwrap()).collect();
 
         let values: Vec<u64> = results.iter().map(|(_, v)| *v).collect();
         assert_eq!(values, vec![2, 3, 4, 5]);
@@ -836,24 +824,10 @@ mod tests {
         access.write_many(DirectDbWriter::new(&db), &mut (0u64..20).map(|i| (range_key(i), i))).unwrap();
 
         let ranges = [range_key(1)..=range_key(3), range_key(7)..=range_key(9)];
-        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter(), None, None, 100).map(|r| r.unwrap()).collect();
+        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter()).map(|r| r.unwrap()).collect();
 
         let values: Vec<u64> = results.iter().map(|(_, v)| *v).collect();
         assert_eq!(values, vec![1, 2, 3, 7, 8, 9]);
-    }
-
-    #[test]
-    fn test_multi_range_iterator_limit() {
-        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let access = CachedDbAccess::<Vec<u8>, u64>::new(db.clone(), CachePolicy::Count(10), vec![5]);
-        access.write_many(DirectDbWriter::new(&db), &mut (0u64..20).map(|i| (range_key(i), i))).unwrap();
-
-        let ranges = [range_key(0)..=range_key(19)];
-        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter(), None, None, 5).map(|r| r.unwrap()).collect();
-
-        assert_eq!(results.len(), 5);
-        assert_eq!(results[0].1, 0);
-        assert_eq!(results[4].1, 4);
     }
 
     #[test]
@@ -865,7 +839,7 @@ mod tests {
 
         // Range [1, 7] should return 2, 4, 6
         let ranges = [range_key(1)..=range_key(7)];
-        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter(), None, None, 100).map(|r| r.unwrap()).collect();
+        let results: Vec<_> = access.multi_range_seek_iterator(ranges.into_iter()).map(|r| r.unwrap()).collect();
 
         let values: Vec<u64> = results.iter().map(|(_, v)| *v).collect();
         assert_eq!(values, vec![2, 4, 6]);
