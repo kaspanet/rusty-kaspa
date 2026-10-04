@@ -261,7 +261,6 @@ mod tests {
     fn test_p2p_max_transaction_size_larger_than_consensus() {
         use kaspa_consensus_core::{
             config::params::{DEVNET_PARAMS, MAINNET_PARAMS, SIMNET_PARAMS, TESTNET_PARAMS},
-            constants::TRANSIENT_BYTE_TO_MASS_FACTOR,
             subnets::SUBNETWORK_ID_COINBASE,
         };
 
@@ -269,7 +268,7 @@ mod tests {
             [("mainnet", &MAINNET_PARAMS), ("testnet", &TESTNET_PARAMS), ("devnet", &DEVNET_PARAMS), ("simnet", &SIMNET_PARAMS)]
         {
             // Non-coinbase transactions are capped by block transient mass limit
-            let consensus_max_non_coinbase_bytes = (params.block_mass_limits.transient / TRANSIENT_BYTE_TO_MASS_FACTOR) as usize;
+            let consensus_max_non_coinbase_bytes = params.block_mass_limits.transient as usize;
 
             // Maximal version 1 coinbase transaction before virtual validation
             let max_coinbase_outputs = params.ghostdag_k() as usize + 2;
