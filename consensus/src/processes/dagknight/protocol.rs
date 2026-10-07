@@ -351,9 +351,8 @@ impl<
             reachability_service.clone(),
         );
 
-        // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(subgroup, Some(subgroup_nca));
+        // A single CG-scoped fill over all tips colors the whole zone
+        conflict_zone_manager.fill_zone_data(all_tips);
 
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());

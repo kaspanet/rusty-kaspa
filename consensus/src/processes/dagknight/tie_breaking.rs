@@ -106,7 +106,7 @@ impl<
             true, // free_search = true
         );
 
-        conflict_zone_manager.fill_zone_data(all_tips, None); // free_search: NCA is None
+        conflict_zone_manager.fill_zone_data(all_tips);
 
         // Run k-colouring with free search — no custom selected parent is passed,
         // so the manager freely selects from all parents.
@@ -164,9 +164,8 @@ impl<
             false, // free_search = false (committed)
         );
 
-        // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(group_tips[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(all_tips, Some(subgroup_nca));
+        // A single CG-scoped fill over all tips colors the whole zone
+        conflict_zone_manager.fill_zone_data(all_tips);
 
         // Condition virtual on the group: force selected parent from group_tips
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips.iter().copied());
