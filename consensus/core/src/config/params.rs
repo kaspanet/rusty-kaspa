@@ -334,7 +334,6 @@ pub struct Params {
     pub mass_per_tx_byte: u64,
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
-    /// Per-dimension block mass limits. The transient limit is charged 1:1 per byte and caps the block body size.
     pub block_mass_limits: BlockMassLimits,
     pub block_lane_limits: BlockLaneLimits,
 
@@ -626,6 +625,7 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
+    // Transient mass is charged 1:1 per byte, so the transient limit is the block body byte cap
     block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
@@ -683,6 +683,7 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
+    // Transient mass is charged 1:1 per byte, so the transient limit is the block body byte cap
     block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
@@ -731,7 +732,7 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    // Transient mass is increased for stark proofs
+    // Transient mass is charged 1:1 per byte, so the transient limit is the block body byte cap (increased for stark proofs)
     block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
@@ -771,7 +772,7 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
 
-    // Transient mass is increased for stark proofs
+    // Transient mass is charged 1:1 per byte, so the transient limit is the block body byte cap (increased for stark proofs)
     block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
