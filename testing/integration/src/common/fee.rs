@@ -28,7 +28,6 @@ pub const fn calc_for_plain_standard_tx_with_extra_serialized_bytes(
 /// Calculates relay fee from a transaction probe using the real non-contextual mass calculator.
 pub fn calc_for_transaction(tx: &Transaction) -> u64 {
     let masses = MassCalculator::new(1, 10, STORAGE_MASS_PARAMETER).calc_non_contextual_masses(tx);
-    // Transient mass is charged 1:1 per byte, so it equals the serialized byte size.
     let serialized_bytes = masses.transient_mass;
     let normalized_transient_mass = serialized_bytes * NORMALIZED_TRANSIENT_BYTE_FACTOR;
     FEE_RATE * masses.compute_mass.max(normalized_transient_mass)

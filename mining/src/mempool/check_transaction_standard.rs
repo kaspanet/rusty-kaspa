@@ -366,7 +366,6 @@ mod tests {
         // Verifies that relay-fee pricing uses the mass-normalization cofactors correctly.
         let params: Params = NetworkType::Simnet.into();
         let cofactors = params.block_mass_cofactors();
-        // Transient mass is charged 1:1 per byte, so the transient mass equals the byte size.
         let normalized_transient = |bytes| NonContextualMasses::new(0, bytes).normalized_transient(&cofactors);
 
         let bytes = 5_000;

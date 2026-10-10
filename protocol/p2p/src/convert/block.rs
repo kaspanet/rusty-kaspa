@@ -129,7 +129,7 @@ mod tests {
             [("mainnet", &MAINNET_PARAMS), ("testnet", &TESTNET_PARAMS), ("devnet", &DEVNET_PARAMS), ("simnet", &SIMNET_PARAMS)]
         {
             // 1. Non-coinbase transactions are capped by the block's transient mass limit:
-            //    transient_mass = size (charged 1:1 per byte)
+            //    transient_mass = size
             let max_non_coinbase_bytes = params.block_mass_limits.transient as usize;
 
             // 2. Compute the maximum pre-virtual valid coinbase transaction size from Params and constants.

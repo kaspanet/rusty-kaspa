@@ -334,6 +334,7 @@ pub struct Params {
     pub mass_per_tx_byte: u64,
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
+    /// Per-dimension block mass limits. The transient limit is charged 1:1 per byte and caps the block body size.
     pub block_mass_limits: BlockMassLimits,
     pub block_lane_limits: BlockLaneLimits,
 
@@ -795,16 +796,12 @@ mod tests {
 
     #[test]
     fn transient_mass_limits_are_byte_caps_with_unit_factor() {
-        // Transient mass is charged 1:1 per serialized byte (TRANSIENT_BYTE_TO_MASS_FACTOR was
-        // removed), so each transient block mass limit equals the block body byte cap directly.
-        // Compute and storage limits must remain unchanged at 500_000.
-        for (params, label) in
-            [(&MAINNET_PARAMS, "mainnet"), (&TESTNET_PARAMS, "testnet"), (&SIMNET_PARAMS, "simnet"), (&DEVNET_PARAMS, "devnet")]
-        {
+        // The transient limit is the block body byte cap; compute and storage limits must remain unchanged.
+        for params in [&MAINNET_PARAMS, &TESTNET_PARAMS, &SIMNET_PARAMS, &DEVNET_PARAMS] {
             let limits = params.block_mass_limits;
-            assert_eq!(limits.transient, 250_000, "{label}: transient limit must equal the 250_000-byte block body cap");
-            assert_eq!(limits.compute, 500_000, "{label}: compute limit must be unchanged");
-            assert_eq!(limits.storage, 500_000, "{label}: storage limit must be unchanged");
+            assert_eq!(limits.transient, 250_000, "{}: transient limit must equal the 250_000-byte block body cap", params.net);
+            assert_eq!(limits.compute, 500_000, "{}: compute limit must be unchanged", params.net);
+            assert_eq!(limits.storage, 500_000, "{}: storage limit must be unchanged", params.net);
         }
     }
 
