@@ -301,17 +301,42 @@ impl<
         let mut group_map = Cell::new(agreeing_subgroups.clone());
         let best_groups_cell = Cell::new(vec![]);
         let evaluate = |k: KType| -> Option<()> {
+            let reachability_service = self.reachability_service.clone();
+            let relations_store = self.relations_store.read();
+            let relations_service =
+                FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
+            let conflict_zone_manager = ConflictZoneManager::new(
+                k,
+                conflict_genesis,
+                self.coloring_store.clone(),
+                self.headers_store.clone(),
+                relations_service,
+                reachability_service.clone(),
+            );
+
+            // This fill will color from bottom-up, starting from last known tips (if any, else starting from CG).
+            // Each coloring will be from the POV of each block and committed colorings are subject to each block's
+            // committed coloring rule and may only have SP that agrees with it (if committed coloring).
+            conflict_zone_manager.fill_zone_data(all_tips);
+
             let (filtered_groups_kv, best_groups): (HashMap<_, _>, Vec<GroupMetadata>) = group_map
                 .get_mut()
                 .iter()
                 .filter_map(|(curr_conflict_genesis, subgroup)| {
                     // `subgroup` is an `&Arc<Vec<Hash>>` here; pass a `&[Hash]` to the colouring function
-                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k).map(|selected_parent| {
-                        (
-                            (*curr_conflict_genesis, subgroup.clone()),
-                            GroupMetadata { conflict_genesis: *curr_conflict_genesis, subgroup: subgroup.clone(), k, selected_parent },
-                        )
-                    })
+                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k, &conflict_zone_manager).map(
+                        |selected_parent| {
+                            (
+                                (*curr_conflict_genesis, subgroup.clone()),
+                                GroupMetadata {
+                                    conflict_genesis: *curr_conflict_genesis,
+                                    subgroup: subgroup.clone(),
+                                    k,
+                                    selected_parent,
+                                },
+                            )
+                        },
+                    )
                 })
                 .unzip();
 
@@ -338,22 +363,8 @@ impl<
         subgroup: &[Hash],
         all_tips: &[Hash],
         k_to_check: KType,
+        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> Option<SortableBlock> {
-        let reachability_service = self.reachability_service.clone();
-        let relations_store = self.relations_store.read();
-        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
-        let conflict_zone_manager = ConflictZoneManager::new(
-            k_to_check,
-            conflict_genesis,
-            self.coloring_store.clone(),
-            self.headers_store.clone(),
-            relations_service,
-            reachability_service.clone(),
-        );
-
-        // A single CG-scoped fill over all tips colors the whole zone
-        conflict_zone_manager.fill_zone_data(all_tips);
-
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
         let virtual_cd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
