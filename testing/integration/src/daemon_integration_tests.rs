@@ -1403,6 +1403,11 @@ async fn daemon_mempool_revalidated_after_ibd_test() {
     async fn transaction_in_mempool(client: GrpcClient, transaction_id: RpcTransactionId) -> bool {
         client.get_mempool_entry(transaction_id, false, false).await.is_ok()
     }
+    // The fee estimator works from the mempool's ready transactions, so a stale entry also skews its input
+    async fn ready_transactions(client: &GrpcClient) -> (u64, u64) {
+        let verbose = client.get_fee_estimate_experimental(true).await.unwrap().verbose.expect("verbose fee estimate data");
+        (verbose.mempool_ready_transactions_count, verbose.mempool_ready_transactions_total_mass)
+    }
     let check_client = rpc_client2.clone();
     wait_for(
         50,
@@ -1450,6 +1455,9 @@ async fn daemon_mempool_revalidated_after_ibd_test() {
         rpc_client2.get_mempool_entry(transaction_id, false, false).await.is_ok(),
         "the disconnected syncee should still hold the transaction in its mempool"
     );
+    let (ready_count, ready_mass) = ready_transactions(&rpc_client2).await;
+    assert_eq!(ready_count, 1, "the stale transaction should be the syncee's only ready transaction");
+    assert!(ready_mass > 0, "the stale transaction should contribute mass to the fee estimator input");
 
     // Phase 4: reconnect and let the syncee catch up through IBD
     rpc_client2.unban_call(None, UnbanRequest { ip: syncer_ip }).await.unwrap();
@@ -1512,6 +1520,11 @@ async fn daemon_mempool_revalidated_after_ibd_test() {
         "the syncee kept the transaction accepted during IBD in its mempool",
     )
     .await;
+    assert_eq!(
+        ready_transactions(&rpc_client2).await,
+        (0, 0),
+        "the fee estimator input should be empty once the stale transaction is gone"
+    );
 
     rpc_client1.disconnect().await.unwrap();
     rpc_client2.disconnect().await.unwrap();
