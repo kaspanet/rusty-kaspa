@@ -543,6 +543,19 @@ impl FlowContext {
         }
     }
 
+    /// Revalidates the whole mempool against the current UTXO set.
+    ///
+    /// Called once IBD completes: blocks synced by IBD are inserted straight into consensus and never pass
+    /// through [`Self::on_new_block`], so the mempool was not told about the transactions they accepted.
+    /// Those transactions are evicted here instead of lingering until expiry. Nothing is rebroadcast; the
+    /// periodic mempool scanning task keeps handling that for high priority transactions.
+    pub async fn revalidate_mempool(&self, consensus: &ConsensusProxy) {
+        // The ids of valid transactions are not needed, so the receiving end is dropped up front and
+        // the sends inside the revalidation become no-ops.
+        let (transaction_ids_sender, _) = unbounded_channel();
+        self.mining_manager().clone().revalidate_all_transactions(consensus, transaction_ids_sender).await;
+    }
+
     /// Updates the mempool after a new block arrival, relays newly unorphaned transactions
     /// and possibly rebroadcast manually added transactions when not in IBD.
     ///

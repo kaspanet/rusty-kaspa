@@ -1297,3 +1297,224 @@ async fn daemon_banned_ip_inbound_rejection_test() {
     kaspad1.shutdown();
     kaspad2.shutdown();
 }
+
+/// Verifies that a relayed transaction which gets accepted by blocks the node only learns about through
+/// IBD is evicted from its mempool once that IBD completes.
+///
+/// Blocks synced by IBD are inserted straight into consensus and never pass through
+/// `FlowContext::on_new_block`, so without the post-IBD mempool revalidation such a transaction would
+/// stay in the mempool until it expires (and be offered in block templates in the meantime). The syncee
+/// never requests a block template here, so the template builder cannot evict the transaction either.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_mempool_revalidated_after_ibd_test() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO,kaspa_testing_integration=trace");
+
+    let args = Args {
+        simnet: true,
+        unsafe_rpc: true, // required for the ban/unban RPC calls used to cut the connection
+        enable_unsynced_mining: true,
+        disable_upnp: true,
+        disable_dns_seeding: true,
+        outbound_target: 0, // the nodes only connect through explicit add_peer calls
+        utxoindex: true,
+        ..Default::default()
+    };
+    let total_fd_limit = 10;
+
+    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client1 = kaspad1.start().await;
+    let rpc_client2 = kaspad2.start().await;
+
+    let syncer_address = format!("127.0.0.1:{}", kaspad1.p2p_port);
+    let syncer_ip = ContextualNetAddress::from_str("127.0.0.1").unwrap().normalize(1).ip;
+
+    // Connect the syncee (kaspad2) to the syncer (kaspad1). The connection must not be permanent so
+    // it can be cut with a ban later on.
+    rpc_client2.add_peer(syncer_address.clone().try_into().unwrap(), false).await.unwrap();
+    let check_client = rpc_client2.clone();
+    wait_for(
+        50,
+        40,
+        move || {
+            let client = check_client.clone();
+            Box::pin(async move { client.get_connected_peer_info().await.unwrap().peer_info.len() == 1 })
+        },
+        "the nodes did not connect to each other",
+    )
+    .await;
+
+    // Mining key and address
+    let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let miner_address =
+        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+    let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
+
+    // Recipient address of the test transaction
+    let (_recipient_sk, recipient_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let recipient_address =
+        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &recipient_pk.x_only_public_key().0.serialize());
+
+    // Phase 1: mine enough blocks on the syncer for a coinbase output to mature and let them relay to the syncee
+    let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity();
+    let initial_blocks = coinbase_maturity + 10;
+    for _ in 0..initial_blocks {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+    let check_client = rpc_client2.clone();
+    wait_for(
+        50,
+        200,
+        move || {
+            let client = check_client.clone();
+            Box::pin(async move { client.get_server_info().await.unwrap().virtual_daa_score >= initial_blocks })
+        },
+        "the syncee did not receive the initial blocks",
+    )
+    .await;
+
+    // Phase 2: submit a transaction on the syncer and wait for it to be relayed into the syncee's mempool
+    let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), coinbase_maturity).await;
+    let (outpoint, entry) = utxos.first().expect("the syncer should have a spendable coinbase utxo");
+    let fee = fee::calc_for_plain_standard_tx(1, 1);
+    assert!(entry.amount > fee, "coinbase utxo is too small to cover a tx fee");
+    let unsigned_tx = Transaction::new(
+        TX_VERSION_TOCCATA,
+        vec![TransactionInput::new(*outpoint, vec![], 0, 1)],
+        vec![TransactionOutput {
+            value: entry.amount - fee,
+            script_public_key: pay_to_address_script(&recipient_address),
+            covenant: None,
+        }],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, vec![entry.clone()]), miner_schnorr_key);
+    let transaction_id: RpcTransactionId = signed_tx.tx.id();
+    // Transaction invs are batched: a broadcast within 500ms of the previous one is deferred until the next
+    // broadcast call, which only happens on block arrival here. Let the interval pass so the inv goes out at once.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    rpc_client1.submit_transaction((&signed_tx.tx).into(), false).await.unwrap();
+
+    async fn transaction_in_mempool(client: GrpcClient, transaction_id: RpcTransactionId) -> bool {
+        client.get_mempool_entry(transaction_id, false, false).await.is_ok()
+    }
+    let check_client = rpc_client2.clone();
+    wait_for(
+        50,
+        100,
+        move || Box::pin(transaction_in_mempool(check_client.clone(), transaction_id)),
+        "the transaction was not relayed to the syncee's mempool",
+    )
+    .await;
+
+    // Phase 3: cut the connection from the syncee's side, then mine the transaction on the syncer and keep
+    // mining far beyond the orphan resolution range, so that reconnecting leads to IBD rather than relay.
+    rpc_client2.ban_call(None, BanRequest { ip: syncer_ip }).await.unwrap();
+    let check_client = rpc_client2.clone();
+    wait_for(
+        50,
+        40,
+        move || {
+            let client = check_client.clone();
+            Box::pin(async move { client.get_connected_peer_info().await.unwrap().peer_info.is_empty() })
+        },
+        "the syncee did not drop the syncer connection",
+    )
+    .await;
+
+    // Mine the transaction on the syncer...
+    let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+    assert!(
+        template.block.transactions.iter().any(|tx| Transaction::try_from(tx.clone()).is_ok_and(|tx| tx.id() == transaction_id)),
+        "the syncer's block template should include the transaction"
+    );
+    rpc_client1.submit_block(template.block, false).await.unwrap();
+    // ...and bury it. The orphan resolution range of a 10 bps network covers a few hundred blocks, so a
+    // gap of this size forces the syncee into IBD when it reconnects.
+    const BLOCKS_WHILE_DISCONNECTED: u64 = 1000;
+    for _ in 0..BLOCKS_WHILE_DISCONNECTED {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+    assert!(
+        rpc_client1.get_mempool_entry(transaction_id, false, false).await.is_err(),
+        "the syncer should have removed the mined transaction from its mempool"
+    );
+    // The syncee still holds the transaction, nothing told it otherwise
+    assert!(
+        rpc_client2.get_mempool_entry(transaction_id, false, false).await.is_ok(),
+        "the disconnected syncee should still hold the transaction in its mempool"
+    );
+
+    // Phase 4: reconnect and let the syncee catch up through IBD
+    rpc_client2.unban_call(None, UnbanRequest { ip: syncer_ip }).await.unwrap();
+    rpc_client2.add_peer(syncer_address.try_into().unwrap(), false).await.unwrap();
+    let check_client = rpc_client2.clone();
+    wait_for(
+        50,
+        40,
+        move || {
+            let client = check_client.clone();
+            Box::pin(async move { client.get_connected_peer_info().await.unwrap().peer_info.len() == 1 })
+        },
+        "the nodes did not reconnect",
+    )
+    .await;
+    // A few fresh relay blocks make sure the syncee learns about the gap right away
+    for _ in 0..5 {
+        let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
+        rpc_client1.submit_block(template.block, false).await.unwrap();
+    }
+    let target_daa_score = rpc_client1.get_server_info().await.unwrap().virtual_daa_score;
+    let check_client = rpc_client2.clone();
+    wait_for(
+        100,
+        600,
+        move || {
+            let client = check_client.clone();
+            Box::pin(async move { client.get_server_info().await.unwrap().virtual_daa_score >= target_daa_score })
+        },
+        "the syncee did not catch up with the syncer",
+    )
+    .await;
+
+    // The transaction was accepted by a block the syncee got through IBD (the utxoindex may trail virtual briefly)...
+    let check_client = rpc_client2.clone();
+    let check_address = recipient_address.clone();
+    wait_for(
+        100,
+        100,
+        move || {
+            let client = check_client.clone();
+            let address = check_address.clone();
+            Box::pin(async move {
+                let utxos = client.get_utxos_by_addresses(vec![address]).await.unwrap();
+                utxos.iter().any(|utxo| utxo.outpoint.transaction_id == transaction_id)
+            })
+        },
+        "the syncee should hold the transaction's output in its UTXO set after IBD",
+    )
+    .await;
+    // ...so the post-IBD revalidation must have evicted it from the syncee's mempool
+    let check_client = rpc_client2.clone();
+    wait_for(
+        100,
+        100,
+        move || {
+            let client = check_client.clone();
+            Box::pin(async move { !transaction_in_mempool(client, transaction_id).await })
+        },
+        "the syncee kept the transaction accepted during IBD in its mempool",
+    )
+    .await;
+
+    rpc_client1.disconnect().await.unwrap();
+    rpc_client2.disconnect().await.unwrap();
+    kaspad1.shutdown();
+    kaspad2.shutdown();
+}

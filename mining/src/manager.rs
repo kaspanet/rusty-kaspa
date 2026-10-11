@@ -40,6 +40,25 @@ use parking_lot::RwLock;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
+/// Which mempool transactions a revalidation pass covers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RevalidationScope {
+    /// RPC-submitted transactions only, as done by the periodic mempool scanning task.
+    HighPriority,
+    /// Every transaction in the pool, as done once IBD completes.
+    All,
+}
+
+impl RevalidationScope {
+    /// Short description used in log lines.
+    fn label(self) -> &'static str {
+        match self {
+            RevalidationScope::HighPriority => "high priority",
+            RevalidationScope::All => "mempool",
+        }
+    }
+}
+
 pub struct MiningManager {
     config: Arc<Config>,
     block_template_cache: BlockTemplateCache,
@@ -649,22 +668,55 @@ impl MiningManager {
         }
     }
 
+    /// Revalidates the high priority (RPC-submitted) transactions against the current UTXO set and sends the ids
+    /// of the ones consensus confirmed valid on `transaction_ids_sender`, so the caller can rebroadcast them.
     pub fn revalidate_high_priority_transactions(
         &self,
         consensus: &dyn ConsensusApi,
         transaction_ids_sender: UnboundedSender<Vec<TransactionId>>,
     ) {
+        self.revalidate_transactions(consensus, RevalidationScope::HighPriority, transaction_ids_sender)
+    }
+
+    /// Revalidates every transaction in the mempool, whatever its priority, against the current UTXO set.
+    ///
+    /// Mined transactions normally leave the mempool through [`Self::handle_new_block_transactions`], but blocks
+    /// synced during IBD are inserted straight into consensus and never reach it. Transactions accepted by those
+    /// blocks (their inputs are spent by now) would otherwise stay in the pool until they expire, and a block
+    /// template built in the meantime would be rejected by consensus. Running this once IBD completes evicts them.
+    ///
+    /// Transactions with missing outpoints are removed while their redeemers are kept (they may well be valid, see
+    /// the note in the removal branch); ids of transactions consensus confirmed valid are sent on
+    /// `transaction_ids_sender`.
+    pub fn revalidate_all_transactions(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction_ids_sender: UnboundedSender<Vec<TransactionId>>,
+    ) {
+        self.revalidate_transactions(consensus, RevalidationScope::All, transaction_ids_sender)
+    }
+
+    fn revalidate_transactions(
+        &self,
+        consensus: &dyn ConsensusApi,
+        scope: RevalidationScope,
+        transaction_ids_sender: UnboundedSender<Vec<TransactionId>>,
+    ) {
         const TRANSACTION_CHUNK_SIZE: usize = 1000;
+        let label = scope.label();
 
         // read lock on mempool
-        // Prepare a vector with clones of high priority transactions found in the mempool
+        // Prepare a vector with clones of the transactions in scope found in the mempool
         let mempool = self.mempool.read();
-        let transaction_ids = mempool.all_transaction_ids_with_priority(Priority::High);
+        let transaction_ids = match scope {
+            RevalidationScope::HighPriority => mempool.all_transaction_ids_with_priority(Priority::High),
+            RevalidationScope::All => mempool.all_transaction_ids(),
+        };
         if transaction_ids.is_empty() {
-            debug!("<> Revalidating high priority transactions found no transactions");
+            debug!("<> Revalidating {} transactions found no transactions", label);
             return;
         } else {
-            debug!("<> Revalidating {} high priority transactions...", transaction_ids.len());
+            debug!("<> Revalidating {} {} transactions...", transaction_ids.len(), label);
         }
         drop(mempool);
         // read lock on mempool by transaction chunks
@@ -818,8 +870,8 @@ impl MiningManager {
                         // The behavior changes here compared to the golang version.
                         // The failed revalidation is simply logged and the process continues.
                         warn!(
-                            "Removing high priority transaction {0} and its redeemers, it failed revalidation with {1}",
-                            transaction_id, err
+                            "Removing {} transaction {} and its redeemers, it failed revalidation with {}",
+                            label, transaction_id, err
                         );
                         // This call cleanly removes the invalid transaction and its redeemers.
                         _ = mempool
@@ -842,17 +894,17 @@ impl MiningManager {
         let removed_count = accepted + missing_outpoint + invalid;
         match removed_count {
             0 => {
-                info!("Revalidated {} high priority transactions", valid);
+                info!("Revalidated {} {} transactions", valid, label);
             }
             _ => {
                 info!(
-                    "Revalidated {} and removed {} high priority transactions (removals: {} accepted, {} missing outpoint, {} invalid)",
-                    valid, removed_count, accepted, missing_outpoint, invalid,
+                    "Revalidated {} and removed {} {} transactions (removals: {} accepted, {} missing outpoint, {} invalid)",
+                    valid, removed_count, label, accepted, missing_outpoint, invalid,
                 );
                 if other > 0 {
                     debug!(
-                        "During revalidation of high priority transactions {} txs were removed from the mempool by concurrent flows",
-                        other
+                        "During revalidation of {} transactions {} txs were removed from the mempool by concurrent flows",
+                        label, other
                     )
                 }
             }
@@ -971,6 +1023,15 @@ impl MiningManagerProxy {
         transaction_ids_sender: UnboundedSender<Vec<TransactionId>>,
     ) {
         consensus.clone().spawn_blocking(move |c| self.inner.revalidate_high_priority_transactions(c, transaction_ids_sender)).await;
+    }
+
+    /// See [`MiningManager::revalidate_all_transactions`].
+    pub async fn revalidate_all_transactions(
+        self,
+        consensus: &ConsensusProxy,
+        transaction_ids_sender: UnboundedSender<Vec<TransactionId>>,
+    ) {
+        consensus.clone().spawn_blocking(move |c| self.inner.revalidate_all_transactions(c, transaction_ids_sender)).await;
     }
 
     /// Try to return a mempool transaction by its id.
