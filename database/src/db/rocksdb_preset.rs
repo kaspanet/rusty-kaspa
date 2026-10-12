@@ -6,6 +6,11 @@
 use rocksdb::Options;
 use std::str::FromStr;
 
+const LOWIO_CACHE_SIZE: usize = 1024 * 1024 * 1024;
+const DEFAULT_MEM_BUDGET: usize = 64 * 1024 * 1024;
+const LOWIO_MEM_BUDGET: usize = 1024 * 1024 * 1024;
+const LOWIO_MIN_MEM_BUDGET: usize = 256 * 1024 * 1024;
+
 /// Available RocksDB configuration presets
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RocksDbPreset {
@@ -25,6 +30,16 @@ pub enum RocksDbPreset {
     ///
     /// Recommended for archival nodes on HDD storage.
     Hdd,
+
+    /// Low-IO configuration - far fewer disk writes for a bit more RAM
+    /// - 4x256MB write buffers (scaled down by --ram-scale)
+    /// - ZSTD level 1 on all levels
+    /// - BlobDB (LZ4) for large values
+    /// - 1GB block cache, Bloom filters, partitioned indexes
+    /// - No rate limiting
+    ///
+    /// Recommended for pruned nodes.
+    LowIo,
 }
 
 impl FromStr for RocksDbPreset {
@@ -34,7 +49,8 @@ impl FromStr for RocksDbPreset {
         match s.to_lowercase().as_str() {
             "default" => Ok(Self::Default),
             "hdd" => Ok(Self::Hdd),
-            _ => Err(format!("Unknown RocksDB preset: '{}'. Valid options: default, hdd", s)),
+            "lowio" => Ok(Self::LowIo),
+            _ => Err(format!("Unknown RocksDB preset: '{}'. Valid options: default, hdd, lowio", s)),
         }
     }
 }
@@ -44,6 +60,7 @@ impl std::fmt::Display for RocksDbPreset {
         match self {
             Self::Default => write!(f, "default"),
             Self::Hdd => write!(f, "hdd"),
+            Self::LowIo => write!(f, "lowio"),
         }
     }
 }
@@ -54,11 +71,12 @@ impl RocksDbPreset {
     /// # Arguments
     /// * `opts` - RocksDB options to configure
     /// * `parallelism` - Number of background threads
-    /// * `mem_budget` - Memory budget (only used for Default preset, HDD uses fixed 256MB)
+    /// * `mem_budget` - Memtable budget, four write buffers (Default and LowIo, HDD uses fixed 256MB)
     pub fn apply_to_options(&self, opts: &mut Options, parallelism: usize, mem_budget: usize, cache_budget: Option<usize>) {
         match self {
             Self::Default => self.apply_default(opts, parallelism, mem_budget),
             Self::Hdd => self.apply_hdd(opts, parallelism, cache_budget),
+            Self::LowIo => self.apply_lowio(opts, parallelism, mem_budget, cache_budget),
         }
     }
 
@@ -168,12 +186,57 @@ impl RocksDbPreset {
         opts.set_blob_compaction_readahead_size(8 * 1024 * 1024); // 8 MB blob readahead
     }
 
+    /// Apply low-IO preset configuration
+    fn apply_lowio(&self, opts: &mut Options, parallelism: usize, mem_budget: usize, cache_budget: Option<usize>) {
+        use rocksdb::{BlockBasedIndexType, BlockBasedOptions, Cache, DBCompressionType};
+
+        if parallelism > 1 {
+            opts.increase_parallelism(parallelism as i32);
+        }
+        opts.set_max_subcompactions(parallelism.clamp(1, 8) as u32);
+
+        opts.set_write_buffer_size(mem_budget / 4);
+        opts.set_max_write_buffer_number(4);
+        opts.set_target_file_size_base(256 * 1024 * 1024);
+        opts.set_max_bytes_for_level_base(1024 * 1024 * 1024);
+        opts.set_level_compaction_dynamic_level_bytes(true);
+        opts.set_level_zero_file_num_compaction_trigger(4);
+        opts.set_level_zero_slowdown_writes_trigger(40);
+        opts.set_level_zero_stop_writes_trigger(64);
+
+        opts.set_compression_type(DBCompressionType::Zstd);
+        opts.set_compression_options(-14, 1, 0, 0);
+
+        let mut block_opts = BlockBasedOptions::default();
+        block_opts.set_bloom_filter(16.0, false);
+        block_opts.set_partition_filters(true);
+        block_opts.set_format_version(5);
+        block_opts.set_index_type(BlockBasedIndexType::TwoLevelIndexSearch);
+        block_opts.set_cache_index_and_filter_blocks(true);
+        block_opts.set_block_cache(&Cache::new_lru_cache(cache_budget.unwrap_or(LOWIO_CACHE_SIZE)));
+        block_opts.set_block_size(16 * 1024);
+        opts.set_block_based_table_factory(&block_opts);
+
+        // Large values hardly compress
+        opts.set_enable_blob_files(true);
+        opts.set_min_blob_size(512);
+        opts.set_blob_file_size(256 * 1024 * 1024);
+        opts.set_blob_compression_type(DBCompressionType::Lz4);
+        // Pruning deletes the oldest blobs first
+        opts.set_enable_blob_gc(true);
+        opts.set_blob_gc_age_cutoff(0.1);
+        opts.set_blob_gc_force_threshold(0.75);
+    }
+
     /// Get a human-readable description of the preset
     pub fn description(&self) -> &'static str {
         match self {
             Self::Default => "Default preset - balanced for SSD/NVMe (64MB write buffer, standard compression)",
             Self::Hdd => {
                 "HDD preset - optimized for hard disk drives (256MB write buffer, BlobDB, aggressive compression, rate limiting)"
+            }
+            Self::LowIo => {
+                "Low-IO preset - far fewer disk writes for a bit more RAM (4x256MB write buffers, ZSTD level 1, BlobDB, no rate limiting)"
             }
         }
     }
@@ -183,6 +246,15 @@ impl RocksDbPreset {
         match self {
             Self::Default => "General purpose nodes on SSD/NVMe storage",
             Self::Hdd => "Archival nodes on HDD storage (--archival flag recommended)",
+            Self::LowIo => "Pruned nodes",
+        }
+    }
+
+    /// Memtable budget for the given `--ram-scale`
+    pub fn mem_budget(&self, ram_scale: f64) -> usize {
+        match self {
+            Self::LowIo => ((LOWIO_MEM_BUDGET as f64 * ram_scale) as usize).clamp(LOWIO_MIN_MEM_BUDGET, LOWIO_MEM_BUDGET),
+            Self::Default | Self::Hdd => DEFAULT_MEM_BUDGET,
         }
     }
 
@@ -191,6 +263,7 @@ impl RocksDbPreset {
         match self {
             Self::Default => "~4GB minimum, scales with --ram-scale",
             Self::Hdd => "~4GB minimum (256MB write buffer + 256MB cache + overhead), 8GB+ recommended for public RPC",
+            Self::LowIo => "A bit more than the default preset (larger block cache and write buffers, scaled by --ram-scale)",
         }
     }
 }
@@ -200,11 +273,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn lowio_mem_budget_scales_down_only() {
+        let mb = 1024 * 1024;
+        assert_eq!(RocksDbPreset::LowIo.mem_budget(1.0), 1024 * mb);
+        assert_eq!(RocksDbPreset::LowIo.mem_budget(4.0), 1024 * mb);
+        assert_eq!(RocksDbPreset::LowIo.mem_budget(0.5), 512 * mb);
+        assert_eq!(RocksDbPreset::LowIo.mem_budget(0.1), 256 * mb);
+        assert_eq!(RocksDbPreset::Default.mem_budget(0.5), 64 * mb);
+        assert_eq!(RocksDbPreset::Hdd.mem_budget(4.0), 64 * mb);
+    }
+
+    #[test]
     fn test_preset_from_str() {
         assert_eq!(RocksDbPreset::from_str("default").unwrap(), RocksDbPreset::Default);
         assert_eq!(RocksDbPreset::from_str("Default").unwrap(), RocksDbPreset::Default);
         assert_eq!(RocksDbPreset::from_str("hdd").unwrap(), RocksDbPreset::Hdd);
         assert_eq!(RocksDbPreset::from_str("HDD").unwrap(), RocksDbPreset::Hdd);
+        assert_eq!(RocksDbPreset::from_str("lowio").unwrap(), RocksDbPreset::LowIo);
+        assert_eq!(RocksDbPreset::from_str("LowIO").unwrap(), RocksDbPreset::LowIo);
+        assert_eq!(RocksDbPreset::LowIo.to_string().parse::<RocksDbPreset>().unwrap(), RocksDbPreset::LowIo);
         assert!(RocksDbPreset::from_str("unknown").is_err());
     }
 }
