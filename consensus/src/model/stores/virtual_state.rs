@@ -17,36 +17,22 @@ use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use rocksdb::WriteBatch;
-use serde::de::Error as _;
+use serde::de::{Error as _, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
 
 /// Version suffix appended to every post-Toccata `VirtualState` row's DB key.
 /// Pre-Toccata rows have no suffix and are decoded through
 /// [`PreToccataVirtualState`] by the version-aware path in [`CachedDbItem`].
 pub const POST_TOCCATA_VIRTUAL_STATE_VERSION: u8 = 1;
 
-/// The sequencing commitment (KIP-21) of the virtual block. The next block template
-/// commits to it through the header's `accepted_id_merkle_root`.
-///
-/// Pre-KIP21 this slot of [`VirtualState`] held the `Vec<Hash>` of accepted transaction
-/// digests, so the type serializes as a one-element sequence to keep the encoding
-/// byte-identical to that layout. Decoding also accepts an empty sequence and maps it to
-/// the zero hash: the placeholder state written while a pruning point is applied
-/// (`..VirtualState::default()`) was persisted that way by earlier binaries, and a node
-/// restarted at that point must still be able to load it.
+/// The virtual block's KIP-21 sequencing commitment (the next header's `accepted_id_merkle_root`).
+/// Encoded as a one-element sequence; an empty sequence decodes to the zero hash.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct SeqCommit(Hash);
+#[repr(transparent)]
+pub struct SeqCommit(pub Hash);
 
 impl SeqCommit {
-    pub const fn new(hash: Hash) -> Self {
-        Self(hash)
-    }
-
-    /// The commitment hash, as placed in the block header's `accepted_id_merkle_root`.
-    pub const fn hash(self) -> Hash {
-        self.0
-    }
-
     /// Collapses a pre-Toccata `accepted_id_digests` vector. A lone element is kept; the
     /// pre-KIP21 multi-digest form has no post-Toccata meaning and maps to the zero hash.
     /// Such a row belongs to a node that is far behind activation, and the state is
@@ -67,12 +53,25 @@ impl Serialize for SeqCommit {
 
 impl<'de> Deserialize<'de> for SeqCommit {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let hashes = Vec::<Hash>::deserialize(deserializer)?;
-        match hashes[..] {
-            [] => Ok(Self::default()),
-            [hash] => Ok(Self(hash)),
-            _ => Err(D::Error::invalid_length(hashes.len(), &"a sequence holding a single seq_commit hash")),
+        struct SeqCommitVisitor;
+
+        impl<'de> Visitor<'de> for SeqCommitVisitor {
+            type Value = SeqCommit;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a sequence of at most one seq_commit hash")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<SeqCommit, A::Error> {
+                let Some(hash) = seq.next_element::<Hash>()? else { return Ok(SeqCommit::default()) };
+                if seq.next_element::<Hash>()?.is_some() {
+                    return Err(A::Error::invalid_length(2, &self));
+                }
+                Ok(SeqCommit(hash))
+            }
         }
+
+        deserializer.deserialize_seq(SeqCommitVisitor)
     }
 }
 
@@ -85,8 +84,6 @@ pub struct VirtualState {
     pub past_median_time: u64,
     pub multiset: MuHash,
     pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
-    /// The virtual block's KIP-21 sequencing commitment. Encoded as a one-element sequence,
-    /// in the slot that pre-KIP21 held the accepted tx digests (see [`SeqCommit`]).
     pub seq_commit: SeqCommit,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub mergeset_non_daa: BlockHashSet,
@@ -342,7 +339,7 @@ mod seq_commit_tests {
 
     #[test]
     fn encodes_as_one_element_vec() {
-        let commit = SeqCommit::new(hash(0x42));
+        let commit = SeqCommit(hash(0x42));
         let bytes = bincode::serialize(&commit).unwrap();
         assert_eq!(bytes, bincode::serialize(&vec![hash(0x42)]).unwrap());
         assert_eq!(bincode::deserialize::<SeqCommit>(&bytes).unwrap(), commit);
@@ -351,14 +348,14 @@ mod seq_commit_tests {
     #[test]
     fn decodes_one_element_vec() {
         let bytes = bincode::serialize(&vec![hash(0x42)]).unwrap();
-        assert_eq!(bincode::deserialize::<SeqCommit>(&bytes).unwrap(), SeqCommit::new(hash(0x42)));
+        assert_eq!(bincode::deserialize::<SeqCommit>(&bytes).unwrap(), SeqCommit(hash(0x42)));
     }
 
     #[test]
     fn decodes_empty_vec_as_zero_hash() {
         let bytes = bincode::serialize(&Vec::<Hash>::new()).unwrap();
         assert_eq!(bincode::deserialize::<SeqCommit>(&bytes).unwrap(), SeqCommit::default());
-        assert_eq!(SeqCommit::default().hash(), ZERO_HASH);
+        assert_eq!(SeqCommit::default().0, ZERO_HASH);
     }
 
     #[test]
@@ -377,7 +374,7 @@ mod seq_commit_tests {
 
     #[test]
     fn legacy_digest_vectors_collapse_to_a_single_commit() {
-        assert_eq!(SeqCommit::from_legacy_digests(&[hash(0x88)]), SeqCommit::new(hash(0x88)));
+        assert_eq!(SeqCommit::from_legacy_digests(&[hash(0x88)]), SeqCommit(hash(0x88)));
         assert_eq!(SeqCommit::from_legacy_digests(&[]), SeqCommit::default());
         assert_eq!(SeqCommit::from_legacy_digests(&[hash(1), hash(2)]), SeqCommit::default());
     }
@@ -465,7 +462,7 @@ mod tests {
         assert_eq!(loaded.daa_score, 999);
         assert_eq!(loaded.bits, 0x1f00ffff);
         assert_eq!(loaded.past_median_time, 1_700_000_000);
-        assert_eq!(loaded.seq_commit, SeqCommit::new(Hash::from_bytes([0x88; 32])));
+        assert_eq!(loaded.seq_commit, SeqCommit(Hash::from_bytes([0x88; 32])));
         assert_eq!(loaded.utxo_diff.add.len(), 2);
         assert_eq!(loaded.utxo_diff.remove.len(), 2);
         for entry in loaded.utxo_diff.add.values().chain(loaded.utxo_diff.remove.values()) {
@@ -507,7 +504,7 @@ mod tests {
             past_median_time: 1_710_000_000,
             multiset: MuHash::new(),
             utxo_diff: diff,
-            seq_commit: SeqCommit::new(Hash::from_bytes([0x10; 32])),
+            seq_commit: SeqCommit(Hash::from_bytes([0x10; 32])),
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::default(),
         });

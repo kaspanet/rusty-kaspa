@@ -574,7 +574,7 @@ impl VirtualStateProcessor {
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
         // Compute the virtual's seq_commit. Its SmtBuild is ephemeral - only chain blocks persist SMT state.
-        let seq_commit = SeqCommit::new(self.compute_seq_commit(&ctx, &virtual_ghostdag_data, virtual_daa_window.daa_score));
+        let seq_commit = SeqCommit(self.compute_seq_commit(&ctx, &virtual_ghostdag_data, virtual_daa_window.daa_score));
 
         // Build the new virtual state
         let virtual_state = Arc::new(VirtualState::new(
@@ -705,7 +705,7 @@ impl VirtualStateProcessor {
         let pd = payload_and_context_digest(&context_hash, &payload_root);
         let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
         let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
-        SeqCommit::new(commit)
+        SeqCommit(commit)
     }
 
     /// Read stored SMT metadata for the pruning point.
@@ -1441,7 +1441,7 @@ impl VirtualStateProcessor {
         let min_block_time = virtual_state.past_median_time + 1;
 
         // Post-KIP21: the header commits to the virtual's seq_commit
-        let accepted_id_merkle_root = virtual_state.seq_commit.hash();
+        let accepted_id_merkle_root = virtual_state.seq_commit.0;
 
         let header = Header::new_finalized(
             version,
