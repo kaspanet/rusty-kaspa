@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 //! Integration tests for SmtProcessor + ComposedSmtStore + DbSmtView.
 
 use std::sync::Arc;

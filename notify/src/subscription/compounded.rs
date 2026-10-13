@@ -20,18 +20,22 @@ impl OverallSubscription {
 }
 
 impl Compounded for OverallSubscription {
+    #[allow(clippy::arithmetic_side_effects, reason = "See below")]
     fn compound(&mut self, mutation: Mutation, _context: &SubscriptionContext) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         match mutation.command {
             Command::Start => {
-                self.active += 1;
+                self.active += 1; // ARITH-SAFETY(COUNTER)
                 if self.active == 1 {
                     return Some(mutation);
                 }
             }
             Command::Stop => {
                 assert!(self.active > 0);
-                self.active -= 1;
+                {
+                    self.active -= 1; // `self.active > 0` is asserted above.
+                }
+
                 if self.active == 0 {
                     return Some(mutation);
                 }
@@ -92,13 +96,20 @@ impl Compounded for VirtualChainChangedSubscription {
                 Command::Start => {
                     if all {
                         // Add All
-                        *self.all_mut() += 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            *self.all_mut() += 1;
+                        }
+
                         if self.all() == 1 {
                             return Some(mutation);
                         }
                     } else {
-                        // Add Reduced
-                        *self.reduced_mut() += 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            // Add Reduced
+                            *self.reduced_mut() += 1;
+                        }
                         if self.reduced() == 1 && self.all() == 0 {
                             return Some(mutation);
                         }
@@ -106,16 +117,23 @@ impl Compounded for VirtualChainChangedSubscription {
                 }
                 Command::Stop => {
                     if !all {
-                        // Remove Reduced
                         assert!(self.reduced() > 0);
-                        *self.reduced_mut() -= 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "`self.reduced() > 0` is asserted above.")]
+                        {
+                            // Remove Reduced
+                            *self.reduced_mut() -= 1;
+                        }
+
                         if self.reduced() == 0 && self.all() == 0 {
                             return Some(mutation);
                         }
                     } else {
                         // Remove All
                         assert!(self.all() > 0);
-                        *self.all_mut() -= 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "`self.all() > 0` is asserted above.")]
+                        {
+                            *self.all_mut() -= 1;
+                        }
                         if self.all() == 0 {
                             if self.reduced() > 0 {
                                 return Some(Mutation::new(
@@ -190,7 +208,10 @@ impl Compounded for UtxosChangedSubscription {
                 Command::Start => {
                     if scope.addresses.is_empty() {
                         // Add All
-                        self.all += 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            self.all += 1;
+                        }
                         if self.all == 1 {
                             return Some(Mutation::new(Command::Start, UtxosChangedScope::default().into()));
                         }
@@ -212,7 +233,10 @@ impl Compounded for UtxosChangedSubscription {
                     } else {
                         // Remove All
                         assert!(self.all > 0);
-                        self.all -= 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "`self.all > 0` is asserted above.")]
+                        {
+                            self.all -= 1;
+                        }
                         if self.all == 0 {
                             let addresses = self.to_addresses(Prefix::Mainnet, context);
                             if !addresses.is_empty() {

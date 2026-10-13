@@ -36,6 +36,8 @@ impl TryFrom<HexString> for String {
 }
 
 impl From<&[u8]> for HexString {
+    // This will panic only on the unrealistic case where `bytes.len() > usize::MAX / 2`.
+    #![allow(clippy::arithmetic_side_effects)]
     fn from(bytes: &[u8]) -> Self {
         let mut hex = vec![0u8; bytes.len() * 2];
         faster_hex::hex_encode(bytes, hex.as_mut_slice()).expect("The output is exactly twice the size of the input");

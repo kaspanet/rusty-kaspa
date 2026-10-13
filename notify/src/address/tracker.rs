@@ -19,6 +19,11 @@ pub trait Indexer {
     /// Returns true if the index was not present and was successfully inserted, false otherwise.
     fn insert(&mut self, index: Index) -> bool;
 
+    /// Returns true when inserting an already-present index mutates the indexer.
+    fn insertion_mutates_existing(&self) -> bool {
+        false
+    }
+
     /// Removes an [`Index`].
     ///
     /// Returns true if the index was present and successfully removed, false otherwise.
@@ -29,7 +34,7 @@ pub trait Indexer {
 }
 
 pub type Index = u32;
-pub type RefCount = u16;
+pub type RefCount = u64;
 
 /// Tracks reference count of indexes
 pub type Counters = CounterMap;
@@ -82,20 +87,28 @@ impl Indexer for CounterMap {
         self.0
             .entry(index)
             .and_modify(|x| {
-                *x += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                {
+                    *x += 1;
+                }
                 result = *x == 1;
             })
             .or_insert(1);
         result
     }
 
+    fn insertion_mutates_existing(&self) -> bool {
+        true
+    }
+
     fn remove(&mut self, index: Index) -> bool {
         let mut result = false;
         self.0.entry(index).and_modify(|x| {
-            if *x > 0 {
-                *x -= 1;
-                result = *x == 0
-            }
+            let Some(new_x) = x.checked_sub(1) else {
+                return;
+            };
+            *x = new_x;
+            result = *x == 0
         });
         result
     }
@@ -255,7 +268,13 @@ impl Inner {
             //
             // The last allocated entry is reserved for recycling entries, hence the plus and minus 1
             // which differ from the hashbrown formula.
-            ((max_addresses + 1) * 8 / 7).next_power_of_two() * 7 / 8 - 1
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "expand_max_addresses is only called on initialization, so we don't mind overflow panics."
+            )]
+            {
+                ((max_addresses + 1) * 8 / 7).next_power_of_two() * 7 / 8 - 1
+            }
         } else {
             Self::MAX_ADDRESS_LOWER_BOUND
         }
@@ -267,7 +286,7 @@ impl Inner {
         // when reaching the maximum.
         let max_addresses = max_addresses.map(Self::expand_max_addresses);
         let addresses_preallocation = max_addresses;
-        let capacity = max_addresses.map(|x| x + 1).unwrap_or_default();
+        let capacity = max_addresses.map(|x| x.saturating_add(1)).unwrap_or_default();
 
         assert!(
             capacity <= Self::MAX_ADDRESS_UPPER_BOUND + 1,
@@ -317,7 +336,9 @@ impl Inner {
 
                     // Try to recycle an empty entry if there is some
                     let mut recycled = false;
-                    if (index + 1) as usize == self.script_pub_keys.len() && !self.empty_entries.is_empty() {
+                    if index.checked_add(1).ok_or(Error::MaxCapacityReached)? as usize == self.script_pub_keys.len()
+                        && !self.empty_entries.is_empty()
+                    {
                         // Takes the first empty entry index
                         let empty_index = self.empty_entries.iter().cloned().next();
                         if let Some(empty_index) = empty_index {
@@ -348,7 +369,10 @@ impl Inner {
     /// the empty entries set.
     fn inc_count(&mut self, index: Index) {
         if let Some((_, count)) = self.script_pub_keys.get_index_mut(index as usize) {
-            *count += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                *count += 1;
+            }
             trace!("AddressTracker inc count #{} to {}", index, *count);
             if *count == 1 {
                 self.empty_entries.remove(&index);
@@ -363,10 +387,7 @@ impl Inner {
     /// When the reference count reaches zero, the index is inserted into the empty entries set.
     fn dec_count(&mut self, index: Index) {
         if let Some((_, count)) = self.script_pub_keys.get_index_mut(index as usize) {
-            if *count == 0 {
-                panic!("Address tracker is trying to decrease an address counter that is already at zero");
-            }
-            *count -= 1;
+            *count = count.checked_sub(1).expect("We expect `count > 0`");
             trace!("AddressTracker dec count #{} to {}", index, *count);
             if *count == 0 {
                 self.empty_entries.insert(index);
@@ -376,7 +397,10 @@ impl Inner {
 
     fn len(&self) -> usize {
         assert!(self.script_pub_keys.len() >= self.empty_entries.len(), "entries marked empty are never removed from script_pub_keys");
-        self.script_pub_keys.len() - self.empty_entries.len()
+        #[allow(clippy::arithmetic_side_effects, reason = "`self.empty_entries.len() <= self.script_pub_keys.len()`.")]
+        {
+            self.script_pub_keys.len() - self.empty_entries.len()
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -479,21 +503,36 @@ impl Tracker {
     ///
     /// On success, returns the addresses that were actually inserted in the `Indexer`.
     ///
-    /// Fails if the maximum capacity gets reached, leaving the tracker unchanged.
+    /// Fails if the maximum address capacity is reached, rolling back registrations from this call.
     pub fn register<T: Indexer>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
-        let mut rollback: bool = false;
+        let mut rollback = false;
+        let mut rollback_addresses = vec![];
         {
             let mut counter: usize = 0;
             let mut inner = self.inner.write();
             addresses.retain(|address| {
-                counter += 1;
+                if rollback {
+                    return false;
+                }
+
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    counter += 1;
+                }
                 if counter.is_multiple_of(Self::ADDRESS_CHUNK_SIZE) {
                     RwLockWriteGuard::bump(&mut inner);
                 }
                 let spk = pay_to_address_script(address);
+
                 match inner.get_or_insert(spk) {
                     Ok(index) => {
-                        if indexes.insert(index) {
+                        // Some indexers mutate existing entries even though `insert` returns false. Since `retain` excludes such
+                        // addresses from the success result, record them separately so a later failure can still roll them back.
+                        let inserted = indexes.insert(index);
+                        if !inserted && indexes.insertion_mutates_existing() {
+                            rollback_addresses.push(address.clone());
+                        }
+                        if inserted {
                             inner.inc_count(index);
                             true
                         } else {
@@ -511,6 +550,7 @@ impl Tracker {
         match rollback {
             false => Ok(addresses),
             true => {
+                addresses.extend(rollback_addresses);
                 let _ = self.unregister(indexes, addresses);
                 Err(Error::MaxCapacityReached)
             }
@@ -529,7 +569,11 @@ impl Tracker {
             let mut counter: usize = 0;
             let mut inner = self.inner.write();
             addresses.retain(|address| {
-                counter += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    counter += 1;
+                }
+
                 if counter.is_multiple_of(Self::ADDRESS_CHUNK_SIZE) {
                     RwLockWriteGuard::bump(&mut inner);
                 }
@@ -608,6 +652,7 @@ impl<'a> TrackerReadGuard<'a> {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
     use kaspa_math::Uint256;
@@ -705,6 +750,27 @@ mod tests {
         assert_eq!(i3, i3);
         assert_ne!(i3, i4);
         assert_eq!(i4, i4);
+    }
+
+    #[test]
+    fn test_register_rolls_back_existing_counter_increment_on_failure() {
+        const MAX_ADDRESSES: usize = 6;
+
+        let tracker = Tracker::new(Some(MAX_ADDRESSES));
+        let addresses = create_addresses(0, MAX_ADDRESSES + 1);
+        let mut indexes = Indexes::new(vec![]);
+        tracker.register(&mut indexes, addresses[..MAX_ADDRESSES].to_vec()).unwrap();
+
+        let address = addresses[0].clone();
+        let index = tracker.get_address(&address).unwrap().0;
+        let mut counters = CounterMap::new();
+        tracker.register(&mut counters, vec![address.clone()]).unwrap();
+
+        let error = tracker.register(&mut counters, vec![address.clone(), addresses[MAX_ADDRESSES].clone()]).unwrap_err();
+
+        assert!(matches!(error, Error::MaxCapacityReached));
+        assert_eq!(counters.iter().find(|(entry, _)| **entry == index).map(|(_, count)| *count), Some(1));
+        assert_eq!(tracker.get_address(&address).unwrap().1, 2);
     }
 
     #[test]

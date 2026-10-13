@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use async_channel::unbounded;
 use clap::Parser;
 use futures::{Future, future::try_join_all};
@@ -398,8 +399,6 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.merge_depth = 64 * 2;
         params.mergeset_size_limit = 32 * 2;
         params.pruning_depth = 100 * 2 * 2 + 50;
-
-        params.toccata_activation = ForkActivation::new(1000);
 
         info!("Setting pruning depth to {:?}", params.pruning_depth());
     }

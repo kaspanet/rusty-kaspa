@@ -233,7 +233,7 @@ impl BlockMassLimits {
 
     /// Returns the mass cofactors derived from these limits.
     #[inline]
-    pub fn cofactors(&self) -> MassCofactors {
+    pub const fn cofactors(&self) -> MassCofactors {
         MassCofactors::new(self)
     }
 
@@ -267,7 +267,7 @@ pub struct MassCofactors {
 }
 
 impl MassCofactors {
-    pub fn new(limits: &BlockMassLimits) -> Self {
+    pub const fn new(limits: &BlockMassLimits) -> Self {
         let reference = limits.compute as f64;
         Self { storage: reference / limits.storage as f64, transient: reference / limits.transient as f64, reference: limits.compute }
     }
@@ -550,7 +550,7 @@ mod tests {
         for net in NetworkType::iter() {
             let params: Params = net.into();
             let max_spk_len = (params.max_script_public_key_len as u64)
-                .min(params.block_mass_limits().after().compute.div_ceil(params.mass_per_script_pub_key_byte));
+                .min(params.block_mass_limits.compute.div_ceil(params.mass_per_script_pub_key_byte));
             let max_plurality = (UTXO_CONST_STORAGE + UTXO_COVENANT_STORAGE + max_spk_len).div_ceil(UTXO_UNIT_SIZE); // see utxo_plurality
             let product = params.storage_mass_parameter.checked_mul(max_plurality).and_then(|x| x.checked_mul(max_plurality));
             // verify C·P^2 can never overflow

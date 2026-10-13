@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
 use clap::{Arg, ArgAction, Command};

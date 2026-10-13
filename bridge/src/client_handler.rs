@@ -38,6 +38,7 @@ pub struct ClientHandler {
 
 impl ClientHandler {
     pub fn new(share_handler: Arc<ShareHandler>, min_share_diff: f64, extranonce_size: i8, instance_id: String) -> Self {
+        #[allow(clippy::arithmetic_side_effects, reason = "extranonce_size.min(3) <= 3")]
         let max_extranonce = if extranonce_size > 0 { (2_f64.powi(8 * extranonce_size.min(3) as i32) - 1.0) as i32 } else { 0 };
 
         Self {
@@ -105,6 +106,7 @@ impl ClientHandler {
             // Calculate max extranonce for size 2
             let max_extranonce = (2_f64.powi(16) - 1.0) as i32; // 2 bytes = 16 bits = 65535
 
+            #[allow(clippy::arithmetic_side_effects, reason = "val + 1 is evaluated only for val < max_extranonce = 65535.")]
             let next = GLOBAL_NEXT_EXTRANONCE
                 .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
 
@@ -113,6 +115,10 @@ impl ClientHandler {
             }
 
             let extranonce_val = next.unwrap_or(0);
+            #[allow(
+                clippy::arithmetic_side_effects,
+                reason = "required_extranonce_size is selected from {0, 2}, so the product is at most 4."
+            )]
             let extranonce_str = format!("{:0width$x}", extranonce_val, width = (required_extranonce_size * 2) as usize);
             debug!(
                 "[AUTO-EXTRANONCE] Assigned extranonce '{}' (value: {}, size: {} bytes) to {} miner '{}'",
@@ -235,7 +241,7 @@ impl ClientHandler {
                         debug!("  bits_changed: {}", old_header.bits != block.header.bits);
                         debug!("    old: 0x{:08x}, new: 0x{:08x}", old_header.bits, block.header.bits);
                         debug!("  timestamp_changed: {}", old_header.timestamp != block.header.timestamp);
-                        debug!("    delta: {} ms", block.header.timestamp - old_header.timestamp);
+                        debug!("    delta: {} ms", (block.header.timestamp as i64).saturating_sub(old_header.timestamp as i64));
                         debug!("  daa_score_changed: {}", old_header.daa_score != block.header.daa_score);
                         debug!("  version_changed: {}", old_header.version != block.header.version);
                     } else {
@@ -314,12 +320,14 @@ impl ClientHandler {
 
                 let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                 let target_bytes = target.to_bytes_be();
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+                let target_bits = target_bytes.len() * 8;
                 debug!(
                     "send_immediate_job: Initialized MiningState with difficulty: {}, target: {:x} ({} bytes, {} bits)",
                     min_diff,
                     target,
                     target_bytes.len(),
-                    target_bytes.len() * 8
+                    target_bits
                 );
             }
 
@@ -475,7 +483,7 @@ impl ClientHandler {
 
         // Collect addresses for balance checking
         let mut addresses: Vec<String> = Vec::new();
-        let mut client_count = 0;
+        let mut client_count: usize = 0;
 
         for client in clients {
             if !client.connected() {
@@ -485,7 +493,11 @@ impl ClientHandler {
             if client_count > 0 {
                 tokio::time::sleep(Duration::from_micros(500)).await;
             }
-            client_count += 1;
+
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                client_count += 1;
+            }
 
             // Collect wallet address for balance checking
             {
@@ -616,12 +628,14 @@ impl ClientHandler {
 
                     let target = state.stratum_diff().map(|d| d.target_value.clone()).unwrap_or_else(BigUint::zero);
                     let target_bytes = target.to_bytes_be();
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+                    let target_bits = target_bytes.len() * 8;
                     debug!(
                         "Initialized per-client MiningState with difficulty: {}, target: {:x} ({} bytes, {} bits)",
                         min_diff,
                         target,
                         target_bytes.len(),
-                        target_bytes.len() * 8
+                        target_bits
                     );
                     send_client_diff(&instance_id, &client_clone, &state, min_diff);
                     share_handler.set_client_vardiff(&client_clone, min_diff);
