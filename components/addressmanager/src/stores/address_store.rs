@@ -30,6 +30,7 @@ pub trait AddressesStore: AddressesStoreReader {
     #[allow(dead_code)]
     fn set_failed_count(&mut self, key: AddressKey, connection_failed_count: u64) -> StoreResult<()>;
     fn remove(&mut self, key: AddressKey) -> StoreResult<()>;
+    fn reset(&mut self) -> StoreResult<()>;
 }
 
 const IPV6_LEN: usize = 16;
@@ -116,5 +117,9 @@ impl AddressesStore for DbAddressesStore {
     fn set_failed_count(&mut self, key: AddressKey, connection_failed_count: u64) -> StoreResult<()> {
         let entry = self.get(key)?;
         self.set(key, Entry { connection_failed_count, address: entry.address })
+    }
+
+    fn reset(&mut self) -> StoreResult<()> {
+        self.access.delete_all(DirectDbWriter::new(&self.db))
     }
 }
