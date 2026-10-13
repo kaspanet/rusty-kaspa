@@ -261,9 +261,11 @@ impl RocksDbPreset {
     /// Get memory requirements for this preset
     pub fn memory_requirements(&self) -> &'static str {
         match self {
-            Self::Default => "~4GB minimum, scales with --ram-scale",
-            Self::Hdd => "~4GB minimum (256MB write buffer + 256MB cache + overhead), 8GB+ recommended for public RPC",
-            Self::LowIo => "A bit more than the default preset (larger block cache and write buffers, scaled by --ram-scale)",
+            Self::Default => "16GB minimum, 32GB recommended, scales with --ram-scale",
+            Self::Hdd => "16GB minimum (256MB write buffer + 256MB cache + overhead), 32GB recommended, scales with --ram-scale",
+            Self::LowIo => {
+                "16GB minimum (up to 4x256MB write buffers + 1GB cache + overhead), 32GB recommended, scales with --ram-scale"
+            }
         }
     }
 }
