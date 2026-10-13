@@ -887,10 +887,19 @@ impl Generator {
         final_transaction: &FinalTransaction,
     ) -> Result<Option<DataKind>> {
         // calculate storage mass
-        // TODO(wallet-storage-mass-inconcistency): use exact candidate storage mass before
-        // deciding whether this candidate can be finalized or must close the stage as an edge
+        // TODO: Use exact consensus storage mass for the finalized candidate before deciding
+        // whether to retry with another UTXO or reject the transaction.
         let MassDisposition { transaction_mass, storage_mass, transaction_fees, absorb_change_to_fees } =
-            self.calculate_mass(stage, data, final_transaction.value_with_priority_fee)?;
+            match self.calculate_mass(stage, data, final_transaction.value_with_priority_fee) {
+                Ok(mass_disposition) => mass_disposition,
+                Err(err @ Error::StorageMassExceedsMaximumTransactionMass { .. }) => {
+                    if self.has_utxo_entries(context, stage) {
+                        return Ok(None);
+                    }
+                    return Err(err);
+                }
+                Err(err) => return Err(err),
+            };
 
         let total_stage_value_needed = if self.inner.final_transaction_priority_fee.sender_pays() {
             final_transaction.value_with_priority_fee + stage.aggregate_fees + transaction_fees

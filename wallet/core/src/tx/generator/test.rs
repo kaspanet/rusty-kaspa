@@ -913,6 +913,22 @@ fn test_generator_fan_out_1() -> Result<()> {
 }
 
 #[test]
+fn test_generator_should_pick_valid_alternative_utxo_after_storage_mass_rejection() -> Result<()> {
+    generator(test_network_id(), &[0.21, 0.5], &[], None, Fees::sender(Sompi(0)), [(output_address, Kaspa(0.2))].as_slice())?
+        .harness()
+        .fetch(&Expected {
+            is_final: true,
+            input_count: 2,
+            aggregate_input_value: Kaspa(0.71),
+            output_count: 2,
+            priority_fees: FeesExpected::None,
+        })
+        .finalize();
+
+    Ok(())
+}
+
+#[test]
 fn test_generator_rejects_output_covenant_binding() {
     let network_id = test_network_id();
     let covenant = CovenantBinding::new(0, Hash::from_u64_word(1));
