@@ -10,6 +10,16 @@
 //! implementation](https://docs.rs/kaspa-wrpc-client/latest/kaspa_wrpc_client/wasm/struct.RpcClient.html)
 //! (based on wRPC).
 //!
+//! ## TLS crypto provider (native clients)
+//!
+//! `kaspa-rpc-core` is transport-agnostic, but the native client implementations
+//! built on it — [`kaspa_wrpc_client`](https://docs.rs/kaspa-wrpc-client) and
+//! [`kaspa_grpc_client`](https://docs.rs/kaspa-grpc-client) — use `rustls`, which
+//! since 0.23 requires a process-level crypto provider to be installed before the
+//! first secure connection. `kaspa-wrpc-client` installs a pure-Rust `ring`
+//! provider automatically (see its docs for how to override). WASM clients are
+//! unaffected — the host handles TLS.
+//!
 
 // This attribute is required by BorshSerialize/Deserialize
 #![recursion_limit = "256"]

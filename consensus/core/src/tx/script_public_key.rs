@@ -162,7 +162,7 @@ impl<'de> Deserialize<'de> for ScriptPublicKey {
                 E: serde::de::Error,
             {
                 use wasm_bindgen::convert::RefFromWasmAbi;
-                let instance_ref = unsafe { Self::Value::ref_from_abi(v) }; // todo add checks for safecast
+                let instance_ref = unsafe { Self::Value::ref_from_abi(wasm_bindgen::__rt::WasmPtr::from_usize(v as usize)) }; // todo add checks for safecast
                 Ok(instance_ref.clone())
             }
             #[cfg(target_arch = "wasm32")]
@@ -441,8 +441,6 @@ mod tests {
     }
 
     #[cfg(target_arch = "wasm32")]
-    use wasm_bindgen::convert::IntoWasmAbi;
-    #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test;
     #[cfg(target_arch = "wasm32")]
     use workflow_wasm::serde::{from_value, to_value};
@@ -496,7 +494,7 @@ mod tests {
         let script_hex_js: JsValue = JsValue::from_str(&script_hex);
 
         let expected = ScriptPublicKey::constructor(version, script_hex_js).map_err(|_| ()).unwrap();
-        let wasm_js_value: JsValue = expected.clone().into_abi().into();
+        let wasm_js_value: JsValue = to_value(&expected).unwrap();
 
         let actual = from_value(wasm_js_value).unwrap();
         assert_eq!(expected, actual);
