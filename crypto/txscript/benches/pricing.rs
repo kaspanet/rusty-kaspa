@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use std::sync::OnceLock;
 use std::time::Duration;
 

@@ -20,6 +20,7 @@
 //! supply the concrete hasher type (e.g., `SeqCommitActiveNode`). Leaf hashes
 //! are opaque `Hash` values inserted externally.
 
+#![allow(clippy::arithmetic_side_effects)]
 #![no_std]
 
 extern crate alloc;

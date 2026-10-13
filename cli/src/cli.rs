@@ -611,6 +611,7 @@ impl KaspaCli {
 
             tprintln!(self);
 
+            #[allow(clippy::arithmetic_side_effects, reason = "The subtraction is evaluated only when flat_list.len() > 1.")]
             let range = if flat_list.len() > 1 { format!("[{}..{}] ", 0, flat_list.len() - 1) } else { "".to_string() };
 
             let text =
@@ -662,6 +663,7 @@ impl KaspaCli {
 
             tprintln!(self);
 
+            #[allow(clippy::arithmetic_side_effects, reason = "The subtraction is evaluated only when flat_list.len() > 1.")]
             let range = if flat_list.len() > 1 { format!("[{}..{}] ", 0, flat_list.len() - 1) } else { "".to_string() };
 
             let text =

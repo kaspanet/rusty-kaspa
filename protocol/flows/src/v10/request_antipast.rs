@@ -46,6 +46,8 @@ impl HandleAntipastRequests {
             // intersected by past of the relayed block. We do not expect the relay block to be too much after
             // the sink (in fact usually it should be in its past or anticone), hence we bound the expected traversal to be
             // in the order of `mergeset_size_limit`.
+
+            #[allow(clippy::arithmetic_side_effects, reason = "mergeset_size_limit << usize::MAX")]
             let hashes = session.async_get_antipast_from_pov(block, context, Some(self.ctx.config.mergeset_size_limit() * 4)).await?;
             let mut headers = session
                 .spawn_blocking(|c| hashes.into_iter().map(|h| c.get_header(h)).collect::<Result<Vec<_>, ConsensusError>>())

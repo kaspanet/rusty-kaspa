@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 extern crate alloc;
 extern crate core;
 pub mod caches;

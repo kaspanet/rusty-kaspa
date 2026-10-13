@@ -72,7 +72,10 @@ impl RequestPruningPointUtxoSetFlow {
                 ))
                 .await?;
 
-            chunks_sent += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                chunks_sent += 1;
+            }
             if chunks_sent % IBD_BATCH_SIZE == 0 {
                 drop(session); // Avoid holding the session through dequeue calls
                 dequeue!(self.incoming_route, Payload::RequestNextPruningPointUtxoSetChunk)?;

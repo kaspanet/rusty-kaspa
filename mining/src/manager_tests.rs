@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     use crate::{
         MiningCounters,
@@ -24,7 +25,7 @@ mod tests {
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
         errors::tx::TxRuleError,
         mass::{BlockLaneLimits, BlockMassLimits, NonContextualMasses, transaction_estimated_serialized_size},
-        subnets::SUBNETWORK_ID_NATIVE,
+        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{
             MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
             UtxoEntry, scriptvec,
@@ -162,6 +163,33 @@ mod tests {
                 transaction_not_an_orphan.id()
             );
         }
+    }
+
+    #[test]
+    fn test_reject_coinbase_transaction() {
+        let consensus = ConsensusMock::new();
+        // Coinbase transactions must be rejected even when non-standard transactions are allowed.
+        let mining_manager = MiningManager::new(
+            TARGET_TIME_PER_BLOCK,
+            true,
+            BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS),
+            BLOCK_LANE_LIMITS,
+            None,
+            Arc::new(MiningCounters::default()),
+        );
+        let transaction = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, vec![]);
+        let transaction_id = transaction.id();
+
+        let result = into_mempool_result(mining_manager.validate_and_insert_transaction(
+            &consensus,
+            transaction,
+            Priority::Low,
+            Orphan::Allowed,
+            RbfPolicy::Allowed,
+        ));
+
+        assert_eq!(result, Err(RuleError::RejectCoinbase(transaction_id)));
+        assert!(mining_manager.get_transaction(&transaction_id, TransactionQuery::All).is_none());
     }
 
     /// test_simulated_error_in_consensus verifies that a predefined result is actually

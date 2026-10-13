@@ -122,7 +122,7 @@ pub async fn handle_subscribe(
 
     let response = if is_bitmain {
         // Bitmain format - extranonce in subscribe response
-        let extranonce2_size = 8 - (extranonce.len() / 2);
+        let extranonce2_size = 8usize.checked_sub(extranonce.len() / 2).ok_or("extranonce exceeds the 8-byte nonce size")?;
         tracing::debug!("[SUBSCRIBE] ===== USING BITMAIN SUBSCRIBE FORMAT FOR {} =====", ctx.remote_addr);
         tracing::debug!("[SUBSCRIBE] Bitmain extranonce: '{}', extranonce2_size: {}", extranonce, extranonce2_size);
         tracing::debug!("[SUBSCRIBE] Bitmain response: [null, '{}', {}]", extranonce, extranonce2_size);
@@ -359,7 +359,7 @@ async fn send_extranonce(ctx: Arc<StratumContext>) -> Result<(), Box<dyn std::er
     tracing::debug!("[EXTRANONCE] Detected miner type - Remote app: '{}', Is Bitmain: {}", remote_app, is_bitmain);
 
     let params = if is_bitmain {
-        let extranonce2_size = 8 - (extranonce.len() / 2);
+        let extranonce2_size = 8usize.checked_sub(extranonce.len() / 2).ok_or("extranonce exceeds the 8-byte nonce size")?;
         tracing::debug!("[EXTRANONCE] ===== USING BITMAIN EXTRANONCE FORMAT FOR {} =====", ctx.remote_addr);
         tracing::debug!(
             "[EXTRANONCE] Bitmain extranonce: '{}' ({} bytes), extranonce2_size: {} (calculated: 8 - {} / 2)",

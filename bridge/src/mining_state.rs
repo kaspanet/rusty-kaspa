@@ -53,7 +53,10 @@ impl MiningState {
     /// Add a new job and return its ID
     pub fn add_job(&self, job: Job) -> u64 {
         let mut counter = self.job_counter.lock();
-        *counter += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            *counter += 1;
+        }
         let idx = *counter;
         let slot = idx % MAX_JOBS;
 

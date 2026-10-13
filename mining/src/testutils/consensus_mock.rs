@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use super::coinbase_mock::CoinbaseManagerMock;
 use kaspa_consensus_core::{
     api::{

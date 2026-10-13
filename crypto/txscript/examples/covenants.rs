@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::hashing::tx::transaction_v0_id_preimage;
 use kaspa_consensus_core::subnets::SubnetworkId;

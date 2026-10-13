@@ -256,3 +256,55 @@ impl TryFrom<protowire::RequestAntipastMessage> for (Hash, Hash) {
         Ok((msg.block_hash.try_into_ex()?, msg.context_hash.try_into_ex()?))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use prost::Message;
+
+    #[test]
+    fn test_block_with_trusted_data_v4_oversized_block_rejected() {
+        let tx = protowire::TransactionMessage { payload: vec![0u8; 800 * 1024], ..Default::default() };
+        let block = protowire::BlockMessage { header: None, transactions: vec![tx.clone(), tx.clone(), tx] };
+        assert!(block.encoded_len() > 2 * 1024 * 1024);
+
+        let msg =
+            protowire::BlockWithTrustedDataV4Message { block: Some(block), daa_window_indices: vec![], ghostdag_data_indices: vec![] };
+        assert!(matches!(TrustedDataEntry::try_from(msg), Err(ConversionError::Size)));
+    }
+
+    #[test]
+    fn test_block_with_trusted_data_v4_valid() {
+        let header = Header::new_finalized(
+            2,
+            vec![vec![1.into()]].try_into().unwrap(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            1,
+            2,
+            3,
+            4,
+            5.into(),
+            6,
+            Default::default(),
+        );
+        let block = Block::new(header, vec![]);
+        let wire_block: protowire::BlockMessage = (&block).into();
+        let msg = protowire::BlockWithTrustedDataV4Message {
+            block: Some(wire_block),
+            daa_window_indices: vec![1, 2],
+            ghostdag_data_indices: vec![3, 4],
+        };
+        let entry = TrustedDataEntry::try_from(msg).unwrap();
+        assert_eq!(entry.block.header.hash, block.header.hash);
+        assert_eq!(entry.daa_window_indices, vec![1, 2]);
+        assert_eq!(entry.ghostdag_window_indices, vec![3, 4]);
+    }
+
+    #[test]
+    fn test_block_with_trusted_data_v4_missing_block_returns_none_value() {
+        let msg = protowire::BlockWithTrustedDataV4Message { block: None, daa_window_indices: vec![], ghostdag_data_indices: vec![] };
+        assert!(matches!(TrustedDataEntry::try_from(msg), Err(ConversionError::NoneValue)));
+    }
+}

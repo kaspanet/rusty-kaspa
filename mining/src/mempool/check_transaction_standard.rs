@@ -94,21 +94,19 @@ impl Mempool {
         // mempool and relayed by scaling the base fee. MinimumRelayTransactionFee is in
         // sompi/kg so multiply by mass (which is in grams) and divide by 1000 to get
         // minimum sompis.
-        let mut minimum_fee = (mass * minimum_relay_transaction_fee) / 1000;
-
+        let mut minimum_fee = mass.saturating_mul(minimum_relay_transaction_fee) / 1000; // If we overflow it means the mass is too high, and the tx will be rejected later.
         if minimum_fee == 0 {
             minimum_fee = minimum_relay_transaction_fee;
         }
 
         // Set the minimum fee to the maximum possible value if the calculated
         // fee is not in the valid range for monetary amounts.
-        minimum_fee = minimum_fee.min(MAX_SOMPI);
-
-        minimum_fee
+        minimum_fee.min(MAX_SOMPI)
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
 mod tests {
     use super::*;
     use crate::{

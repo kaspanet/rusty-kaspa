@@ -1,3 +1,6 @@
+// Wallet code is exempt from the arithmetic-side-effects lint.
+#![allow(clippy::arithmetic_side_effects)]
+
 use kaspa_cli_lib::{TerminalOptions, kaspa_cli};
 
 #[tokio::main]

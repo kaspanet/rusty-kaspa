@@ -108,10 +108,16 @@ impl Mempool {
     pub(crate) fn transaction_count(&self, query: TransactionQuery) -> usize {
         let mut count = 0;
         if query.include_transaction_pool() {
-            count += self.transaction_pool.len()
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                count += self.transaction_pool.len()
+            }
         }
         if query.include_orphan_pool() {
-            count += self.orphan_pool.len()
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                count += self.orphan_pool.len()
+            }
         }
         count
     }

@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use borsh::{BorshDeserialize, BorshSerialize};
 use wasm_bindgen::JsValue;
 use workflow_core::sendable::Sendable;

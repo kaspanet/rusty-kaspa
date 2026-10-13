@@ -33,6 +33,7 @@ indexmap.workspace = true
 itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
+prost.workspace = true
 rand.workspace = true
 regex.workspace = true
 semver.workspace = true

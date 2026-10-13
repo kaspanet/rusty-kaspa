@@ -84,12 +84,18 @@ impl CompressedParents {
 
 use crate::errors::header::CompressedParentsError;
 
+const MAX_UNCOMPRESSED_PARENTS: usize = u8::MAX as usize * 2048;
+
 impl TryFrom<Vec<Vec<Hash>>> for CompressedParents {
     type Error = CompressedParentsError;
 
     fn try_from(parents: Vec<Vec<Hash>>) -> Result<Self, Self::Error> {
         if parents.len() > u8::MAX as usize {
             return Err(CompressedParentsError::LevelsExceeded);
+        }
+        // Bound the total number of parents across all levels.
+        if parents.iter().map(Vec::len).fold(0usize, usize::saturating_add) > MAX_UNCOMPRESSED_PARENTS {
+            return Err(CompressedParentsError::SizeExceeded);
         }
 
         // Casting count from usize to u8 is safe because of the check above
@@ -113,6 +119,19 @@ impl TryFrom<Vec<(u8, Vec<Hash>)>> for CompressedParents {
             if last_parents == parents {
                 return Err(CompressedParentsError::NotFullyCompressed);
             }
+        }
+
+        // Account for the number of levels represented by each compressed run.
+        let total_count = parents
+            .iter()
+            .scan(0usize, |previous_cumulative_level, (cumulative_level, parents)| {
+                let level_count = *cumulative_level as usize - *previous_cumulative_level;
+                *previous_cumulative_level = *cumulative_level as usize;
+                Some(level_count.saturating_mul(parents.len()))
+            })
+            .fold(0usize, usize::saturating_add);
+        if total_count > MAX_UNCOMPRESSED_PARENTS {
+            return Err(CompressedParentsError::SizeExceeded);
         }
 
         Ok(Self(parents))
@@ -369,6 +388,22 @@ mod tests {
         assert_eq!(compressed_single_run.get(1), Some(first.as_slice()));
         assert_eq!(compressed_single_run.get(2), Some(first.as_slice()));
         assert_eq!(compressed_single_run.get(3), None);
+    }
+
+    #[test]
+    fn compressed_parents_rejects_oversized_parents() {
+        let parents = vec![vec![Hash::default(); MAX_UNCOMPRESSED_PARENTS + 1]];
+        assert!(matches!(CompressedParents::try_from(parents), Err(CompressedParentsError::SizeExceeded)));
+
+        // A compressed run's parents are repeated for every level in that run.
+        let compressed_run = vec![(u8::MAX, vec![Hash::default(); 2049])];
+        assert!(matches!(CompressedParents::try_from(compressed_run), Err(CompressedParentsError::SizeExceeded)));
+    }
+
+    #[test]
+    fn compressed_parents_accepts_maximum_parent_count() {
+        let compressed_run = vec![(u8::MAX, vec![Hash::default(); 2048])];
+        assert!(CompressedParents::try_from(compressed_run).is_ok());
     }
 
     #[test]

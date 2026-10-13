@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use itertools::Itertools;
 use kaspa_consensus_core::{

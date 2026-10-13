@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use async_channel::unbounded;
 use clap::Parser;
 use futures::{Future, future::try_join_all};

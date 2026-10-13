@@ -99,7 +99,10 @@ impl IbdFlow {
                 {
                     return Err(ProtocolError::Other("Expecting the high and low hashes to match the locator bounds"));
                 }
-                negotiation_zoom_counts += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                {
+                    negotiation_zoom_counts += 1;
+                }
                 debug!(
                     "IBD chain negotiation with peer {} zoomed in ({}) and received {} hashes ({}, {})",
                     self.router,
@@ -115,6 +118,7 @@ impl IbdFlow {
                     break;
                 }
 
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
                 if negotiation_zoom_counts > initial_locator_len * 2 {
                     // Since the zoom-in always queries two consecutive entries in the previous locator, it is
                     // expected to decrease in size at least every two iterations
@@ -126,7 +130,13 @@ impl IbdFlow {
             } else {
                 // Empty locator signals a restart due to chain changes
                 negotiation_zoom_counts = 0;
-                negotiation_restart_counter += 1;
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    reason = "The i32 counter starts at zero and returns immediately after exceeding 32, so it reaches at most 33."
+                )]
+                {
+                    negotiation_restart_counter += 1;
+                }
                 if negotiation_restart_counter > 32 {
                     return Err(ProtocolError::OtherOwned(format!(
                         "IBD chain negotiation with syncer {} exceeded restart limit {}",
