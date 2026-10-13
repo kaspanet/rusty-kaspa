@@ -135,7 +135,7 @@ impl MassCalculator {
             compute_mass_per_byte: consensus_params.mass_per_tx_byte,
             mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
             storage_mass_parameter: consensus_params.storage_mass_parameter,
-            mempool_mass_cofactors: consensus_params.mempool_block_mass_cofactors().raw_post(),
+            mempool_mass_cofactors: consensus_params.block_mass_cofactors(),
         }
     }
 

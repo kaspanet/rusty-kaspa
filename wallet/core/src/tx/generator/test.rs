@@ -576,6 +576,36 @@ fn test_generator_large_payload_min_relay_fee() -> Result<()> {
 }
 
 #[test]
+fn test_generator_storage_mass_does_not_increase_base_fee() -> Result<()> {
+    let network_id = test_network_id();
+    let calc = MassCalculator::new(&network_id.into());
+    let mut generated = Vec::new();
+
+    for output_value in [5.0, 1.0] {
+        let generator =
+            generator(network_id, &[10.0], &[], None, Fees::sender(Kaspa(0.0)), [(output_address, Kaspa(output_value))].as_slice())?;
+        let pt = generator.generate_transaction()?.expect("one final transaction");
+        assert!(pt.is_final());
+        assert_eq!(pt.transaction().outputs.len(), 2, "both cases should retain a change output");
+
+        let tx = pt.transaction();
+        let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
+        let masses = calc.calc_unsigned_consensus_transaction_masses(&tx, &utxo_entries, pt.minimum_signatures())?;
+        assert_eq!(pt.fees(), calc.calc_minimum_relay_fee(&masses));
+        generated.push((pt.fees(), masses));
+    }
+
+    let (balanced_fee, balanced_masses) = &generated[0];
+    let (small_output_fee, small_output_masses) = &generated[1];
+    assert_eq!(balanced_masses.non_contextual, small_output_masses.non_contextual);
+    assert!(small_output_masses.contextual.storage_mass > balanced_masses.contextual.storage_mass);
+    assert!(calc.calc_standard_mass(small_output_masses) > calc.calc_standard_mass(balanced_masses));
+    assert_eq!(balanced_fee, small_output_fee, "storage mass must not raise the generator's base fee");
+
+    Ok(())
+}
+
+#[test]
 fn test_generator_compound_200k_10kas_transactions() -> Result<()> {
     generator(
         test_network_id(),
