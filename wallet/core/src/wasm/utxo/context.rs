@@ -176,7 +176,7 @@ impl UtxoContext {
     /// (i.e. UtxoContext has received notification from the network that
     /// UtxoEntries have been spent externally).
     ///
-    /// UtxoEntries are kept in in the ascending sorted order by their amount.
+    /// UtxoEntries are kept in the ascending sorted order by their amount.
     ///
     #[wasm_bindgen(js_name = "getMatureRange")]
     pub fn mature_range(&self, mut from: usize, mut to: usize) -> Result<UtxoEntryReferenceArrayT> {
