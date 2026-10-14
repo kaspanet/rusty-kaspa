@@ -614,12 +614,11 @@ impl Generator {
                 continue;
             }
 
-            // 2. from the current stage
-            if let Some(utxo_entry) = stage.utxo_iterator.as_mut().and_then(|utxo_stage_iterator| utxo_stage_iterator.next()) {
-                if utxo_entry.as_ref().covenant_id.is_none() {
-                    return Some(utxo_entry);
-                }
-                continue;
+            // 2. from the current stage (and skip ones with covenant_id)
+            if let Some(utxo_entry) =
+                stage.utxo_iterator.as_mut().and_then(|iter| iter.find(|entry| entry.as_ref().covenant_id.is_none()))
+            {
+                return Some(utxo_entry);
             }
 
             // 3. from priority entries
