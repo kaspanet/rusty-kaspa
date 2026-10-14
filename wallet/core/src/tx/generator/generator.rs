@@ -1045,26 +1045,23 @@ impl Generator {
                         selected_non_contextual_masses = non_contextual_masses_with_change;
                         storage_mass_with_change
                     } else {
-                        let transaction_mass_with_change =
-                            calc.calc_standard_mass_for_parts(&non_contextual_masses_with_change, storage_mass_with_change);
-                        let transaction_mass_no_change =
-                            calc.calc_standard_mass_for_parts(&non_contextual_masses_no_change, storage_mass_no_change);
-                        let fees_with_change = self.calc_transaction_fees_for_outputs(
-                            data,
-                            outputs_with_change.clone(),
-                            &self.inner.final_transaction_payload,
-                            transaction_mass_with_change,
-                            0,
-                        );
-                        let fees_no_change = self.calc_transaction_fees_for_outputs(
-                            data,
+                        let fees_for = |outputs: Vec<TransactionOutput>, masses: &NonContextualMasses, storage_mass: u64| {
+                            let transaction_mass = calc.calc_standard_mass_for_parts(masses, storage_mass);
+                            self.calc_transaction_fees_for_outputs(
+                                data,
+                                outputs,
+                                &self.inner.final_transaction_payload,
+                                transaction_mass,
+                                0,
+                            )
+                        };
+                        let fees_with_change =
+                            fees_for(outputs_with_change.clone(), &non_contextual_masses_with_change, storage_mass_with_change)?;
+                        let fees_no_change = fees_for(
                             self.inner.final_transaction_outputs.clone(),
-                            &self.inner.final_transaction_payload,
-                            transaction_mass_no_change,
-                            0,
-                        );
-                        let fees_with_change = fees_with_change?;
-                        let fees_no_change = fees_no_change?;
+                            &non_contextual_masses_no_change,
+                            storage_mass_no_change,
+                        )?;
                         let difference = fees_with_change.saturating_sub(fees_no_change);
 
                         if difference > change_value {
