@@ -260,6 +260,7 @@ pub struct Factory {
     fd_budget: i32,
     mining_rules: Arc<MiningRules>,
     rocksdb_preset: RocksDbPreset,
+    rocksdb_mem_budget: usize,
     wal_dir: Option<PathBuf>,
     cache_budget: Option<usize>,
 }
@@ -277,6 +278,7 @@ impl Factory {
         fd_budget: i32,
         mining_rules: Arc<MiningRules>,
         rocksdb_preset: RocksDbPreset,
+        rocksdb_mem_budget: usize,
         wal_dir: Option<PathBuf>,
         cache_budget: Option<usize>,
     ) -> Self {
@@ -298,6 +300,7 @@ impl Factory {
             fd_budget,
             mining_rules,
             rocksdb_preset,
+            rocksdb_mem_budget,
             wal_dir,
             cache_budget,
         };
@@ -331,6 +334,7 @@ impl ConsensusFactory for Factory {
             .with_parallelism(self.db_parallelism)
             .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
             .with_preset(self.rocksdb_preset)
+            .with_mem_budget(self.rocksdb_mem_budget)
             .with_wal_dir(self.wal_dir.clone())
             .with_cache_budget(self.cache_budget)
             .build()
@@ -369,6 +373,7 @@ impl ConsensusFactory for Factory {
             .with_parallelism(self.db_parallelism)
             .with_files_limit(self.fd_budget / 2) // active and staging consensuses should have equal budgets
             .with_preset(self.rocksdb_preset)
+            .with_mem_budget(self.rocksdb_mem_budget)
             .with_wal_dir(self.wal_dir.clone())
             .with_cache_budget(self.cache_budget)
             .build()

@@ -1659,6 +1659,7 @@ async fn staging_consensus_lifecycle_test() {
         200,
         Arc::new(MiningRules::default()),
         kaspa_database::prelude::RocksDbPreset::Default,
+        kaspa_database::prelude::RocksDbPreset::Default.mem_budget(1.0),
         None,
         None,
     ));
