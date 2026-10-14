@@ -1005,6 +1005,8 @@ impl Generator {
             let edge_output_value = data.aggregate_input_value.saturating_sub(edge_fees);
             if edge_output_value != 0 {
                 selected_outputs = vec![TransactionOutput::new(edge_output_value, pay_to_address_script(&self.inner.change_address))];
+                // edge transactions only consolidate funds, the user payload belongs on the final transaction.
+                // hence we remove the requested payload from fees calculation since it will have none for this edge tx
                 selected_payload = &[];
                 selected_non_contextual_masses = edge_non_contextual_masses;
                 let edge_output_harmonic = calc.calc_storage_mass_output_harmonic_single(edge_output_value);
