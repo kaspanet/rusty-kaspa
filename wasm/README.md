@@ -1,4 +1,3 @@
-
 ## WASM32 bindings for Rusty Kaspa SDK
 
 [<img alt="github" src="https://img.shields.io/badge/github-kaspanet/rusty--kaspa-8da0cb?style=for-the-badge&labelColor=555555&color=8da0cb&logo=github" height="20">](https://github.com/kaspanet/rusty-kaspa/tree/master/wasm)
@@ -16,7 +15,7 @@ codebase within JavaScript and TypeScript environments such as Node.js and Web B
 - [**TypeScript** documentation](https://kaspa.aspectron.org/docs/)
 
 Please note that while WASM directly binds JavaScript and Rust resources, their names on JavaScript side
-are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and 
+are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and
 to the 'snake_case' convention in Rust.
 
 The WASM32 bindings can be used in both TypeScript and JavaScript environments, where in JavaScript
@@ -33,11 +32,11 @@ The SDK is currently separated into the following top-level categories:
 ## WASM32 SDK release packages
 
 The SDK is built as 4 packages for Web Browsers as follows:
+
 - KeyGen - Key & Address Generation only
 - RPC - RPC only
 - Core - RPC + Key & Address Generation + Wallet SDK
-- Full - Full SDK + Integrated Wallet
-For NodeJS, the SDK is built as a single package containing all features.
+- Full - Full SDK + Integrated Wallet For NodeJS, the SDK is built as a single package containing all features.
 
 ## SDK folder structure
 
@@ -47,19 +46,9 @@ The following is a brief overview of the SDK folder structure (as available in t
 - `web/kaspa-rpc` - only the RPC bindings for use in web browsers (reduced WASM binary size).
 - `nodejs/kaspa` - **full** Rusty Kaspa WASM32 SDK bindings for use with NodeJS.
 - `docs` - Rusty Kaspa WASM32 SDK documentation.
-- `examples` folders contain examples for NodeJS and web browsers.
-- `examples/data` - folder used by examples for configuration and wallet data storage.
-- `examples/javascript` - JavaScript examples.
-- `examples/javascript/general` - General SDK examples (keys & derivation, addresses, encryption, etc.).
-- `examples/javascript/transactions` - Creating, sending and receiving transactions.
-- `examples/javascript/wallet` - Interfacing with the Rusty Kaspa Wallet framework.
-- `examples/typescript` - TypeScript examples.
+- `examples` - runnable TypeScript examples (see its [`README.md`](./examples/README.md)).
 
-If you are using JavaScript and Visual Studio Code, it is highly recommended you replicate 
-the `jsconfig.json` configuration file as is done in the SDK examples. This file allows 
-Visual Studio to provide TypeScript-like code completion, type checking and documentation.
-
-Included documentation in the release can be accessed by loading the `docs/kaspa/index.html` 
+Included documentation in the release can be accessed by loading the `docs/kaspa/index.html`
 file in a web browser.
 
 ## Building from Source
@@ -74,121 +63,7 @@ Once you have Rust installed, you can build the WASM32 SDK as follows:
 - `./build-node` - build the NodeJS package (CommonJS module)
 - `./build-docs` - runs `build-web` and then generates TypeDoc documentation from the resulting build.
 
-Please note that to build from source, you need to have TypeDoc installed globally via `npm install -g typedoc` (see below).
-
-## Running Web examples
-
-**IMPORTANT:** To view web examples, you need to serve them from a local web server and
-serve them from the root of the SDK folder (`kaspa-wasm32-sdk` if using a redistributable or
-`rusty-kaspa/wasm` if building from source). This is because examples use relative paths.
-WASM32 currently can not be loaded using the `file://` protocol.
-
-You can use any web server of your choice. If you don't have one, you can run one as follows:
-```bash
-cargo install http-server
-http-server
-```
-Access the examples at  [http://localhost:7878/examples/web/index.html](http://localhost:7878/examples/web/index.html).
-(Make sure to change the port if you are using a different server. Many servers will serve on 
-[http://localhost:8000/examples/web/index.html](http://localhost:8000/examples/web/index.html) by default)
-
-If building from source, you must run `build-release` or `build-web` scripts before running the examples.
-
-## Running NodeJs examples
-
-This applies to running examples while building the project from source as some dependencies are instantiated as a part of the build process. You just need to run `node init` to initialize a local config.
-
-NOTES:
-- `npm install` will install NodeJs types for TypeScript and W3C websocket modules
-- `npm install -g typedoc` is needed for the release build to generate documentation
-- `node init` creates a local `examples/data/config.json` that contains a private key (mnemonic) use across NodeJS examples. You can override address used in some examples by specifying the address as a command line argument.
-- Majority of examples will accept following arguments: `node <script> [address] [mainnet|testnet-10|testnet-11] [--address <address>] [--network <mainnet|testnet-10|testnet-11>] [--encoding <borsh|json>]`.
-
-    By default all wRPC connections use Borsh binary encoding.
-
-Example:
-```bash
-cd wasm
-./build-release
-cd examples
-npm install
-node init
-node nodejs/javascript/general/rpc.js
-```
-
-## Using RPC
-
-There are multiple ways to use RPC:
-- Control over WebSocket-framed JSON-RPC protocol (you have to manually handle serialization)
-- Use `RpcClient` class that handles the connectivity automatically and provides RPC interfaces in a form of async function calls.
-
-**NODEJS:** To use WASM RPC client in the Node.js environment, you need to introduce a W3C WebSocket object 
-before loading the WASM32 library. The compatible WebSocket library is [WebSocket](https://www.npmjs.com/package/websocket) and is included in the `kaspa` NPM package. `kaspa` package is a wrapper around `kaspa-wasm` that imports and installs this WebSocket shim in the `globalThis` object and then re-exports `kaspa-wasm` exports.
-
-
-## Loading in a Web App
-
-```html
-<html>
-    <head>
-        <script type="module">
-            import * as kaspa from './kaspa/kaspa-wasm.js';
-            (async () => {
-                await kaspa.default('./kaspa/kaspa-wasm_bg.wasm');
-                console.log(kaspa.version());
-                // ...
-            })();
-        </script>
-    </head>
-    <body></body>
-</html>
-```
-
-## Loading in a Node.js App
-
-```javascript
-//
-// W3C WebSocket module shim
-// this is provided by NPM `kaspa` module and is only needed
-// if you are building WASM libraries for NodeJS from source
-//
-// @ts-ignore
-// globalThis.WebSocket = require('websocket').w3cwebsocket;
-//
-
-let {
-    RpcClient,
-    Encoding,
-    initConsolePanicHook
-} = require('./kaspa');
-
-// enabling console panic hooks allows WASM to print panic details to console
-// initConsolePanicHook();
-// enabling browser panic hooks will create a full-page DIV with panic details
-// this is useful for mobile devices where console is not available
-// initBrowserPanicHook();
-```
-
-```javascript
-// if port is not specified, it will use the default port for the specified network
-const rpc = new RpcClient({
-    url: "127.0.0.1", 
-    encoding: Encoding.Borsh, 
-    network : "testnet-10"
-});
-
-(async () => {
-    try {
-        await rpc.connect();
-        let info = await rpc.getInfo();
-        console.log(info);
-    } finally {
-        await rpc.disconnect();
-    }
-})();
-```
-
-For more details, please follow the [**integrating with Kaspa**](https://kaspa.aspectron.org/) guide.
+Please note that to build from source, you need to have TypeDoc installed globally via `npm install -g typedoc`.
 
 ## Creating Documentation
 
@@ -204,3 +79,80 @@ npm install -g typedoc
 
 The resulting documentation will be located in `docs/typedoc/`
 
+## Running examples
+
+Runnable examples for both NodeJS and the browser live in `examples/`. See
+[`examples/README.md`](./examples/README.md) for how to run the TypeScript
+recipes and serve the web examples.
+
+## Loading in a Web App
+
+```html
+<html>
+  <head>
+    <script type="module">
+      import init, { initBrowserPanicHook, version } from "./kaspa/kaspa-wasm.js";
+
+      (async () => {
+        await init("./kaspa/kaspa-wasm_bg.wasm");
+
+        // enabling browser panic hooks creates a full-page DIV with panic details
+        // useful for mobile devices where the console is not available
+        initBrowserPanicHook();
+
+        console.log(version());
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>
+```
+
+## Loading in a Node.js App
+
+```javascript
+//
+// W3C WebSocket module shim.
+// Only required if you use RPC && are running on Node < 22
+import { WebSocket } from "ws";
+// @ts-ignore
+globalThis.WebSocket = WebSocket; // before rpc.connect()
+//
+
+import { initConsolePanicHook, version } from "./kaspa";
+
+// enabling console panic hooks allows WASM to print panic details to console
+initConsolePanicHook();
+
+console.log(version());
+```
+
+## Using RPC
+
+There are multiple ways to use RPC:
+
+- Control over WebSocket-framed JSON-RPC protocol (you have to manually handle serialization)
+- Use `RpcClient` class that handles the connectivity automatically and provides RPC interfaces in a form of async function calls.
+
+```javascript
+import { RpcClient, Encoding } from "./kaspa";
+
+// if port is not specified, it will use the default port for the specified network
+const rpc = new RpcClient({
+  url: "127.0.0.1",
+  encoding: Encoding.Borsh,
+  network: "testnet-10",
+});
+
+(async () => {
+  try {
+    await rpc.connect();
+    let info = await rpc.getInfo();
+    console.log(info);
+  } finally {
+    await rpc.disconnect();
+  }
+})();
+```
+
+For more details, please follow the [**integrating with Kaspa**](https://kaspa.aspectron.org/) guide.
