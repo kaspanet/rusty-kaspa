@@ -8,7 +8,8 @@ use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
 use kaspa_hashes::Hash;
 use kaspa_index_core::indexed_utxos::{
-    BalanceByScriptPublicKey, CovenantUtxoPageCursor, OrderedCovenantUtxoEntriesPage, OrderedUtxoEntriesPage, UtxoPageCursor,
+    BalanceByScriptPublicKey, CovenantUtxoChanges, CovenantUtxoPageCursor, OrderedCovenantUtxoEntriesPage, OrderedUtxoEntriesPage,
+    UtxoPageCursor,
 };
 
 use crate::{
@@ -136,6 +137,7 @@ impl Store {
         &mut self,
         to_add: &UtxoSetByScriptPublicKey,
         to_remove: &UtxoSetByScriptPublicKey,
+        covenant_changes: &CovenantUtxoChanges,
         try_reset_on_err: bool,
     ) -> StoreResult<()> {
         // A UTXO entry can appear both in removed and in added (if the DAA score of the entry changed). Thus
@@ -155,8 +157,22 @@ impl Store {
         if try_reset_on_err && res.is_err() {
             self.delete_all()?;
         };
+        res?;
 
-        res
+        // Covenant index writes mirror the script public key store flow; a failure here resets the
+        // covenant store alone, since the script public key store is already committed and current
+        let mut covenant_res = self.utxos_by_covenant_id_store.remove_utxo_entries(&covenant_changes.removed);
+        if covenant_res.is_err() && try_reset_on_err {
+            self.utxos_by_covenant_id_store.delete_all()?;
+        }
+        covenant_res?;
+
+        covenant_res = self.utxos_by_covenant_id_store.add_utxo_entries(&covenant_changes.added);
+        if covenant_res.is_err() && try_reset_on_err {
+            self.utxos_by_covenant_id_store.delete_all()?;
+        }
+
+        covenant_res
     }
 
     pub fn get_circulating_supply(&self) -> StoreResult<u64> {
@@ -206,5 +222,82 @@ impl Store {
         trace!("[{0}] clearing utxoindex database - success!", IDENT);
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::model::{CompactUtxoEntry, CovenantUtxoChanges, UtxoEntryKeySuffixRecord};
+    use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint};
+    use kaspa_database::{create_temp_db, prelude::ConnBuilder};
+
+    fn covenant_changes(id: Hash, rows: Vec<(ScriptPublicKey, u64, TransactionOutpoint)>, removed: bool) -> CovenantUtxoChanges {
+        let mut changes = CovenantUtxoChanges::new();
+        let set = if removed { &mut changes.removed } else { &mut changes.added };
+        set.insert(
+            id,
+            rows.into_iter().map(|(spk, daa_score, outpoint)| (spk, UtxoEntryKeySuffixRecord::new(daa_score, outpoint))).collect(),
+        );
+        changes
+    }
+
+    fn spk_set(id: Hash, rows: Vec<(ScriptPublicKey, u64, TransactionOutpoint, u64)>) -> UtxoSetByScriptPublicKey {
+        let mut set = UtxoSetByScriptPublicKey::new();
+        for (spk, daa_score, outpoint, amount) in rows {
+            set.entry(spk)
+                .or_default()
+                .insert(UtxoEntryKeySuffixRecord::new(daa_score, outpoint), CompactUtxoEntry::new(amount, false, Some(id)));
+        }
+        set
+    }
+
+    #[test]
+    fn test_covenant_parity_with_spk_store() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = Store::new(db);
+
+        let id = Hash::from_slice(&[1u8; 32]);
+        let spk = ScriptPublicKey::from_vec(0, vec![0x01]);
+        let outpoint = TransactionOutpoint::new(Hash::from_u64_word(7), 0);
+
+        let added = spk_set(id, vec![(spk.clone(), 4, outpoint, 1234)]);
+        let covenant_added = covenant_changes(id, vec![(spk.clone(), 4, outpoint)], false);
+        store.update_utxo_state(&added, &UtxoSetByScriptPublicKey::new(), &covenant_added, false).unwrap();
+
+        let page = store.get_utxos_by_covenant_ids_page(vec![id], 0..=u64::MAX, None, None, None, None).unwrap();
+        assert_eq!(page.entries().len(), 1);
+        let (grouped_id, rows) = &page.entries()[0];
+        assert_eq!(*grouped_id, id);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, spk);
+        assert_eq!(rows[0].1.daa_score(), 4);
+        assert_eq!(rows[0].2.amount, 1234);
+    }
+
+    #[test]
+    fn test_daa_shift_replaces_covenant_row() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = Store::new(db);
+
+        let id = Hash::from_slice(&[1u8; 32]);
+        let spk = ScriptPublicKey::from_vec(0, vec![0x01]);
+        let outpoint = TransactionOutpoint::new(Hash::from_u64_word(7), 0);
+
+        let added = spk_set(id, vec![(spk.clone(), 1, outpoint, 100)]);
+        let covenant_added = covenant_changes(id, vec![(spk.clone(), 1, outpoint)], false);
+        store.update_utxo_state(&added, &UtxoSetByScriptPublicKey::new(), &covenant_added, false).unwrap();
+
+        // same outpoint re-added under a new daa score, appearing in both removed and added
+        let removed = spk_set(id, vec![(spk.clone(), 1, outpoint, 100)]);
+        let readded = spk_set(id, vec![(spk.clone(), 2, outpoint, 100)]);
+        let mut covenant_shifted = CovenantUtxoChanges::new();
+        covenant_shifted.removed.insert(id, vec![(spk.clone(), UtxoEntryKeySuffixRecord::new(1, outpoint))]);
+        covenant_shifted.added.insert(id, vec![(spk.clone(), UtxoEntryKeySuffixRecord::new(2, outpoint))]);
+        store.update_utxo_state(&readded, &removed, &covenant_shifted, false).unwrap();
+
+        let page = store.get_utxos_by_covenant_ids_page(vec![id], 0..=u64::MAX, None, None, None, None).unwrap();
+        assert_eq!(page.entries()[0].1.len(), 1);
+        assert_eq!(page.entries()[0].1[0].1.daa_score(), 2);
     }
 }

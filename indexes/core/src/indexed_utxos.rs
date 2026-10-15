@@ -153,6 +153,20 @@ pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollecti
 /// A collection of covenant index writes keyed by [`Hash`] (the covenant id) with no payload.
 pub type UtxoSetByCovenantId = BlockHashMap<Vec<(ScriptPublicKey, UtxoEntryKeySuffixRecord)>>;
 
+/// Covenant index writes derived from a utxo diff: per covenant id, the (script public key,
+/// key suffix record) triples to remove and to add, with no payload.
+#[derive(Debug, Clone, Default)]
+pub struct CovenantUtxoChanges {
+    pub added: UtxoSetByCovenantId,
+    pub removed: UtxoSetByCovenantId,
+}
+
+impl CovenantUtxoChanges {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// A map of balance by script public key
 pub type BalanceByScriptPublicKey = HashMap<ScriptPublicKey, u64>;
 

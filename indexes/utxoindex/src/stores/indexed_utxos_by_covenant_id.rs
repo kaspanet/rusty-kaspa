@@ -114,7 +114,6 @@ pub trait UtxoSetByCovenantIdStoreReader {
     ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage>;
 }
 
-#[allow(dead_code)]
 pub trait UtxoSetByCovenantIdStore: UtxoSetByCovenantIdStoreReader {
     /// Remove [UtxoSetByCovenantId] from the [UtxoSetByCovenantIdStore].
     fn remove_utxo_entries(&mut self, utxo_entries: &UtxoSetByCovenantId) -> StoreResult<()>;
