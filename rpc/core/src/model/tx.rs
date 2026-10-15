@@ -93,7 +93,7 @@ impl Deserializer for RpcUtxoEntry {
 }
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutpoint {
     #[serde(with = "serde_bytes_fixed_ref")]

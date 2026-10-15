@@ -38,7 +38,7 @@ pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 const TS_SCRIPT_PUBLIC_KEY: &'static str = r#"
 /**
  * Interface defines the structure of a Script Public Key.
- * 
+ *
  * @category Consensus
  */
 export interface IScriptPublicKey {
