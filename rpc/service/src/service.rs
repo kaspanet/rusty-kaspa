@@ -851,10 +851,16 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let limit = request.limit.unwrap_or(DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT);
 
         if !self.config.unsafe_rpc && (request.addresses.len() > MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT) {
-            return Err(RpcError::UnavailableInSafeMode);
+            return Err(RpcError::General(format!(
+                "addresses count is greater than maximum allowed ({})",
+                MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT
+            )));
         }
         if !self.config.unsafe_rpc && (limit > MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE) {
-            return Err(RpcError::UnavailableInSafeMode);
+            return Err(RpcError::General(format!(
+                "utxos limit is greater than maximum allowed ({})",
+                MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE
+            )));
         }
 
         if limit == 0 {
