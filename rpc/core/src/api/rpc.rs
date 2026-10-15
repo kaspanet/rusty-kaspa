@@ -404,6 +404,32 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetUtxosByAddressesV2Request,
     ) -> RpcResult<GetUtxosByAddressesV2Response>;
 
+    /// Requests UTXOs for multiple covenant ids, optionally filtered by an inclusive
+    /// DAA-score range and inclusive address bounds. Ids are traversed in request order.
+    ///
+    /// This call is only available when this node was started with `--utxoindex --covenant-index`.
+    async fn get_utxos_by_covenant_ids(
+        &self,
+        covenant_ids: Vec<RpcHash>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        from_address: Option<RpcAddress>,
+        to_address: Option<RpcAddress>,
+        cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+        limit: Option<usize>,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse> {
+        self.get_utxos_by_covenant_ids_call(
+            None,
+            GetUtxosByCovenantIdsRequest::new(covenant_ids, from_daa_score, to_daa_score, from_address, to_address, cursor, limit),
+        )
+        .await
+    }
+    async fn get_utxos_by_covenant_ids_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetUtxosByCovenantIdsRequest,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse>;
+
     /// Requests the blue score of the current selected parent of the virtual block.
     async fn get_sink_blue_score(&self) -> RpcResult<u64> {
         Ok(self.get_sink_blue_score_call(None, GetSinkBlueScoreRequest {}).await?.blue_score)
