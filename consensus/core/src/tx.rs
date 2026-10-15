@@ -29,6 +29,7 @@ use core::{
     str::{self},
 };
 use kaspa_hashes::Hash;
+use kaspa_hashes::ZERO_HASH;
 use kaspa_utils::hex::ToHex;
 #[cfg(feature = "mem_size")]
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -55,6 +56,8 @@ pub struct TransactionOutpoint {
 }
 
 impl TransactionOutpoint {
+    pub const EMPTY: Self = Self { transaction_id: ZERO_HASH, index: 0 };
+    pub const MAX: Self = Self { transaction_id: kaspa_hashes::MAX_HASH, index: u32::MAX };
     pub fn new(transaction_id: TransactionId, index: u32) -> Self {
         Self { transaction_id, index }
     }
