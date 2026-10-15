@@ -183,6 +183,13 @@ impl Store {
         self.covenant_db_meta_store.remove()
     }
 
+    /// Drops the covenant version marker so the next enabled startup backfills the
+    /// covenant store from the then-current address store.
+    pub fn invalidate_covenant_index(&mut self) -> UtxoIndexResult<()> {
+        self.covenant_db_meta_store.remove()?;
+        Ok(())
+    }
+
     /// Brings the covenant store up to date with the address store: when the covenant
     /// version marker is missing or stale, every covenant row is rebuilt from the
     /// address store contents and the current marker is written.
@@ -396,5 +403,30 @@ mod tests {
         assert!(page.entries().is_empty() || page.entries()[0].1.is_empty());
         let page = store.get_utxos_by_covenant_ids_page(vec![id], 0..=u64::MAX, None, None, None, None).unwrap();
         assert_eq!(page.entries()[0].1.len(), 1);
+    }
+
+    #[test]
+    fn test_invalidation_forces_backfill_on_next_enabled_startup() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut store = Store::new(db);
+
+        let id = Hash::from_slice(&[1u8; 32]);
+        let stale_id = Hash::from_slice(&[9u8; 32]);
+        let spk = ScriptPublicKey::from_vec(0, vec![0x01]);
+        let outpoint = TransactionOutpoint::new(Hash::from_u64_word(7), 0);
+
+        let stale_added = covenant_changes(stale_id, vec![(spk.clone(), 5, outpoint)], false);
+        store.update_utxo_state(&UtxoSetByScriptPublicKey::new(), &UtxoSetByScriptPublicKey::new(), &stale_added, false).unwrap();
+        let added = address_set(id, vec![(spk.clone(), 4, outpoint, 1234)]);
+        let covenant_added = covenant_changes(id, vec![(spk.clone(), 4, outpoint)], false);
+        store.update_utxo_state(&added, &UtxoSetByScriptPublicKey::new(), &covenant_added, false).unwrap();
+        store.migrate_covenant_index().unwrap();
+
+        // a disabled startup drops the marker so the next enabled startup backfills;
+        // stale rows accumulated meanwhile do not survive that backfill
+        store.invalidate_covenant_index().unwrap();
+        store.migrate_covenant_index().unwrap();
+        let page = store.get_utxos_by_covenant_ids_page(vec![stale_id], 0..=u64::MAX, None, None, None, None).unwrap();
+        assert!(page.entries().is_empty() || page.entries()[0].1.is_empty());
     }
 }

@@ -62,6 +62,8 @@ impl UtxoIndex {
         }
         if utxoindex.covenant_index {
             utxoindex.store.migrate_covenant_index()?;
+        } else {
+            utxoindex.store.invalidate_covenant_index()?;
         }
         let utxoindex = Arc::new(RwLock::new(utxoindex));
         consensus_manager.register_consensus_reset_handler(Arc::new(UtxoIndexConsensusResetHandler::new(Arc::downgrade(&utxoindex))));
