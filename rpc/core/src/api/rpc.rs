@@ -22,6 +22,11 @@ pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE: usize = 5_000;
 pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT: usize = 5_000;
 pub const DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT: usize = 1_000;
 
+// constants pertaining to the get_utxos_by_covenant_ids RPC method
+pub const MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_PAGE_SIZE: usize = 5_000;
+pub const MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_COVENANT_ID_COUNT: usize = 5_000;
+pub const DEFAULT_GET_UTXOS_BY_COVENANT_IDS_LIMIT: usize = 1_000;
+
 /// Client RPC Api
 ///
 /// The [`RpcApi`] trait defines RPC calls taking a request message as unique parameter.

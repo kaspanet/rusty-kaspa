@@ -572,6 +572,23 @@ mod mockery {
         }
     }
 
+    impl Mock for RpcGetUtxosByCovenantIdsCursor {
+        fn mock() -> Self {
+            RpcGetUtxosByCovenantIdsCursor {
+                start_covenant_id: mock(),
+                start_daa_score: mock(),
+                start_address: mock(),
+                start_outpoint: mock(),
+            }
+        }
+    }
+
+    impl Mock for RpcUtxosByCovenantIdsEntry {
+        fn mock() -> Self {
+            RpcUtxosByCovenantIdsEntry { covenant_id: mock(), address: mock(), outpoint: mock(), utxo_entry: mock() }
+        }
+    }
+
     impl Mock for ProcessMetrics {
         fn mock() -> Self {
             ProcessMetrics {
@@ -1071,6 +1088,30 @@ mod mockery {
     }
 
     test!(GetUtxosByAddressesResponse);
+
+    impl Mock for GetUtxosByCovenantIdsRequest {
+        fn mock() -> Self {
+            GetUtxosByCovenantIdsRequest {
+                covenant_ids: mock(),
+                from_daa_score: mock(),
+                to_daa_score: mock(),
+                from_address: mock(),
+                to_address: mock(),
+                cursor: mock(),
+                limit: Some(7),
+            }
+        }
+    }
+
+    test!(GetUtxosByCovenantIdsRequest);
+
+    impl Mock for GetUtxosByCovenantIdsResponse {
+        fn mock() -> Self {
+            GetUtxosByCovenantIdsResponse { entries: mock(), next_cursor: mock() }
+        }
+    }
+
+    test!(GetUtxosByCovenantIdsResponse);
 
     impl Mock for BanRequest {
         fn mock() -> Self {
