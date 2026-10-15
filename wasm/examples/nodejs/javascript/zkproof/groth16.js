@@ -118,7 +118,7 @@ async function groth16VerifyNoBuilder() {
             }],
             0n,
             '',
-            1
+            { type: 'sigOpCount', value: 1 }
         );
 
         console.log('Commit transaction created');
@@ -190,13 +190,12 @@ async function groth16VerifyNoBuilder() {
             }],
             0n,
             '',
-            0
+            { type: 'computeBudget', value: 1600 },
+            1
         );
 
-        // Set the signature script & compute budget
+        // Set the signature script
         redeemTx.inputs[0].signatureScript = signatureScript;
-        redeemTx.inputs[0].computeBudget = 1600;
-        redeemTx.version=1;
 
         console.log('Redeem transaction created');
         console.log('Submitting redeem transaction with Groth16 proof verification...');
