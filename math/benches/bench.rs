@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 extern crate alloc;
 
 use criterion::measurement::WallTime;

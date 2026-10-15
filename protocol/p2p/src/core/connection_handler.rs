@@ -5,13 +5,15 @@ use crate::pb::{
 };
 use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
-use kaspa_core::{debug, info};
+use kaspa_core::{debug, info, warn};
 use kaspa_utils::networking::NetAddress;
 use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
-use std::net::ToSocketAddrs;
+use parking_lot::Mutex;
+use std::collections::HashMap;
+use std::net::{IpAddr, ToSocketAddrs};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -42,7 +44,61 @@ pub enum ConnectionError {
 }
 
 /// Maximum P2P decoded gRPC message size to send and receive
-const P2P_MAX_MESSAGE_SIZE: usize = 1024 * 1024 * 1024; // 1GB
+const P2P_MAX_MESSAGE_SIZE: usize = 256 * 1024 * 1024; // 256MB
+
+const MAX_PENDING_INBOUND_HANDSHAKES: usize = 32;
+const MAX_PENDING_INBOUND_HANDSHAKES_PER_IP: usize = 2;
+
+#[derive(Debug, Default)]
+struct PendingInboundHandshakes {
+    total: usize,
+    by_ip: HashMap<IpAddr, usize>,
+}
+
+impl PendingInboundHandshakes {
+    fn try_reserve(&mut self, ip: IpAddr) -> bool {
+        let ip_count = self.by_ip.get(&ip).copied().unwrap_or_default();
+        if self.total >= MAX_PENDING_INBOUND_HANDSHAKES || ip_count >= MAX_PENDING_INBOUND_HANDSHAKES_PER_IP {
+            return false;
+        }
+
+        #[allow(clippy::arithmetic_side_effects, reason = "The preceding checks bound these values by 32 and 2.")]
+        {
+            self.total += 1;
+            self.by_ip.insert(ip, ip_count + 1);
+        }
+        true
+    }
+
+    fn release(&mut self, ip: IpAddr) {
+        self.total = self.total.checked_sub(1).expect("a pending inbound handshake reservation must exist");
+        let remove = {
+            let count = self.by_ip.get_mut(&ip).expect("a pending inbound handshake IP reservation must exist");
+            *count = count.checked_sub(1).expect("a pending inbound handshake IP reservation must exist");
+            *count == 0
+        };
+        if remove {
+            self.by_ip.remove(&ip);
+        }
+    }
+}
+
+struct PendingInboundHandshakeGuard {
+    pending: Arc<Mutex<PendingInboundHandshakes>>,
+    ip: IpAddr,
+}
+
+impl PendingInboundHandshakeGuard {
+    fn try_new(pending: Arc<Mutex<PendingInboundHandshakes>>, ip: IpAddr) -> Option<Self> {
+        if pending.lock().try_reserve(ip) { Some(Self { pending, ip }) } else { None }
+    }
+}
+
+impl Drop for PendingInboundHandshakeGuard {
+    fn drop(&mut self) {
+        self.pending.lock().release(self.ip);
+    }
+}
 
 /// Handles Router creation for both server and client-side new connections
 #[derive(Clone)]
@@ -51,6 +107,7 @@ pub struct ConnectionHandler {
     hub_sender: MpscSender<HubEvent>,
     initializer: Arc<dyn ConnectionInitializer>,
     counters: Arc<TowerConnectionCounters>,
+    pending_inbound_handshakes: Arc<Mutex<PendingInboundHandshakes>>,
 }
 
 impl ConnectionHandler {
@@ -59,7 +116,7 @@ impl ConnectionHandler {
         initializer: Arc<dyn ConnectionInitializer>,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
-        Self { hub_sender, initializer, counters }
+        Self { hub_sender, initializer, counters, pending_inbound_handshakes: Default::default() }
     }
 
     /// Launches a P2P server listener loop
@@ -152,9 +209,7 @@ impl ConnectionHandler {
         retry_attempts: u8,
         retry_interval: Duration,
     ) -> Result<Arc<Router>, ConnectionError> {
-        let mut counter = 0;
-        loop {
-            counter += 1;
+        for counter in 1u16.. {
             match self.connect(address.clone()).await {
                 Ok(router) => {
                     debug!("P2P, Client connected, peer: {:?}", address);
@@ -167,7 +222,7 @@ impl ConnectionHandler {
                 }
                 Err(err) => {
                     debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}", counter, err, address);
-                    if counter < retry_attempts {
+                    if counter < retry_attempts as u16 {
                         // Await `retry_interval` time before retrying
                         tokio::time::sleep(retry_interval).await;
                     } else {
@@ -177,6 +232,7 @@ impl ConnectionHandler {
                 }
             }
         }
+        unreachable!()
     }
 
     // TODO: revisit the below constants
@@ -211,6 +267,11 @@ impl ProtoP2p for ConnectionHandler {
             return Err(TonicStatus::new(tonic::Code::InvalidArgument, "Incoming connection opening request has no remote address"));
         };
 
+        // Bound pending handshakes globally and per source IP before allocating the router and its channels.
+        let inbound_handshake_guard =
+            PendingInboundHandshakeGuard::try_new(self.pending_inbound_handshakes.clone(), remote_address.ip().to_canonical())
+                .ok_or_else(|| TonicStatus::resource_exhausted("too many pending inbound handshakes"))?;
+
         // Build the in/out pipes
         let (outgoing_route, outgoing_receiver) = mpsc_channel(Self::outgoing_network_channel_size());
         let incoming_stream = request.into_inner();
@@ -218,10 +279,90 @@ impl ProtoP2p for ConnectionHandler {
         // Build the router object
         let router = Router::new(remote_address, false, self.hub_sender.clone(), incoming_stream, outgoing_route).await;
 
-        // Notify the central Hub about the new peer
-        self.hub_sender.send(HubEvent::NewPeer(router)).await.expect("hub receiver should never drop before senders");
+        let initializer = self.initializer.clone();
+        let hub_sender = self.hub_sender.clone();
+        tokio::spawn(async move {
+            // Hold the reservation until initialization and any failure cleanup complete.
+            let _inbound_handshake_guard = inbound_handshake_guard;
+            match initializer.initialize_connection(router.clone()).await {
+                Ok(()) => {
+                    hub_sender.send(HubEvent::NewPeer(router)).await.expect("hub receiver should never drop before senders");
+                }
+                Err(err) => {
+                    router.try_sending_reject_message(&err).await;
+                    router.close().await;
+
+                    match err {
+                        ProtocolError::LoopbackConnection(_)
+                        | ProtocolError::PeerAlreadyExists(_)
+                        | ProtocolError::VersionMismatch(_, ..=9) => {
+                            // version 9 and below is prior toccata, silencing logs on deprecated versions
+                            debug!("P2P, handshake failed for inbound peer {}: {}", router, err);
+                        }
+                        _ => {
+                            warn!("P2P, handshake failed for inbound peer {}: {}", router, err);
+                        }
+                    }
+                }
+            }
+        });
 
         // Give tonic a receiver stream (messages sent to it will be forwarded to the network peer)
         Ok(Response::new(Box::pin(ReceiverStream::new(outgoing_receiver).map(Ok)) as Self::MessageStreamStream))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn pending_inbound_handshake_limits_and_reuses_slots() {
+        let pending = Arc::new(Mutex::new(PendingInboundHandshakes::default()));
+        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+
+        let first = PendingInboundHandshakeGuard::try_new(pending.clone(), ip).unwrap();
+        let second = PendingInboundHandshakeGuard::try_new(pending.clone(), ip).unwrap();
+        assert!(PendingInboundHandshakeGuard::try_new(pending.clone(), ip).is_none());
+
+        drop(first);
+        let replacement = PendingInboundHandshakeGuard::try_new(pending.clone(), ip).unwrap();
+        drop((second, replacement));
+
+        let mut guards = Vec::with_capacity(MAX_PENDING_INBOUND_HANDSHAKES);
+        for i in 0..MAX_PENDING_INBOUND_HANDSHAKES {
+            let ip = IpAddr::V6(Ipv6Addr::from(u128::try_from(i).unwrap()));
+            guards.push(PendingInboundHandshakeGuard::try_new(pending.clone(), ip).unwrap());
+        }
+        let next_ip = IpAddr::V6(Ipv6Addr::from(u128::try_from(MAX_PENDING_INBOUND_HANDSHAKES).unwrap()));
+        assert!(PendingInboundHandshakeGuard::try_new(pending.clone(), next_ip).is_none());
+
+        drop(guards);
+        let pending = pending.lock();
+        assert_eq!(pending.total, 0);
+        assert!(pending.by_ip.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pending_inbound_handshake_is_released_on_task_abort() {
+        let pending = Arc::new(Mutex::new(PendingInboundHandshakes::default()));
+        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let guard = PendingInboundHandshakeGuard::try_new(pending.clone(), ip).unwrap();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+        let task = tokio::spawn(async move {
+            let _guard = guard;
+            started_tx.send(()).unwrap();
+            futures::future::pending::<()>().await;
+        });
+        started_rx.await.unwrap();
+
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+
+        let pending = pending.lock();
+        assert_eq!(pending.total, 0);
+        assert!(pending.by_ip.is_empty());
     }
 }

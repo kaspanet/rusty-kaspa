@@ -5,7 +5,6 @@ use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
-    convert::header::HeaderFormat,
     dequeue_with_request_id, make_response,
     pb::{BlockHeadersMessage, DoneHeadersMessage, kaspad_message::Payload},
 };
@@ -15,7 +14,6 @@ pub struct HandleAntipastRequests {
     ctx: FlowContext,
     router: Arc<Router>,
     incoming_route: IncomingRoute,
-    header_format: HeaderFormat,
 }
 
 #[async_trait::async_trait]
@@ -30,8 +28,8 @@ impl Flow for HandleAntipastRequests {
 }
 
 impl HandleAntipastRequests {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, header_format: HeaderFormat) -> Self {
-        Self { ctx, router, incoming_route, header_format }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
+        Self { ctx, router, incoming_route }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -48,6 +46,8 @@ impl HandleAntipastRequests {
             // intersected by past of the relayed block. We do not expect the relay block to be too much after
             // the sink (in fact usually it should be in its past or anticone), hence we bound the expected traversal to be
             // in the order of `mergeset_size_limit`.
+
+            #[allow(clippy::arithmetic_side_effects, reason = "mergeset_size_limit << usize::MAX")]
             let hashes = session.async_get_antipast_from_pov(block, context, Some(self.ctx.config.mergeset_size_limit() * 4)).await?;
             let mut headers = session
                 .spawn_blocking(|c| hashes.into_iter().map(|h| c.get_header(h)).collect::<Result<Vec<_>, ConsensusError>>())
@@ -60,9 +60,7 @@ impl HandleAntipastRequests {
             self.router
                 .enqueue(make_response!(
                     Payload::BlockHeaders,
-                    BlockHeadersMessage {
-                        block_headers: headers.into_iter().map(|header| (self.header_format, header.as_ref()).into()).collect()
-                    },
+                    BlockHeadersMessage { block_headers: headers.into_iter().map(|header| header.as_ref().into()).collect() },
                     request_id
                 ))
                 .await?;

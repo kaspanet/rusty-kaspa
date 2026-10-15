@@ -269,6 +269,10 @@ impl Router {
         self.is_outbound
     }
 
+    pub(crate) fn is_closed(&self) -> bool {
+        self.mutable_state.lock().shutdown_signal.is_none()
+    }
+
     pub fn connection_started(&self) -> Instant {
         self.connection_started
     }

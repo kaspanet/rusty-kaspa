@@ -41,7 +41,7 @@ impl TryFrom<Vec<u8>> for Fr {
 }
 
 impl OpcodeData<Fr> for StackEntry {
-    fn deserialize(&self, _: bool) -> Result<Fr, TxScriptError> {
+    fn deserialize(&self) -> Result<Fr, TxScriptError> {
         Fr::try_from(self.as_slice()).map_err(|e| TxScriptError::ZkIntegrity(e.to_string()))
     }
 

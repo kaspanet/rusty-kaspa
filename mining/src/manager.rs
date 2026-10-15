@@ -29,7 +29,6 @@ use kaspa_consensus_core::{
     },
     block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
-    config::params::{ForkActivation, ForkedParam},
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     mass::{BlockLaneLimits, BlockMassLimits},
     tx::{MutableTransaction, Transaction, TransactionId},
@@ -52,22 +51,20 @@ impl MiningManager {
     pub fn new(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
-        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
-        toccata_activation: ForkActivation,
+        mempool_block_mass_limits: BlockMassLimits,
         block_lane_limits: BlockLaneLimits,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
         let config =
             Config::build_default(target_time_per_block, relay_non_std_transactions, mempool_block_mass_limits, block_lane_limits);
-        Self::with_config(config, toccata_activation, cache_lifetime, counters)
+        Self::with_config(config, cache_lifetime, counters)
     }
 
     pub fn new_with_extended_config(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
-        mempool_block_mass_limits: impl Into<ForkedParam<BlockMassLimits>>,
-        toccata_activation: ForkActivation,
+        mempool_block_mass_limits: BlockMassLimits,
         block_lane_limits: BlockLaneLimits,
         ram_scale: f64,
         cache_lifetime: Option<u64>,
@@ -76,17 +73,12 @@ impl MiningManager {
         let config =
             Config::build_default(target_time_per_block, relay_non_std_transactions, mempool_block_mass_limits, block_lane_limits)
                 .apply_ram_scale(ram_scale);
-        Self::with_config(config, toccata_activation, cache_lifetime, counters)
+        Self::with_config(config, cache_lifetime, counters)
     }
 
-    pub(crate) fn with_config(
-        config: Config,
-        toccata_activation: ForkActivation,
-        cache_lifetime: Option<u64>,
-        counters: Arc<MiningCounters>,
-    ) -> Self {
+    pub(crate) fn with_config(config: Config, cache_lifetime: Option<u64>, counters: Arc<MiningCounters>) -> Self {
         let config = Arc::new(config);
-        let mempool = RwLock::new(Mempool::new(config.clone(), toccata_activation, counters.clone()));
+        let mempool = RwLock::new(Mempool::new(config.clone(), counters.clone()));
         let block_template_cache = BlockTemplateCache::new(cache_lifetime);
         Self { config, block_template_cache, mempool, counters }
     }
@@ -119,7 +111,10 @@ impl MiningManager {
         let _swo = Stopwatch::<22>::with_threshold("build_block_template full loop");
         let mut attempts: u64 = 0;
         loop {
-            attempts += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                attempts += 1;
+            }
 
             let selector = self.build_selector();
             let block_template_builder = BlockTemplateBuilder::new();
@@ -175,10 +170,16 @@ impl MiningManager {
                         // For all other errors, we do remove the redeemers.
 
                         let removal_result = if *err == TxRuleError::MissingTxOutpoints {
-                            missing_outpoint += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                missing_outpoint += 1;
+                            }
                             mempool_write.remove_transaction(x, false, TxRemovalReason::Muted, "")
                         } else {
-                            invalid += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                invalid += 1;
+                            }
                             warn!("Remove per BBT invalid transaction and descendants");
                             mempool_write.remove_transaction(
                                 x,
@@ -218,8 +219,7 @@ impl MiningManager {
 
     /// Returns realtime feerate estimations based on internal mempool state
     pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
-        let args =
-            FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mempool_mass_cofactors.after().reference);
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mempool_mass_cofactors.reference);
         let estimator = self.mempool.read().build_feerate_estimator(args);
         estimator.calc_estimations(self.config.minimum_feerate())
     }
@@ -230,8 +230,7 @@ impl MiningManager {
         consensus: &dyn ConsensusApi,
         prefix: kaspa_addresses::Prefix,
     ) -> MiningManagerResult<FeeEstimateVerbose> {
-        let args =
-            FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mempool_mass_cofactors.after().reference);
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.mempool_mass_cofactors.reference);
         let network_mass_per_second = args.network_mass_per_second();
         let mempool_read = self.mempool.read();
         let estimator = mempool_read.build_feerate_estimator(args);
@@ -329,6 +328,7 @@ impl MiningManager {
                 drop(mempool);
 
                 // The capacity used here may be exceeded since accepted unorphaned transaction may themselves unorphan other transactions.
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
                 let mut accepted_transactions = Vec::with_capacity(unorphaned_transactions.len() + 1);
                 // We include the original accepted transaction as well
                 accepted_transactions.push(accepted_transaction);
@@ -363,8 +363,7 @@ impl MiningManager {
             // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
             let mut lower_bound: usize = 0;
             let mut validation_results = Vec::with_capacity(transactions.len());
-            let virtual_daa_score = consensus.get_virtual_daa_score();
-            while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound, virtual_daa_score) {
+            while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
                 assert!(lower_bound < upper_bound, "the chunk is never empty");
                 validation_results.extend(validate_mempool_transactions_in_parallel(
                     consensus,
@@ -476,8 +475,7 @@ impl MiningManager {
         // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
         let mut lower_bound: usize = 0;
         let mut validation_results = Vec::with_capacity(transactions.len());
-        let virtual_daa_score = consensus.get_virtual_daa_score();
-        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound, virtual_daa_score) {
+        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
             assert!(lower_bound < upper_bound, "the chunk is never empty");
             validation_results.extend(validate_mempool_transactions_in_parallel(
                 consensus,
@@ -526,27 +524,28 @@ impl MiningManager {
         insert_results
     }
 
-    fn next_transaction_chunk_upper_bound(
-        &self,
-        transactions: &[MutableTransaction],
-        lower_bound: usize,
-        virtual_daa_score: u64,
-    ) -> Option<usize> {
+    fn next_transaction_chunk_upper_bound(&self, transactions: &[MutableTransaction], lower_bound: usize) -> Option<usize> {
         if lower_bound >= transactions.len() {
             return None;
         }
-        let cofactors = self.config.mempool_mass_cofactors.get(virtual_daa_score);
-        let mut mass = 0;
+        let cofactors = self.config.mempool_mass_cofactors;
+        let mut mass: u64 = 0;
         transactions[lower_bound..]
             .iter()
             .position(|tx| {
-                mass += tx.calculated_non_contextual_masses.unwrap().normalized_max(&cofactors);
+                // If this overflows, we have some non standard transaction. This is fine, since it will be rejected by mempool validation.
+                mass = mass.saturating_add(tx.calculated_non_contextual_masses.unwrap().normalized_max(&cofactors));
                 mass >= cofactors.reference
             })
             // Make sure the upper bound is greater than the lower bound, allowing to handle a very unlikely,
             // (if not impossible) case where the mass of a single transaction is greater than the maximum
             // chunk mass.
-            .map(|relative_index| relative_index.max(1) + lower_bound)
+            .map(|relative_index| {
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    relative_index.max(1) + lower_bound
+                }
+            })
             .or(Some(transactions.len()))
     }
 
@@ -697,7 +696,10 @@ impl MiningManager {
             let txs = chunk.filter_map(|mut x| {
                 let transaction_id = x.id();
                 if mempool.has_accepted_transaction(&transaction_id) {
-                    accepted += 1;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        accepted += 1;
+                    }
                     None
                 } else if mempool.has_transaction(&transaction_id, TransactionQuery::TransactionsOnly) {
                     x.clear_entries();
@@ -714,12 +716,18 @@ impl MiningManager {
                         false => Some(x),
                         true => {
                             // If all entries are populated with mempool UTXOs, we already know the transaction is valid
-                            valid += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                valid += 1;
+                            }
                             None
                         }
                     }
                 } else {
-                    other += 1;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        other += 1;
+                    }
                     None
                 }
             });
@@ -731,8 +739,7 @@ impl MiningManager {
         // We process the transactions by chunks of max block mass to prevent locking the virtual processor for too long.
         let mut lower_bound: usize = 0;
         let mut validation_results = Vec::with_capacity(transactions.len());
-        let virtual_daa_score = consensus.get_virtual_daa_score();
-        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound, virtual_daa_score) {
+        while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
             assert!(lower_bound < upper_bound, "the chunk is never empty");
             let _swo = Stopwatch::<60>::with_threshold("revalidate validate_mempool_transactions_in_parallel op");
             validation_results
@@ -761,9 +768,15 @@ impl MiningManager {
                             // However, as only consequence, said transaction would then be advertised to registered peers and not be
                             // provided upon request.
                             valid_ids.push(transaction_id);
-                            valid += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                valid += 1;
+                            }
                         } else {
-                            other += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                other += 1;
+                            }
                         }
                     }
                     Err(RuleError::RejectMissingOutpoint) => {
@@ -795,7 +808,10 @@ impl MiningManager {
                                 extra_info.as_str(),
                             )
                             .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
-                        missing_outpoint += 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            missing_outpoint += 1;
+                        }
                     }
                     Err(err) => {
                         // Rust rewrite note:
@@ -809,7 +825,10 @@ impl MiningManager {
                         _ = mempool
                             .remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "")
                             .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
-                        invalid += 1;
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                        {
+                            invalid += 1;
+                        }
                     }
                 }
             }
@@ -819,18 +838,16 @@ impl MiningManager {
             drop(_swo);
             drop(mempool);
         }
-        match accepted + missing_outpoint + invalid {
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        let removed_count = accepted + missing_outpoint + invalid;
+        match removed_count {
             0 => {
                 info!("Revalidated {} high priority transactions", valid);
             }
             _ => {
                 info!(
                     "Revalidated {} and removed {} high priority transactions (removals: {} accepted, {} missing outpoint, {} invalid)",
-                    valid,
-                    accepted + missing_outpoint + invalid,
-                    accepted,
-                    missing_outpoint,
-                    invalid,
+                    valid, removed_count, accepted, missing_outpoint, invalid,
                 );
                 if other > 0 {
                     debug!(
@@ -1025,10 +1042,16 @@ impl MiningManagerProxy {
     pub fn transaction_count_sample(&self, query: TransactionQuery) -> u64 {
         let mut count = 0;
         if query.include_transaction_pool() {
-            count += self.inner.counters.txs_sample.load(std::sync::atomic::Ordering::Relaxed)
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                count += self.inner.counters.txs_sample.load(std::sync::atomic::Ordering::Relaxed)
+            }
         }
         if query.include_orphan_pool() {
-            count += self.inner.counters.orphans_sample.load(std::sync::atomic::Ordering::Relaxed)
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                count += self.inner.counters.orphans_sample.load(std::sync::atomic::Ordering::Relaxed)
+            }
         }
         count
     }
@@ -1065,6 +1088,7 @@ fn feerate_stats(transactions: Vec<Transaction>, calculated_fees: Vec<u64>) -> O
     if calculated_fees.is_empty() {
         return None;
     }
+    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
     if transactions.len() != calculated_fees.len() + 1 {
         error!(
             "[feerate_stats] block template transactions length ({}) is expected to be one more than `calculated_fees` length ({})",
@@ -1085,6 +1109,7 @@ fn feerate_stats(transactions: Vec<Transaction>, calculated_fees: Vec<u64>) -> O
         .collect_vec();
     feerates.sort_unstable_by(f64::total_cmp);
 
+    #[allow(clippy::arithmetic_side_effects, reason = "Empty fees is checked above.")]
     let max = feerates[feerates.len() - 1];
     let min = feerates[0];
     let median = feerates[feerates.len() / 2];

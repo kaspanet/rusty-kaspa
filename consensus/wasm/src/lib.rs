@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 use cfg_if::cfg_if;
 
 pub mod error;

@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use portable_atomic::{AtomicF64, AtomicUsize};
 use std::{
     fmt::Display,

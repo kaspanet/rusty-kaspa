@@ -88,7 +88,10 @@ impl RequestPruningPointSmtStateFlow {
             for item in stream {
                 batch.push(item?);
                 if batch.len() == SMT_CHUNK_SIZE {
-                    count += batch.len() as u64;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        count += batch.len() as u64;
+                    }
                     if tx.blocking_send(std::mem::take(&mut batch)).is_err() {
                         return Err(ConsensusError::General("receiver went away"));
                     }
@@ -96,7 +99,10 @@ impl RequestPruningPointSmtStateFlow {
                 }
             }
             if !batch.is_empty() {
-                count += batch.len() as u64;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                {
+                    count += batch.len() as u64;
+                }
                 if tx.blocking_send(batch).is_err() {
                     return Err(ConsensusError::General("receiver went away"));
                 }
@@ -122,8 +128,14 @@ impl RequestPruningPointSmtStateFlow {
             let chunk_len = entries.len() as u64;
             self.router.enqueue(make_message!(Payload::SmtLaneChunk, SmtLaneChunkMessage { entries })).await?;
 
-            lanes_sent += chunk_len;
-            chunks_sent += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                lanes_sent += chunk_len;
+            }
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                chunks_sent += 1;
+            }
 
             // Flow-control round-trip. Skip it on the last window so the peer
             // never has to send a trailing RequestNext just to unblock us.

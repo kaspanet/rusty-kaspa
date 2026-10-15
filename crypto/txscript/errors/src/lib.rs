@@ -82,8 +82,6 @@ pub enum TxScriptError {
     InvalidOutputIndex(i32, usize),
     #[error(transparent)]
     Serialization(#[from] SerializationError),
-    #[error("sig op count exceeds passed limit of {0}")]
-    ExceededSigOpLimit(u16),
     #[error("script units exceeded the amount committed in the input: used={used}, limit={limit}")]
     ExceededCommittedScriptUnits { used: u64, limit: u64 },
     #[error("ZK Integrity: {0}")]
