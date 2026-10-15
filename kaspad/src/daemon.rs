@@ -220,8 +220,8 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 
 /// Configure RocksDB parameters from CLI arguments.
 ///
-/// Returns: (preset, cache_budget, wal_directory)
-fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathBuf>) {
+/// Returns: (preset, mem_budget, cache_budget, wal_directory)
+fn configure_rocksdb(args: &Args) -> (RocksDbPreset, usize, Option<usize>, Option<PathBuf>) {
     // Parse preset
     let preset = if let Some(preset_str) = &args.rocksdb_preset {
         match preset_str.parse::<RocksDbPreset>() {
@@ -240,14 +240,14 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
         RocksDbPreset::Default
     };
 
-    // Calculate cache budget for HDD preset
-    let cache_budget = if matches!(preset, RocksDbPreset::Hdd) {
+    // Calculate cache budget for the HDD and low-IO presets
+    let cache_budget = if matches!(preset, RocksDbPreset::Hdd | RocksDbPreset::LowIo) {
         if let Some(cache_mb) = args.rocksdb_cache_size {
             let cache_bytes = cache_mb.checked_mul(1024 * 1024).unwrap();
             info!("Custom RocksDB cache size: {} MB", cache_mb);
             Some(cache_bytes)
         } else {
-            let base_cache = 256 * 1024 * 1024;
+            let base_cache = if preset == RocksDbPreset::LowIo { 1024 * 1024 * 1024 } else { 256 * 1024 * 1024 };
             let scaled_cache = (base_cache as f64 * args.ram_scale) as usize;
             let min_cache = 64 * 1024 * 1024;
             let final_cache = scaled_cache.max(min_cache);
@@ -265,7 +265,12 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
         wal_path
     });
 
-    (preset, cache_budget, wal_dir)
+    let mem_budget = preset.mem_budget(args.ram_scale);
+    if preset == RocksDbPreset::LowIo {
+        info!("RocksDB write buffer size: {} MB (scaled by ram-scale)", mem_budget / 4 / 1024 / 1024);
+    }
+
+    (preset, mem_budget, cache_budget, wal_dir)
 }
 
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
@@ -298,7 +303,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     };
 
     // Configure RocksDB parameters
-    let (rocksdb_preset, cache_budget, wal_dir) = configure_rocksdb(args);
+    let (rocksdb_preset, rocksdb_mem_budget, cache_budget, wal_dir) = configure_rocksdb(args);
 
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
@@ -403,6 +408,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .with_db_path(meta_db_dir.clone())
         .with_files_limit(META_DB_FILE_LIMIT)
         .with_preset(rocksdb_preset)
+        .with_mem_budget(rocksdb_mem_budget)
         .with_wal_dir(wal_dir.clone())
         .with_cache_budget(cache_budget)
         .build()
@@ -421,6 +427,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     .with_db_path(consensus_db_dir.clone().join(dir_name))
                     .with_files_limit(1)
                     .with_preset(rocksdb_preset)
+                    .with_mem_budget(rocksdb_mem_budget)
                     .with_wal_dir(wal_dir.clone())
                     .with_cache_budget(cache_budget)
                     .build()
@@ -480,6 +487,7 @@ Do you confirm? (y/n)";
                         .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
                         .with_files_limit(10)
                         .with_preset(rocksdb_preset)
+                        .with_mem_budget(rocksdb_mem_budget)
                         .with_wal_dir(wal_dir.clone())
                         .with_cache_budget(cache_budget)
                         .build()
@@ -548,6 +556,7 @@ Do you confirm? (y/n)";
             .with_db_path(meta_db_dir)
             .with_files_limit(META_DB_FILE_LIMIT)
             .with_preset(rocksdb_preset)
+            .with_mem_budget(rocksdb_mem_budget)
             .with_wal_dir(wal_dir.clone())
             .with_cache_budget(cache_budget)
             .build()
@@ -602,6 +611,7 @@ Do you confirm? (y/n)";
         fd_remaining.try_into().unwrap(),
         mining_rules.clone(),
         rocksdb_preset,
+        rocksdb_mem_budget,
         wal_dir.clone(),
         cache_budget,
     ));
@@ -632,6 +642,7 @@ Do you confirm? (y/n)";
             .with_db_path(utxoindex_db_dir.clone())
             .with_files_limit(utxo_files_limit)
             .with_preset(rocksdb_preset)
+            .with_mem_budget(rocksdb_mem_budget)
             .with_wal_dir(wal_dir.clone())
             .with_cache_budget(cache_budget)
             .build()
