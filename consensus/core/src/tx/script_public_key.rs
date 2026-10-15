@@ -49,7 +49,7 @@ export interface IScriptPublicKey {
 
 /// Represents a Kaspad ScriptPublicKey
 /// @category Consensus
-#[derive(Default, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, CastFromJs)]
+#[derive(Default, PartialEq, Eq, Clone, Hash, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
