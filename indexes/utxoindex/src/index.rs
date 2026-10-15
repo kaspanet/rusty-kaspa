@@ -15,7 +15,9 @@ use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{DB, StoreError, StoreResult};
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoEntriesPage, UtxoPageCursor};
+use kaspa_index_core::indexed_utxos::{
+    BalanceByScriptPublicKey, CovenantUtxoPageCursor, OrderedCovenantUtxoEntriesPage, OrderedUtxoEntriesPage, UtxoPageCursor,
+};
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
@@ -82,6 +84,18 @@ impl UtxoIndexApi for UtxoIndex {
     ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
         trace!("[{0}] retrieving utxos by daa-score range for {1} script public keys (paged)", IDENT, script_public_keys.len());
         self.store.get_utxos_from_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)
+    }
+
+    fn get_utxos_by_covenant_ids_page(
+        &self,
+        covenant_ids: Vec<Hash>,
+        daa_score_range: RangeInclusive<u64>,
+        script_public_keys: &[ScriptPublicKey],
+        cursor: Option<CovenantUtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage> {
+        trace!("[{0}] retrieving utxos by daa-score range for {1} covenant ids (paged)", IDENT, covenant_ids.len());
+        self.store.get_utxos_by_covenant_ids_page(covenant_ids, daa_score_range, script_public_keys, cursor, limit)
     }
 
     /// Retrieve utxos by script public keys from the utxoindex db.

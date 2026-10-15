@@ -25,7 +25,7 @@ pub const VERSION_TYPE_SIZE: usize = std::mem::size_of::<ScriptPublicKeyVersion>
 
 /// [`ScriptPublicKeyBucket`].
 /// Consists of 2 bytes of little endian [VersionType] bytes, followed by the script length (8) and by a variable size of [ScriptVec].
-#[derive(Eq, Hash, PartialEq, Debug, Clone)]
+#[derive(Eq, Hash, PartialEq, PartialOrd, Ord, Debug, Clone)]
 pub struct ScriptPublicKeyBucket(Vec<u8>);
 
 impl ScriptPublicKeyBucket {
@@ -205,6 +205,20 @@ pub struct DbUtxoSetByScriptPublicKeyStore {
 impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndex.into()) }
+    }
+
+    /// Reads a single utxo entry by its full access key.
+    pub fn get_compact_utxo_entry(
+        &self,
+        script_public_key: &ScriptPublicKey,
+        daa_score: u64,
+        outpoint: &TransactionOutpoint,
+    ) -> StoreResult<CompactUtxoEntry> {
+        self.access.read(UtxoEntryDbKey::new(
+            ScriptPublicKeyBucket::from(script_public_key),
+            DaaScoreKey::from(daa_score),
+            TransactionOutpointKey::from(outpoint),
+        ))
     }
 }
 
