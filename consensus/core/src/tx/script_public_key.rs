@@ -56,12 +56,6 @@ pub struct ScriptPublicKey {
     pub(super) script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
-impl ScriptPublicKey {
-    pub fn empty() -> Self {
-        Self { version: 0, script: SmallVec::new() }
-    }
-}
-
 impl std::fmt::Debug for ScriptPublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScriptPublicKey").field("version", &self.version).field("script", &self.script.to_hex()).finish()
