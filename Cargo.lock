@@ -3324,7 +3324,6 @@ dependencies = [
  "kaspa-utils",
  "secp256k1",
  "serde",
- "serde-value",
  "serde-wasm-bindgen",
  "serde_json",
  "serde_yaml",

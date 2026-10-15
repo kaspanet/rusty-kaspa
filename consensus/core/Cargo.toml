@@ -23,7 +23,6 @@ std = [
     "kaspa-txscript-errors/std",
     "kaspa-utils/std",
     "mem_size",
-    "dep:serde-value",
     "serde/std",
     "thiserror/std",
 ]
@@ -87,7 +86,6 @@ thiserror.workspace = true
 arc-swap = { workspace = true, optional = true }
 getrandom = { workspace = true, optional = true }
 secp256k1 = { workspace = true, optional = true }
-serde-value = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
 serde-wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
