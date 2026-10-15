@@ -20,7 +20,7 @@ use workflow_wasm::convert::*;
 use workflow_wasm::extensions::*;
 use workflow_wasm::serde::to_value;
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32"))]
 mod tests;
 
 macro_rules! try_from {
