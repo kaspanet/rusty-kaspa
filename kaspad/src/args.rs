@@ -55,6 +55,7 @@ pub struct Args {
     pub user_agent_comments: Vec<String>,
     pub ua_rule: Vec<String>,
     pub utxoindex: bool,
+    pub covenant_index: bool,
     pub reset_db: bool,
     #[serde(rename = "outpeers")]
     pub outbound_target: usize,
@@ -111,6 +112,7 @@ impl Default for Args {
             unsafe_rpc: false,
             async_threads: num_cpus::get(),
             utxoindex: false,
+            covenant_index: false,
             reset_db: false,
             outbound_target: 8,
             inbound_limit: 128,
@@ -162,6 +164,7 @@ impl Default for Args {
 impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
+        config.covenant_index = self.covenant_index;
         config.disable_upnp = self.disable_upnp;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
@@ -347,6 +350,13 @@ pub fn cli() -> Command {
         )
         .arg(arg!(--utxoindex "Enable the UTXO index").env("KASPAD_UTXOINDEX"))
         .arg(
+            Arg::new("covenant-index")
+                .long("covenant-index")
+                .env("KASPAD_COVENANT_INDEX")
+                .action(ArgAction::SetTrue)
+                .help("Enable the covenant UTXO index (requires --utxoindex)"),
+        )
+        .arg(
             Arg::new("max-tracked-addresses")
                 .long("max-tracked-addresses")
                 .env("KASPAD_MAX_TRACKED_ADDRESSES")
@@ -523,6 +533,7 @@ impl Args {
             enable_unsynced_mining: arg_match_unwrap_or::<bool>(&m, "enable-unsynced-mining", defaults.enable_unsynced_mining),
             enable_mainnet_mining: arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", defaults.enable_mainnet_mining),
             utxoindex: arg_match_unwrap_or::<bool>(&m, "utxoindex", defaults.utxoindex),
+            covenant_index: arg_match_unwrap_or::<bool>(&m, "covenant-index", defaults.covenant_index),
             testnet: arg_match_unwrap_or::<bool>(&m, "testnet", defaults.testnet),
             testnet_suffix: arg_match_unwrap_or::<u32>(&m, "netsuffix", defaults.testnet_suffix),
             devnet: arg_match_unwrap_or::<bool>(&m, "devnet", defaults.devnet),
@@ -561,6 +572,10 @@ impl Args {
 
         validate_ua_rules(&args.ua_rule)?;
 
+        if args.covenant_index && !args.utxoindex {
+            return Err(clap::Error::raw(clap::error::ErrorKind::ValueValidation, "--covenant-index requires --utxoindex"));
+        }
+
         Ok(args)
     }
 }
@@ -590,6 +605,14 @@ fn validate_ua_rules(rules: &[String]) -> Result<(), clap::Error> {
 #[cfg(test)]
 mod tests {
     use super::Args;
+
+    #[test]
+    fn rejects_covenant_index_without_utxoindex() {
+        let err = Args::parse(["kaspad", "--covenant-index"]).unwrap_err();
+        assert!(err.to_string().contains("--covenant-index requires --utxoindex"));
+
+        Args::parse(["kaspad", "--covenant-index", "--utxoindex"]).unwrap();
+    }
 
     #[test]
     fn parses_ua_rules() {
