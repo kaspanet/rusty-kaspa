@@ -60,6 +60,9 @@ impl UtxoIndex {
         } else {
             utxoindex.monotonic_circulating_supply = utxoindex.store.get_circulating_supply()?;
         }
+        if utxoindex.covenant_index {
+            utxoindex.store.migrate_covenant_index()?;
+        }
         let utxoindex = Arc::new(RwLock::new(utxoindex));
         consensus_manager.register_consensus_reset_handler(Arc::new(UtxoIndexConsensusResetHandler::new(Arc::downgrade(&utxoindex))));
         Ok(utxoindex)
