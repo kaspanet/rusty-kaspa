@@ -48,7 +48,9 @@ impl UserAgentRuleSet {
         for rule in rules {
             match UserAgentRule::parse(rule) {
                 Ok(rule) => rule_set.add(rule),
-                Err(err) => warn!("Ignoring invalid user agent rule `{}`: {}", rule, err),
+                Err(err) => {
+                    warn!("Ignoring invalid user agent rule `{}`: {}", rule, err);
+                }
             }
         }
         rule_set

@@ -418,7 +418,7 @@ impl PruningProcessor {
                     pruned_tips.len(),
                     pruned_tips.iter().take(5.min(pruned_tips.len().div_ceil(2))).reusable_format(", "),
                     pruned_tips.iter().rev().take(5.min(pruned_tips.len() / 2)).reusable_format(", ")
-                )
+                );
             }
 
             // Prune the selected chain index below the pruning point

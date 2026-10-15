@@ -119,13 +119,17 @@ mod tests {
 
         let (len, capacity) = length_and_capacity(&items[0]);
         match len > 0 {
-            true => trace!(
-                "Actual item: len = {}, capacity = {}, free space = +{:.1}%",
-                len,
-                capacity,
-                (capacity - len) as f64 * 100.0 / len as f64
-            ),
-            false => trace!("Actual item: len = {}, capacity = {}", len, capacity),
+            true => {
+                trace!(
+                    "Actual item: len = {}, capacity = {}, free space = +{:.1}%",
+                    len,
+                    capacity,
+                    (capacity - len) as f64 * 100.0 / len as f64
+                );
+            }
+            false => {
+                trace!("Actual item: len = {}, capacity = {}", len, capacity);
+            }
         }
 
         items
