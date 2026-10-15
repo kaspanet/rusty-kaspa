@@ -55,6 +55,7 @@ declare_wasm_handlers!([
     TransactionsDataGet,
     TransactionsReplaceNote,
     TransactionsReplaceMetadata,
+    TransactionsExportCsv,
     AddressBookEnumerate,
     FeeRateEstimate,
     FeeRatePollerEnable,
