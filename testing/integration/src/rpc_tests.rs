@@ -54,6 +54,7 @@ async fn sanity_test() {
         enable_unsynced_mining: true,
         block_template_cache_lifetime: Some(0),
         utxoindex: true,
+        covenant_index: true,
         unsafe_rpc: true,
         ..Default::default()
     };
@@ -454,6 +455,22 @@ async fn sanity_test() {
                         .await
                         .unwrap();
                     assert!(response.entries.is_empty());
+                })
+            }
+
+            KaspadPayloadOps::GetUtxosByCovenantIds => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let covenant_ids = vec![Hash::from_bytes([1u8; 32])];
+                    let response = rpc_client
+                        .get_utxos_by_covenant_ids_call(
+                            None,
+                            GetUtxosByCovenantIdsRequest::new(covenant_ids, vec![], None, None, None, None),
+                        )
+                        .await
+                        .unwrap();
+                    assert!(response.entries.is_empty());
+                    assert!(response.next_cursor.is_none());
                 })
             }
 

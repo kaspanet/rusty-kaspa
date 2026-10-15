@@ -57,8 +57,9 @@ use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
 use kaspa_rpc_core::api::rpc::{
-    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT,
-    MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE,
+    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, DEFAULT_GET_UTXOS_BY_COVENANT_IDS_LIMIT,
+    MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT, MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE,
+    MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT, MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_PAGE_SIZE,
 };
 use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
@@ -913,6 +914,95 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let entries = self.index_converter.get_ordered_utxos_by_addresses_entries(entries);
 
         Ok(GetUtxosByAddressesV2Response::new(entries, next_cursor.map(|c| (c, self.config.prefix()).try_into()).transpose()?))
+    }
+
+    async fn get_utxos_by_covenant_ids_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        mut request: GetUtxosByCovenantIdsRequest,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        if !self.config.covenant_index {
+            return Err(RpcError::NoCovenantIndex);
+        }
+
+        // An empty covenant id set is an invalid request, preventing accidental unbounded queries.
+        if request.covenant_ids.is_empty() {
+            return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(UtxoIndexError::QueryingEmptyCovenantIdSet.to_string()));
+        }
+
+        let limit = request.limit.unwrap_or(DEFAULT_GET_UTXOS_BY_COVENANT_IDS_LIMIT);
+
+        if !self.config.unsafe_rpc
+            && (request.covenant_ids.len() > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT
+                || request.script_public_keys.len() > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT)
+        {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        if !self.config.unsafe_rpc && (limit > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_PAGE_SIZE) {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+
+        if limit == 0 {
+            return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest("limit must be greater than zero".to_string()));
+        }
+
+        // Some checks and preparations for the cursor and DAA score range.
+        let (from_daa_score, to_daa_score) = if let Some(ref mut cursor) = request.cursor {
+            if let Some(start_covenant_id) = cursor.start_covenant_id {
+                // if set manually, it must be one of the requested covenant ids.
+                if !request.covenant_ids.contains(&start_covenant_id) {
+                    return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(
+                        "cursor start covenant id must be one of the requested covenant ids".to_string(),
+                    ));
+                }
+            } else {
+                // point the start covenant id of the cursor to the first id in the request if it is not already set.
+                cursor.start_covenant_id = Some(request.covenant_ids[0]);
+            };
+
+            // make sure cursor's start DAA score is within the specified DAA score range.
+            let from_daa_score = request.from_daa_score.unwrap_or(0);
+            let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
+
+            if cursor.start_daa_score < from_daa_score || cursor.start_daa_score > to_daa_score {
+                return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(format!(
+                    "cursor.daa_score {} must be within from_daa_score and to_daa_score",
+                    cursor.start_daa_score
+                )));
+            }
+            // return the DAA score range for further processing.
+            (from_daa_score, to_daa_score)
+        } else {
+            // return the DAA score range for further processing.
+            (request.from_daa_score.unwrap_or(0), request.to_daa_score.unwrap_or(u64::MAX))
+        };
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let page = self
+            .utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_by_covenant_ids_page(
+                request.covenant_ids.clone(),
+                from_daa_score..=to_daa_score,
+                request.script_public_keys.clone(),
+                request.cursor.map(|r| r.try_into()).transpose()?,
+                Some(limit),
+            )
+            .await
+            .map_err(|e| RpcError::InvalidGetUtxosByCovenantIdsRequest(e.to_string()))?;
+
+        let entries = self.index_converter.get_ordered_utxos_by_covenant_ids_entries(page.entries());
+
+        Ok(GetUtxosByCovenantIdsResponse::new(entries, page.next_cursor().map(RpcGetUtxosByCovenantIdsCursor::from)))
     }
 
     async fn get_balance_by_address_call(
