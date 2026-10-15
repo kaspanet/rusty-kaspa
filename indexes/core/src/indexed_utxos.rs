@@ -201,7 +201,7 @@ mod tests {
     fn bytes_from_hex(hex: &str) -> Vec<u8> {
         let mut bytes = vec![0u8; hex.len() / 2];
         faster_hex::hex_decode(hex.as_bytes(), &mut bytes).unwrap();
-        bytes.to_vec()
+        bytes
     }
 
     fn pre_toccata_bytes() -> Vec<u8> {
