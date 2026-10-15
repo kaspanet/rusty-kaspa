@@ -15,6 +15,7 @@ use crate::{
     stores::{
         db_metadata::{DbUtxoIndexDbMetaStore, UtxoIndexDbMetaData, UtxoIndexDbMetaStore, UtxoIndexDbMetaStoreReader},
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
+        indexed_utxos_by_covenant_id::{DbUtxoSetByCovenantIdStore, UtxoSetByCovenantIdStore},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },
@@ -28,6 +29,7 @@ pub struct Store {
     circulating_supply_store: DbCirculatingSupplyStore,
     db_version_store: DbUtxoIndexDbMetaStore,
     utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore,
+    utxos_by_covenant_id_store: DbUtxoSetByCovenantIdStore,
 }
 
 impl Store {
@@ -36,7 +38,8 @@ impl Store {
             utxoindex_tips_store: DbUtxoIndexTipsStore::new(db.clone()),
             circulating_supply_store: DbCirculatingSupplyStore::new(db.clone()),
             db_version_store: DbUtxoIndexDbMetaStore::new(db.clone()),
-            utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty),
+            utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty),
+            utxos_by_covenant_id_store: DbUtxoSetByCovenantIdStore::new(db, CachePolicy::Empty),
         }
     }
 
@@ -174,6 +177,7 @@ impl Store {
         self.circulating_supply_store.remove()?;
         self.db_version_store.remove()?;
         self.utxos_by_script_public_key_store.delete_all()?;
+        self.utxos_by_covenant_id_store.delete_all()?;
 
         trace!("[{0}] clearing utxoindex database - success!", IDENT);
 

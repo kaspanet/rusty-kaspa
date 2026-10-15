@@ -87,6 +87,9 @@ impl OrderedUtxoEntriesPage {
 /// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxoEntry`].
 pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
 
+/// A collection of covenant index writes keyed by [`Hash`] (the covenant id) with no payload.
+pub type UtxoSetByCovenantId = HashMap<Hash, Vec<(ScriptPublicKey, UtxoEntryKeySuffixRecord)>>;
+
 /// A map of balance by script public key
 pub type BalanceByScriptPublicKey = HashMap<ScriptPublicKey, u64>;
 

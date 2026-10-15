@@ -26,7 +26,17 @@ pub const VERSION_TYPE_SIZE: usize = std::mem::size_of::<ScriptPublicKeyVersion>
 /// [`ScriptPublicKeyBucket`].
 /// Consists of 2 bytes of little endian [VersionType] bytes, followed by the script length (8) and by a variable size of [ScriptVec].
 #[derive(Eq, Hash, PartialEq, Debug, Clone)]
-struct ScriptPublicKeyBucket(Vec<u8>);
+pub struct ScriptPublicKeyBucket(Vec<u8>);
+
+impl ScriptPublicKeyBucket {
+    pub fn empty() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+}
 
 impl From<&ScriptPublicKey> for ScriptPublicKeyBucket {
     fn from(script_public_key: &ScriptPublicKey) -> Self {
@@ -71,7 +81,13 @@ pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_
 /// [TransactionOutpoint] key which references the [CompactUtxoEntry] within a [ScriptPublicKeyBucket]
 /// Consists of 32 bytes of [TransactionId], followed by 4 bytes of little endian [TransactionIndexType]
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
-struct TransactionOutpointKey([u8; TRANSACTION_OUTPOINT_KEY_SIZE]);
+pub struct TransactionOutpointKey([u8; TRANSACTION_OUTPOINT_KEY_SIZE]);
+
+impl TransactionOutpointKey {
+    pub fn from_bytes(bytes: [u8; TRANSACTION_OUTPOINT_KEY_SIZE]) -> Self {
+        Self(bytes)
+    }
+}
 
 impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
@@ -99,7 +115,7 @@ impl AsRef<[u8]> for TransactionOutpointKey {
 }
 
 pub const DAA_SCORE_KEY_SIZE: usize = size_of::<u64>();
-type DaaScoreKey = BigEndianU64;
+pub type DaaScoreKey = BigEndianU64;
 
 /// Full [CompactUtxoEntry] access key.
 /// Consists of variable amount of bytes of [ScriptPublicKeyBucket], followed by [DaaScoreKey], and [TransactionOutpointKey].
