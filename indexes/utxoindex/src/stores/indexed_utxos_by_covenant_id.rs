@@ -134,6 +134,8 @@ pub struct DbUtxoSetByCovenantIdStore {
     spk_store: DbUtxoSetByScriptPublicKeyStore,
 }
 
+const COVENANT_BACKFILL_BATCH_SIZE: usize = 2048;
+
 impl DbUtxoSetByCovenantIdStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy, spk_store: DbUtxoSetByScriptPublicKeyStore) -> Self {
         Self {
@@ -141,6 +143,36 @@ impl DbUtxoSetByCovenantIdStore {
             access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndexCovenant.into()),
             spk_store,
         }
+    }
+
+    /// Initializes (or re-initializes) the covenant index: rewrites every covenant row from the
+    /// current script public key store contents, in batches.
+    pub fn backfill_from_spk_store(&mut self) -> StoreResult<()> {
+        let mut batch: Vec<(CovenantUtxoEntryDbKey, CovenantIndexEntry)> = Vec::with_capacity(COVENANT_BACKFILL_BATCH_SIZE);
+        for res in self.spk_store.iterate_utxo_entries() {
+            let (script_public_key, suffix, entry) = res?;
+            if let Some(covenant_id) = entry.covenant_id {
+                batch.push((
+                    CovenantUtxoEntryDbKey::new(
+                        covenant_id,
+                        DaaScoreKey::from(suffix.daa_score()),
+                        ScriptPublicKeyBucket::from(&script_public_key),
+                        TransactionOutpointKey::from(suffix.transaction_outpoint()),
+                    ),
+                    CovenantIndexEntry,
+                ));
+                if batch.len() == COVENANT_BACKFILL_BATCH_SIZE {
+                    let mut iter = batch.into_iter();
+                    self.access.write_many_without_cache(DirectDbWriter::new(&self.db), &mut iter)?;
+                    batch = Vec::with_capacity(COVENANT_BACKFILL_BATCH_SIZE);
+                }
+            }
+        }
+        if !batch.is_empty() {
+            let mut iter = batch.into_iter();
+            self.access.write_many_without_cache(DirectDbWriter::new(&self.db), &mut iter)?;
+        }
+        Ok(())
     }
 }
 

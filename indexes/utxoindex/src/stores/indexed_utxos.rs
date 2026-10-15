@@ -207,6 +207,17 @@ impl DbUtxoSetByScriptPublicKeyStore {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndex.into()) }
     }
 
+    /// Streams every row as (script public key, key suffix record, compact entry) in key order.
+    pub fn iterate_utxo_entries(
+        &self,
+    ) -> impl Iterator<Item = StoreResult<(ScriptPublicKey, UtxoEntryKeySuffixRecord, CompactUtxoEntry)>> + '_ {
+        self.access.iterator().map(|res| {
+            let (key, value) = res.unwrap();
+            let (script_public_key, utxo_key_suffix_record) = UtxoEntryDbKey(Arc::new(key.to_vec())).extract_data();
+            Ok((script_public_key, utxo_key_suffix_record, value))
+        })
+    }
+
     /// Reads a single utxo entry by its full access key.
     pub fn get_compact_utxo_entry(
         &self,
