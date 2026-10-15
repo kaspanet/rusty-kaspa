@@ -505,7 +505,7 @@ where
 
         std::iter::from_fn(move || {
             loop {
-                let Some(range) = current_seek_range.as_ref() else { return None };
+                let range = current_seek_range.as_ref()?;
                 if !db_iterator.valid() {
                     if let Err(err) = db_iterator.status() {
                         current_seek_range = None;
