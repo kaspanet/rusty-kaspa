@@ -255,10 +255,6 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         };
 
         // cursor daa_score is outside of the specified range, thus it is invalid.
-        if cursor.daa_score < *daa_score_range.start() || cursor.daa_score > *daa_score_range.end() {
-            return Err(UtxoIndexError::InvalidCursor(cursor.clone()));
-        }
-
         let cursor_start_daa_score = cursor.daa_score;
         if cursor_start_daa_score < *daa_score_range.start() || cursor_start_daa_score > *daa_score_range.end() {
             return Err(UtxoIndexError::InvalidCursor(cursor.clone()));
