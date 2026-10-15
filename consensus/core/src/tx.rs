@@ -9,6 +9,7 @@
 mod script_public_key;
 mod serde_impl;
 
+use crate::HashSet;
 use crate::mass::{ComputeBudget, NonContextualMasses, ScriptUnits, SigopCount, free_script_units_per_input};
 #[cfg(feature = "std")]
 use crate::mass::{ContextualMasses, Mass, MassCofactors};
@@ -27,7 +28,6 @@ use core::{
     ops::Range,
     str::{self},
 };
-use hashbrown::HashSet;
 use kaspa_hashes::Hash;
 use kaspa_utils::hex::ToHex;
 #[cfg(feature = "mem_size")]
