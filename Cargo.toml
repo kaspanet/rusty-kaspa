@@ -72,7 +72,7 @@ members = [
 ]
 
 [workspace.package]
-rust-version = "1.91.0"
+rust-version = "1.95.0"
 version = "2.1.0"
 authors = ["Kaspa developers"]
 license = "ISC"
@@ -161,7 +161,7 @@ argon2 = "0.5.2"
 async-channel = { version = "2.0.0", default-features = false }
 async-lock = { version = "3.4.2" }
 async-stream = "0.3.5"
-async-trait = "0.1.88"
+async-trait = "0.1.92"
 base64 = "0.22.1"
 bincode = { version = "1.3.3", default-features = false }
 bitflags = "2.9.4"
