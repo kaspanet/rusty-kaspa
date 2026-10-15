@@ -232,6 +232,11 @@ impl IbdFlow {
             n => info!("IBD post processing: unorphaned {} blocks ...{}", n, unorphaned_hashes.last().unwrap()),
         }
 
+        // Blocks synced by IBD never pass through `FlowContext::on_new_block`, so the mempool was not told
+        // about the transactions they accepted. Revalidate it against the current UTXO set so those are
+        // evicted now rather than lingering until expiry (and ending up in block templates meanwhile).
+        self.ctx.revalidate_mempool(&session).await;
+
         Ok(())
     }
 

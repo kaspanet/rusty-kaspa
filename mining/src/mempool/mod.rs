@@ -146,6 +146,11 @@ impl Mempool {
         self.transaction_pool.all_transaction_ids_with_priority(priority)
     }
 
+    pub(crate) fn all_transaction_ids(&self) -> Vec<TransactionId> {
+        let _sw = Stopwatch::<15>::with_threshold("all_transaction_ids op");
+        self.transaction_pool.all_transaction_ids()
+    }
+
     pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
         self.transaction_pool.update_revalidated_transaction(transaction)
     }

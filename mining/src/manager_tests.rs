@@ -1119,6 +1119,133 @@ mod tests {
         assert!(orphan_txs.is_empty(), "orphan pool should be empty");
     }
 
+    /// test_revalidate_all_transactions_evicts_transactions_accepted_without_block_notification verifies that a
+    /// low priority transaction accepted by consensus through a path that bypassed `handle_new_block_transactions`
+    /// (as blocks synced during IBD do) is evicted by the full revalidation, while its redeemer and an unrelated
+    /// high priority transaction are kept. It also documents that the periodic high priority revalidation leaves
+    /// such a transaction in place.
+    #[test]
+    fn test_revalidate_all_transactions_evicts_transactions_accepted_without_block_notification() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let mining_manager = default_mining_manager();
+
+        // A low priority (relayed) parent and its child, both in the mempool
+        let (parent_tx, child_tx) = create_parent_and_children_transactions(&consensus, vec![3000 * SOMPI_PER_KASPA]);
+        for tx in [parent_tx.clone(), child_tx.clone()] {
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                tx,
+                Priority::Low,
+                Orphan::Allowed,
+                RbfPolicy::Allowed,
+            );
+            assert!(result.is_ok(), "the insertion in the mempool of a low priority transaction failed: {:?}", result.err());
+        }
+
+        // An unrelated high priority (RPC-submitted) transaction
+        let high_priority_tx = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
+        let result = mining_manager.validate_and_insert_transaction(
+            consensus.as_ref(),
+            high_priority_tx.clone(),
+            Priority::High,
+            Orphan::Allowed,
+            RbfPolicy::Forbidden,
+        );
+        assert!(result.is_ok(), "the insertion in the mempool of the high priority transaction failed: {:?}", result.err());
+
+        // Simulate: parent_tx gets accepted by a block that reached consensus without passing through the mempool,
+        // which is what happens to blocks synced during IBD. Its inputs are now spent and its outputs are in the UTXO set.
+        consensus.add_transaction(parent_tx.clone(), 2);
+
+        // The periodic high priority revalidation does not look at low priority transactions, so parent_tx stays
+        let (tx, mut rx) = unbounded_channel();
+        mining_manager.revalidate_high_priority_transactions(consensus.as_ref(), tx);
+        assert_eq!(
+            rx.blocking_recv(),
+            Some(vec![high_priority_tx.id()]),
+            "the high priority revalidation must report the high priority transaction as valid"
+        );
+        assert!(
+            mining_manager.get_transaction(&parent_tx.id(), TransactionQuery::TransactionsOnly).is_some(),
+            "the accepted low priority transaction must survive the high priority revalidation"
+        );
+
+        // The full revalidation evicts parent_tx (its outpoints are gone) and keeps the other two. The child is
+        // populated from the mempool (its parent is still there when the pass starts) so it is not reported,
+        // and only the high priority transaction goes through consensus.
+        let (tx, mut rx) = unbounded_channel();
+        mining_manager.revalidate_all_transactions(consensus.as_ref(), tx);
+        let mut valid_ids = vec![];
+        while let Some(ids) = rx.blocking_recv() {
+            valid_ids.extend(ids);
+        }
+        assert_eq!(valid_ids, vec![high_priority_tx.id()], "only the consensus-validated transaction must be reported");
+        assert!(
+            mining_manager.get_transaction(&parent_tx.id(), TransactionQuery::TransactionsOnly).is_none(),
+            "the accepted low priority transaction must be evicted by the full revalidation"
+        );
+        assert!(
+            mining_manager.get_transaction(&child_tx.id(), TransactionQuery::TransactionsOnly).is_some(),
+            "the redeemer of the evicted transaction must be kept"
+        );
+        assert!(
+            mining_manager.get_transaction(&high_priority_tx.id(), TransactionQuery::TransactionsOnly).is_some(),
+            "the high priority transaction must be kept"
+        );
+        let (populated_txs, orphan_txs) = mining_manager.get_all_transactions(TransactionQuery::All);
+        assert_eq!(2, populated_txs.len(), "the mempool must hold exactly the child and the high priority transaction");
+        assert!(orphan_txs.is_empty(), "orphan pool should be empty");
+
+        // The surviving child now funds from consensus only, so a second pass validates it there and reports both
+        let (tx, mut rx) = unbounded_channel();
+        mining_manager.revalidate_all_transactions(consensus.as_ref(), tx);
+        let mut valid_ids = vec![];
+        while let Some(ids) = rx.blocking_recv() {
+            valid_ids.extend(ids);
+        }
+        valid_ids.sort();
+        let mut expected_ids = vec![child_tx.id(), high_priority_tx.id()];
+        expected_ids.sort();
+        assert_eq!(valid_ids, expected_ids, "both remaining transactions must be validated by consensus and kept");
+        let (populated_txs, _) = mining_manager.get_all_transactions(TransactionQuery::All);
+        assert_eq!(2, populated_txs.len(), "the second pass must not remove anything");
+    }
+
+    /// test_revalidate_all_transactions_on_empty_mempool verifies that the full revalidation of an empty mempool
+    /// (a fresh node finishing its first IBD) reports nothing.
+    #[test]
+    fn test_revalidate_all_transactions_on_empty_mempool() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let mining_manager = default_mining_manager();
+        let (tx, mut rx) = unbounded_channel();
+        mining_manager.revalidate_all_transactions(consensus.as_ref(), tx);
+        assert_eq!(Err(TryRecvError::Disconnected), rx.try_recv(), "the revalidation of an empty mempool must yield no message");
+    }
+
+    /// test_revalidate_all_transactions_tolerates_dropped_receiver verifies that the full revalidation works when the
+    /// caller is not interested in the valid ids and has already dropped the receiving end, as the IBD flow does.
+    #[test]
+    fn test_revalidate_all_transactions_tolerates_dropped_receiver() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let mining_manager = default_mining_manager();
+        let child_tx = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
+        let result = mining_manager.validate_and_insert_transaction(
+            consensus.as_ref(),
+            child_tx.clone(),
+            Priority::Low,
+            Orphan::Allowed,
+            RbfPolicy::Allowed,
+        );
+        assert!(result.is_ok(), "the insertion in the mempool of the transaction failed: {:?}", result.err());
+
+        let (tx, _) = unbounded_channel();
+        mining_manager.revalidate_all_transactions(consensus.as_ref(), tx);
+        assert!(
+            mining_manager.get_transaction(&child_tx.id(), TransactionQuery::TransactionsOnly).is_some(),
+            "a valid transaction must be kept even though nobody listens for the valid ids"
+        );
+    }
+
     /// test_modify_block_template verifies that modifying a block template changes coinbase data correctly.
     #[test]
     fn test_modify_block_template() {
