@@ -863,14 +863,10 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         // Some checks and preparations for the cursor and DAA score range.
         let (from_daa_score, to_daa_score) = if let Some(ref mut cursor) = request.cursor {
-            let request_first_address = request.addresses[0].clone();
-            if cursor.start_address.is_none() {
-                // point the start address of the cursor to the first address in the request if it is not already set.
-                cursor.start_address = Some(request_first_address.clone());
-            } else if cursor.start_address != Some(request_first_address.clone()) {
-                // if set manually, it must match the first address in the request's address list.
+            let start_address = cursor.start_address.get_or_insert_with(|| request.addresses[0].clone());
+            if !request.addresses.contains(start_address) {
                 return Err(RpcError::InvalidGetUtxosByAddressesV2Request(
-                    "cursor start address must match the first address in the request's address list".to_string(),
+                    "cursor start address must be included in the request's address list".to_string(),
                 ));
             };
 

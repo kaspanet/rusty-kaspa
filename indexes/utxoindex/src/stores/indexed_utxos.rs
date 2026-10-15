@@ -239,29 +239,21 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         cursor: Option<UtxoPageCursor>,
         limit: Option<usize>,
     ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
-        if script_public_keys.is_empty() {
-            // user queried for no script public keys, we define this as an invalid query.
-            // Potential TODO: We might also want to define this as "all" script public keys, in some future,
-            // this would allow for callers to query all utxos within daa-score range-bounds.
+        let Some(first_spk) = script_public_keys.first() else {
+            // spk filter is required
             return Err(UtxoIndexError::QueryingEmptyAddressSet);
-        }
-
-        let cursor = if let Some(cursor) = &cursor {
-            // use the supplied cursor
-            cursor
-        } else {
-            // create a cursor pointing to the start
-            &UtxoPageCursor::new(script_public_keys.first().cloned().unwrap(), *daa_score_range.start(), TransactionOutpoint::EMPTY)
         };
+
+        // initialize if not provided
+        let cursor =
+            cursor.unwrap_or_else(|| UtxoPageCursor::new(first_spk.clone(), *daa_score_range.start(), TransactionOutpoint::EMPTY));
 
         // cursor daa_score is outside of the specified range, thus it is invalid.
         let cursor_start_daa_score = cursor.daa_score;
-        if cursor_start_daa_score < *daa_score_range.start() || cursor_start_daa_score > *daa_score_range.end() {
-            return Err(UtxoIndexError::InvalidCursor(cursor.clone()));
-        }
 
-        if cursor.script_public_key != script_public_keys[0] {
-            // first spk of input should match the cursor spk.
+        // Skip through the cursor SPK, leaving only later SPKs to query from the range start.
+        let mut remaining_script_public_keys = script_public_keys.iter();
+        if !daa_score_range.contains(&cursor.daa_score) || !remaining_script_public_keys.any(|spk| *spk == cursor.script_public_key) {
             return Err(UtxoIndexError::InvalidCursor(cursor.clone()));
         }
 
@@ -280,22 +272,19 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             );
             RangeInclusive::new(start_key, end_key)
         })
-        .chain(script_public_keys
-            .iter()
-            .skip(1)// we skip the start_cursor spk
-            .map(|script_public_key| {
-                let start_key = UtxoEntryDbKey::new(
-                    ScriptPublicKeyBucket::from(script_public_key),
-                    DaaScoreKey::from(*daa_score_range.start()),
-                    TransactionOutpointKey::from(&TransactionOutpoint::EMPTY),
-                );
-                let end_key = UtxoEntryDbKey::new(
-                    ScriptPublicKeyBucket::from(script_public_key),
-                    DaaScoreKey::from(*daa_score_range.end()),
-                    TransactionOutpointKey::from(&TransactionOutpoint::MAX),
-                );
-                RangeInclusive::new(start_key, end_key)
-            }));
+        .chain(remaining_script_public_keys.map(|script_public_key| {
+            let start_key = UtxoEntryDbKey::new(
+                ScriptPublicKeyBucket::from(script_public_key),
+                DaaScoreKey::from(*daa_score_range.start()),
+                TransactionOutpointKey::from(&TransactionOutpoint::EMPTY),
+            );
+            let end_key = UtxoEntryDbKey::new(
+                ScriptPublicKeyBucket::from(script_public_key),
+                DaaScoreKey::from(*daa_score_range.end()),
+                TransactionOutpointKey::from(&TransactionOutpoint::MAX),
+            );
+            RangeInclusive::new(start_key, end_key)
+        }));
 
         // +1 in order to return the next cursor
         let extended_limit = limit.map(|l| l.saturating_add(1)).unwrap_or(usize::MAX);
