@@ -254,7 +254,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         // Skip through the cursor SPK, leaving only later SPKs to query from the range start.
         let mut remaining_script_public_keys = script_public_keys.iter();
         if !daa_score_range.contains(&cursor.daa_score) || !remaining_script_public_keys.any(|spk| *spk == cursor.script_public_key) {
-            return Err(UtxoIndexError::InvalidCursor(cursor.clone()));
+            return Err(UtxoIndexError::InvalidCursor(cursor));
         }
 
         // define the key ranges for the db query.
