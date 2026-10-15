@@ -6,7 +6,9 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::spawn_blocking;
 use kaspa_database::prelude::StoreResult;
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoEntriesPage, UtxoPageCursor};
+use kaspa_index_core::indexed_utxos::{
+    BalanceByScriptPublicKey, CovenantUtxoPageCursor, OrderedCovenantUtxoEntriesPage, OrderedUtxoEntriesPage, UtxoPageCursor,
+};
 use parking_lot::RwLock;
 use std::{collections::HashSet, fmt::Debug, ops::RangeInclusive, sync::Arc};
 
@@ -35,6 +37,18 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
         cursor: Option<UtxoPageCursor>,
         limit: Option<usize>,
     ) -> UtxoIndexResult<OrderedUtxoEntriesPage>;
+
+    /// Retrieve ordered UTXOs for multiple covenant ids with cursor pagination. Ids are traversed
+    /// in request order; amount and is_coinbase are resolved from the address store.
+    fn get_utxos_by_covenant_ids_page(
+        &self,
+        covenant_ids: Vec<Hash>,
+        daa_score_range: RangeInclusive<u64>,
+        from_spk: Option<ScriptPublicKey>,
+        to_spk: Option<ScriptPublicKey>,
+        cursor: Option<CovenantUtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage>;
 
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
 
@@ -92,6 +106,22 @@ impl UtxoIndexProxy {
     ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
         spawn_blocking(move || {
             self.inner.read().get_utxos_from_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)
+        })
+        .await
+        .unwrap()
+    }
+
+    pub async fn get_utxos_by_covenant_ids_page(
+        self,
+        covenant_ids: Vec<Hash>,
+        daa_score_range: RangeInclusive<u64>,
+        from_spk: Option<ScriptPublicKey>,
+        to_spk: Option<ScriptPublicKey>,
+        cursor: Option<CovenantUtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage> {
+        spawn_blocking(move || {
+            self.inner.read().get_utxos_by_covenant_ids_page(covenant_ids, daa_score_range, from_spk, to_spk, cursor, limit)
         })
         .await
         .unwrap()

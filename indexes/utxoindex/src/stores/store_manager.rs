@@ -6,7 +6,10 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoEntriesPage, UtxoPageCursor};
+use kaspa_hashes::Hash;
+use kaspa_index_core::indexed_utxos::{
+    BalanceByScriptPublicKey, CovenantUtxoPageCursor, OrderedCovenantUtxoEntriesPage, OrderedUtxoEntriesPage, UtxoPageCursor,
+};
 
 use crate::{
     IDENT,
@@ -15,7 +18,7 @@ use crate::{
     stores::{
         db_metadata::{DbUtxoIndexDbMetaStore, UtxoIndexDbMetaData, UtxoIndexDbMetaStore, UtxoIndexDbMetaStoreReader},
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
-        indexed_utxos_by_covenant_id::{DbUtxoSetByCovenantIdStore, UtxoSetByCovenantIdStore},
+        indexed_utxos_by_covenant_id::{DbUtxoSetByCovenantIdStore, UtxoSetByCovenantIdStore, UtxoSetByCovenantIdStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },
@@ -39,7 +42,11 @@ impl Store {
             circulating_supply_store: DbCirculatingSupplyStore::new(db.clone()),
             db_version_store: DbUtxoIndexDbMetaStore::new(db.clone()),
             utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty),
-            utxos_by_covenant_id_store: DbUtxoSetByCovenantIdStore::new(db, CachePolicy::Empty),
+            utxos_by_covenant_id_store: DbUtxoSetByCovenantIdStore::new(
+                db.clone(),
+                CachePolicy::Empty,
+                DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty),
+            ),
         }
     }
 
@@ -97,6 +104,18 @@ impl Store {
             cursor,
             limit,
         )
+    }
+
+    pub fn get_utxos_by_covenant_ids_page(
+        &self,
+        covenant_ids: Vec<Hash>,
+        daa_score_range: RangeInclusive<u64>,
+        from_spk: Option<ScriptPublicKey>,
+        to_spk: Option<ScriptPublicKey>,
+        cursor: Option<CovenantUtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage> {
+        self.utxos_by_covenant_id_store.get_utxos_by_covenant_ids_page(covenant_ids, daa_score_range, from_spk, to_spk, cursor, limit)
     }
 
     pub fn get_balance_by_script_public_key(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey> {

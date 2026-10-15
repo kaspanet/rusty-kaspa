@@ -63,6 +63,37 @@ impl Display for UtxoPageCursor {
     }
 }
 
+/// Cursor over the covenant index. A missing script public key positions at the
+/// bottom of the (covenant id, daa score) key prefix.
+#[derive(Clone, Debug)]
+pub struct CovenantUtxoPageCursor {
+    pub covenant_id: Hash,
+    pub daa_score: u64,
+    pub script_public_key: Option<ScriptPublicKey>,
+    pub transaction_outpoint: TransactionOutpoint,
+}
+
+impl CovenantUtxoPageCursor {
+    pub fn new(
+        covenant_id: Hash,
+        daa_score: u64,
+        script_public_key: Option<ScriptPublicKey>,
+        transaction_outpoint: TransactionOutpoint,
+    ) -> Self {
+        Self { covenant_id, daa_score, script_public_key, transaction_outpoint }
+    }
+}
+
+impl Display for CovenantUtxoPageCursor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CovenantUtxoPageCursor {{ covenant_id: {}, daa_score: {}, script_public_key: {:?}, transaction_outpoint: {} }}",
+            self.covenant_id, self.daa_score, self.script_public_key, self.transaction_outpoint
+        )
+    }
+}
+
 /// A page of ordered UTXOs with an optional cursor for the next group.
 #[derive(Clone, Debug)]
 pub struct OrderedUtxoEntriesPage {
@@ -80,6 +111,34 @@ impl OrderedUtxoEntriesPage {
     }
 
     pub fn next_cursor(&self) -> Option<&UtxoPageCursor> {
+        self.next_cursor.as_ref()
+    }
+}
+
+/// Covenant UTXOs grouped by covenant id in request order, each row holding its script
+/// public key, key suffix record, and the compact entry resolved from the address store.
+pub type CovenantUtxoEntriesByGroup = Vec<(Hash, Vec<(ScriptPublicKey, UtxoEntryKeySuffixRecord, CompactUtxoEntry)>)>;
+
+/// Shared handle to [`CovenantUtxoEntriesByGroup`].
+pub type OrderedCovenantUtxoEntries = Arc<CovenantUtxoEntriesByGroup>;
+
+/// A page of covenant-ordered UTXOs with an optional cursor for the next group.
+#[derive(Clone, Debug)]
+pub struct OrderedCovenantUtxoEntriesPage {
+    entries: OrderedCovenantUtxoEntries,
+    next_cursor: Option<CovenantUtxoPageCursor>,
+}
+
+impl OrderedCovenantUtxoEntriesPage {
+    pub fn new(entries: OrderedCovenantUtxoEntries, next_cursor: Option<CovenantUtxoPageCursor>) -> Self {
+        Self { entries, next_cursor }
+    }
+
+    pub fn entries(&self) -> &OrderedCovenantUtxoEntries {
+        &self.entries
+    }
+
+    pub fn next_cursor(&self) -> Option<&CovenantUtxoPageCursor> {
         self.next_cursor.as_ref()
     }
 }

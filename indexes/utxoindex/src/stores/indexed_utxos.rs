@@ -208,6 +208,20 @@ impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndex.into()) }
     }
+
+    /// Reads a single utxo entry by its full access key.
+    pub fn get_compact_utxo_entry(
+        &self,
+        script_public_key: &ScriptPublicKey,
+        daa_score: u64,
+        outpoint: &TransactionOutpoint,
+    ) -> StoreResult<CompactUtxoEntry> {
+        self.access.read(UtxoEntryDbKey::new(
+            ScriptPublicKeyBucket::from(script_public_key),
+            DaaScoreKey::from(daa_score),
+            TransactionOutpointKey::from(outpoint),
+        ))
+    }
 }
 
 impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
