@@ -50,7 +50,9 @@ impl CovenantUtxoEntryDbKey {
 
     /// Upper bound covering every key with this covenant id and daa score <= `to_daa_score`, and no key beyond.
     /// With an open daa bound this is the byte successor of the id; an all-0xFF id has no successor, so a
-    /// one-byte-longer 0xFF sentinel is used, which dominates any key extension of the id by the prefix rule.
+    /// one-byte-longer 0xFF sentinel is used. The sentinel covers every key whose daa score leading byte is
+    /// below 0xFF; a 0xFF-leading daa score (>= 0xFF00_0000_0000_0000) sorts past it and is excluded, an
+    /// unreachable daa magnitude by any real block count.
     pub fn range_end(covenant_id: Hash, to_daa_score: u64) -> Self {
         if to_daa_score < u64::MAX {
             return Self::prefix_start(covenant_id, to_daa_score + 1);
@@ -645,5 +647,58 @@ mod tests {
         // a bound at the 255-byte script excludes the 256-byte script per store key order
         let (groups, _) = page_entries(&store, vec![id], 0..=u64::MAX, Some(script_255.clone()), Some(script_255), None, None);
         assert_eq!(groups, vec![(id, vec![1])]);
+    }
+
+    #[test]
+    fn test_all_0xff_covenant_id_queries() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut address_store = DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty);
+        let mut store =
+            DbUtxoSetByCovenantIdStore::new(db, CachePolicy::Empty, DbUtxoSetByScriptPublicKeyStore::clone(&address_store));
+
+        let id = Hash::from_slice(&[0xFFu8; HASH_SIZE]);
+        let other_id = Hash::from_slice(&[0x01u8; HASH_SIZE]);
+        let script_public_key = ScriptPublicKey::from_vec(0, vec![0x01]);
+        populate(
+            &mut address_store,
+            &mut store,
+            vec![
+                (id, 1, script_public_key.clone(), create_outpoint(1, 0), 100),
+                (id, u64::MAX / 2, script_public_key.clone(), create_outpoint(2, 0), 200),
+                (other_id, 5, script_public_key.clone(), create_outpoint(3, 0), 300),
+            ],
+        );
+
+        // open daa bound under the maximum id, requested ahead of a lexicographically smaller id
+        let (groups, next_cursor) = page_entries(&store, vec![id, other_id], 0..=u64::MAX, None, None, None, None);
+        assert_eq!(groups, vec![(id, vec![1, u64::MAX / 2]), (other_id, vec![5])]);
+        assert!(next_cursor.is_none());
+
+        // pagination resumes under the maximum id
+        let (page1, cursor1) = page_entries(&store, vec![id], 0..=u64::MAX, None, None, None, Some(1));
+        assert_eq!(page1, vec![(id, vec![1])]);
+        let cursor1 = cursor1.unwrap();
+        assert_eq!(cursor1.covenant_id, id);
+        let (page2, next2) = page_entries(&store, vec![id], 0..=u64::MAX, None, None, Some(cursor1), Some(1));
+        assert_eq!(page2, vec![(id, vec![u64::MAX / 2])]);
+        assert!(next2.is_none());
+    }
+
+    #[test]
+    fn test_all_0xff_covenant_id_sentinel_ceiling() {
+        let id = Hash::from_slice(&[0xFFu8; HASH_SIZE]);
+        let key = |daa: u64| {
+            CovenantUtxoEntryDbKey::new(
+                id,
+                daa.into(),
+                ScriptPublicKeyBucket::from(&ScriptPublicKey::from_vec(0, vec![0x01])),
+                TransactionOutpointKey::from(&create_outpoint(1, 0)),
+            )
+        };
+        // every reachable daa score (leading byte below 0xFF) stays under the sentinel
+        assert!(key(0) < CovenantUtxoEntryDbKey::range_end(id, u64::MAX));
+        assert!(key(u64::MAX / 2) < CovenantUtxoEntryDbKey::range_end(id, u64::MAX));
+        // a 0xFF-leading daa score is beyond the sentinel; unreachable by any block count
+        assert!(key(u64::MAX) > CovenantUtxoEntryDbKey::range_end(id, u64::MAX));
     }
 }
