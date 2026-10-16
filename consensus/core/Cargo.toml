@@ -59,7 +59,8 @@ wasm32-sdk = [
 metrics = []
 # Use a 64-bit atomic (vs a `Cell`) for the transaction mass field. Required for
 # `Transaction: Sync`; disable on single-threaded targets lacking 64-bit atomics.
-atomic-mass = []
+# Serde's atomic impls are std-only, so this feature pulls in std.
+atomic-mass = ["std"]
 devnet-prealloc = ["std"]
 
 [dependencies]
