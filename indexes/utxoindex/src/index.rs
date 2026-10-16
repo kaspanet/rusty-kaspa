@@ -15,7 +15,9 @@ use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{DB, StoreError, StoreResult};
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::{BalanceByScriptPublicKey, OrderedUtxoEntriesPage, UtxoPageCursor};
+use kaspa_index_core::indexed_utxos::{
+    BalanceByScriptPublicKey, CovenantUtxoPageCursor, OrderedCovenantUtxoEntriesPage, OrderedUtxoEntriesPage, UtxoPageCursor,
+};
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
@@ -33,6 +35,7 @@ const RESYNC_CHUNK_SIZE: usize = 2048; // Increased from 1k (used in go-kaspad),
 pub struct UtxoIndex {
     consensus_manager: Arc<ConsensusManager>,
     store: Store,
+    covenant_index: bool,
     /// A runtime value holding a monotonic supply value. Used to prevent supply fluctuations due
     /// to the single round gap between fee deduction and its payment to miners
     monotonic_circulating_supply: CirculatingSupply,
@@ -43,14 +46,24 @@ impl UtxoIndex {
         Store::new(db).has_legacy_db_version()
     }
 
-    /// Creates a new [`UtxoIndex`] within a [`RwLock`]
-    pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
-        let mut utxoindex =
-            Self { consensus_manager: consensus_manager.clone(), store: Store::new(db), monotonic_circulating_supply: 0 };
+    /// Creates a new [`UtxoIndex`] within a [`RwLock`]. When `covenant_index` is set, utxo
+    /// diffs also maintain the covenant index store.
+    pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>, covenant_index: bool) -> UtxoIndexResult<Arc<RwLock<Self>>> {
+        let mut utxoindex = Self {
+            consensus_manager: consensus_manager.clone(),
+            store: Store::new(db),
+            covenant_index,
+            monotonic_circulating_supply: 0,
+        };
         if !utxoindex.is_synced()? {
             utxoindex.resync()?;
         } else {
             utxoindex.monotonic_circulating_supply = utxoindex.store.get_circulating_supply()?;
+        }
+        if utxoindex.covenant_index {
+            utxoindex.store.migrate_covenant_index()?;
+        } else {
+            utxoindex.store.invalidate_covenant_index()?;
         }
         let utxoindex = Arc::new(RwLock::new(utxoindex));
         consensus_manager.register_consensus_reset_handler(Arc::new(UtxoIndexConsensusResetHandler::new(Arc::downgrade(&utxoindex))));
@@ -84,6 +97,19 @@ impl UtxoIndexApi for UtxoIndex {
         self.store.get_utxos_from_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)
     }
 
+    fn get_utxos_by_covenant_ids_page(
+        &self,
+        covenant_ids: Vec<Hash>,
+        daa_score_range: RangeInclusive<u64>,
+        from_spk: Option<ScriptPublicKey>,
+        to_spk: Option<ScriptPublicKey>,
+        cursor: Option<CovenantUtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage> {
+        trace!("[{0}] retrieving utxos by daa-score range for {1} covenant ids (paged)", IDENT, covenant_ids.len());
+        self.store.get_utxos_by_covenant_ids_page(covenant_ids, daa_score_range, from_spk, to_spk, cursor, limit)
+    }
+
     /// Retrieve utxos by script public keys from the utxoindex db.
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey> {
         trace!("[{0}] retrieving utxos from {1} script public keys", IDENT, script_public_keys.len());
@@ -108,11 +134,16 @@ impl UtxoIndexApi for UtxoIndex {
 
         // Initiate update container
         let mut utxoindex_changes = UtxoIndexChanges::new();
-        utxoindex_changes.update_utxo_diff(utxo_diff.unwrap_or_clone());
+        utxoindex_changes.update_utxo_diff(utxo_diff.unwrap_or_clone(), self.covenant_index);
         utxoindex_changes.set_tips(tips.unwrap_or_clone().to_vec());
 
         // Commit changed utxo state to db
-        self.store.update_utxo_state(&utxoindex_changes.utxo_changes.added, &utxoindex_changes.utxo_changes.removed, false)?;
+        self.store.update_utxo_state(
+            &utxoindex_changes.utxo_changes.added,
+            &utxoindex_changes.utxo_changes.removed,
+            &utxoindex_changes.covenant_utxo_changes,
+            false,
+        )?;
 
         // Update the stored circulating supply with the accumulated delta of the changes
         let updated_circulating_supply = self.store.update_circulating_supply(utxoindex_changes.supply_change, false)?;
@@ -183,11 +214,16 @@ impl UtxoIndexApi for UtxoIndex {
             let mut utxoindex_changes = UtxoIndexChanges::new(); //reset changes.
 
             let next_outpoint_from = Some(virtual_utxo_batch.last().expect("expected a last outpoint").0);
-            utxoindex_changes.add_utxos_from_vector(virtual_utxo_batch);
+            utxoindex_changes.add_utxos_from_vector(virtual_utxo_batch, self.covenant_index);
 
             circulating_supply += utxoindex_changes.supply_change as CirculatingSupply;
 
-            self.store.update_utxo_state(&utxoindex_changes.utxo_changes.added, &utxoindex_changes.utxo_changes.removed, true)?;
+            self.store.update_utxo_state(
+                &utxoindex_changes.utxo_changes.added,
+                &utxoindex_changes.utxo_changes.removed,
+                &utxoindex_changes.covenant_utxo_changes,
+                true,
+            )?;
 
             if current_chunk_size < RESYNC_CHUNK_SIZE {
                 break;
@@ -284,7 +320,7 @@ mod tests {
         let config = Config::new(DEVNET_PARAMS);
         let tc = Arc::new(TestConsensus::new(&config));
         let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
-        let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db).unwrap();
+        let utxoindex = UtxoIndex::new(consensus_manager, utxoindex_db, true).unwrap();
 
         // Fill initial utxo collection in emulator.
         virtual_change_emulator.fill_utxo_collection(resync_utxo_collection_size, script_public_key_pool_size); //10_000 utxos belonging to 100 script public keys

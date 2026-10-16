@@ -615,6 +615,59 @@ message RpcGetUtxosByAddressesCursor {
   RpcOutpoint startOutpoint = 3;
 }
 
+message RpcGetUtxosByCovenantIdsCursor {
+  // Cursor start covenant id; Note: on the request side this should always match the first
+  // covenant id of the request's covenant id list, i.e. if the cursor points past some ids in
+  // the list, these should be removed in the following call for the page retrieval.
+  // Leaving this blank takes the first covenant id of the request's list as the start id.
+  optional string startCovenantId = 1;
+  // Cursor start DAA score for startCovenantId; omitted starts from fromDaaScore.
+  uint64 startDaaScore = 2;
+  // Cursor start address; omitted starts from the bottom of the (covenant id, DAA score) range.
+  optional string startAddress = 3;
+  // transaction outpoint
+  RpcOutpoint startOutpoint = 4;
+}
+
+message RpcUtxosByCovenantIdsEntry {
+  string covenantId = 1;
+  string address = 2;
+  RpcOutpoint outpoint = 3;
+  RpcUtxoEntry utxoEntry = 4;
+}
+
+// GetUtxosByCovenantIdsRequestMessage requests UTXOs for multiple covenant ids,
+// optionally bounded by an inclusive DAA-score range and inclusive address bounds.
+//
+// This call is only available when this kaspad was started with `--utxoindex --covenant-index`.
+message GetUtxosByCovenantIdsRequestMessage {
+  // Covenant ids to query UTXOs for. Note an empty set of covenant ids is considered an invalid query.
+  // max covenant ids without requiring --unsafe-rpc flag on the node is 5_000
+  repeated string covenantIds = 1;
+  // Inclusive DAA-score range start; omitted defaults to 0.
+  optional uint64 fromDaaScore = 2;
+  // Inclusive DAA-score range end; omitted defaults to u64::MAX.
+  optional uint64 toDaaScore = 3;
+  // Inclusive address bounds filter; omitted leaves the bound open.
+  optional string fromAddress = 4;
+  // Inclusive address bounds filter; omitted leaves the bound open.
+  optional string toAddress = 5;
+  // if omitted, starts from scratch.
+  optional RpcGetUtxosByCovenantIdsCursor Cursor = 6;
+  // limit on the number of entries to return; omitted means default limit of 1_000
+  // max limit without requiring --unsafe-rpc flag on the node is 5_000
+  optional uint64 limit = 7;
+}
+
+message GetUtxosByCovenantIdsResponseMessage {
+  // UTXO entries for the requested covenant ids and DAA-score range, in request order.
+  repeated RpcUtxosByCovenantIdsEntry entries = 1;
+  // Cursor for the next page; omitted means there is no next page.
+  optional RpcGetUtxosByCovenantIdsCursor nextCursor = 2;
+
+  RPCError error = 1000;
+}
+
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
 //
 // This call is only available when this kaspad was started with `--utxoindex`

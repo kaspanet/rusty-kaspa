@@ -47,3 +47,45 @@ impl UtxoIndexDbMetaStore for DbUtxoIndexDbMetaStore {
         self.access.remove(DirectDbWriter::new(&self.db))
     }
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CovenantIndexDbMetaData {
+    pub version: u16,
+}
+
+pub trait CovenantIndexDbMetaStoreReader {
+    fn get(&self) -> StoreResult<CovenantIndexDbMetaData>;
+}
+
+pub trait CovenantIndexDbMetaStore: CovenantIndexDbMetaStoreReader {
+    fn set(&mut self, version: CovenantIndexDbMetaData) -> StoreResult<()>;
+    fn remove(&mut self) -> StoreResult<()>;
+}
+
+#[derive(Clone)]
+pub struct DbCovenantIndexDbMetaStore {
+    db: Arc<DB>,
+    access: CachedDbItem<CovenantIndexDbMetaData>,
+}
+
+impl DbCovenantIndexDbMetaStore {
+    pub fn new(db: Arc<DB>) -> Self {
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::UtxoIndexCovenantDbVersion.into()) }
+    }
+}
+
+impl CovenantIndexDbMetaStoreReader for DbCovenantIndexDbMetaStore {
+    fn get(&self) -> StoreResult<CovenantIndexDbMetaData> {
+        self.access.read()
+    }
+}
+
+impl CovenantIndexDbMetaStore for DbCovenantIndexDbMetaStore {
+    fn set(&mut self, version: CovenantIndexDbMetaData) -> StoreResult<()> {
+        self.access.write(DirectDbWriter::new(&self.db), &version)
+    }
+
+    fn remove(&mut self) -> StoreResult<()> {
+        self.access.remove(DirectDbWriter::new(&self.db))
+    }
+}

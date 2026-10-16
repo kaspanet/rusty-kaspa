@@ -1590,6 +1590,131 @@ impl Deserializer for GetUtxosByAddressesV2Response {
     }
 }
 
+/// Represents a UTXO entry of a covenant id returned by the `GetUtxosByCovenantIds` RPC.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcUtxosByCovenantIdsEntry {
+    pub covenant_id: RpcHash,
+    pub address: Option<RpcAddress>,
+    pub outpoint: RpcTransactionOutpoint,
+    pub utxo_entry: RpcUtxoEntry,
+}
+
+impl Serializer for RpcUtxosByCovenantIdsEntry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?; // version
+        store!(RpcHash, &self.covenant_id, writer)?;
+        store!(Option<RpcAddress>, &self.address, writer)?;
+        serialize!(RpcTransactionOutpoint, &self.outpoint, writer)?;
+        serialize!(RpcUtxoEntry, &self.utxo_entry, writer)
+    }
+}
+
+impl Deserializer for RpcUtxosByCovenantIdsEntry {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u8 = load!(u8, reader)?;
+        let covenant_id = load!(RpcHash, reader)?;
+        let address = load!(Option<RpcAddress>, reader)?;
+        let outpoint = deserialize!(RpcTransactionOutpoint, reader)?;
+        let utxo_entry = deserialize!(RpcUtxoEntry, reader)?;
+        Ok(Self { covenant_id, address, outpoint, utxo_entry })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByCovenantIdsRequest {
+    /// Covenant ids to query UTXOs for.
+    pub covenant_ids: Vec<RpcHash>,
+    /// Inclusive DAA-score range start; None defaults to 0.
+    pub from_daa_score: Option<u64>,
+    /// Inclusive DAA-score range end; None defaults to u64::MAX.
+    pub to_daa_score: Option<u64>,
+    /// Inclusive address bounds filter; None leaves the bound open.
+    pub from_address: Option<RpcAddress>,
+    /// Inclusive address bounds filter; None leaves the bound open.
+    pub to_address: Option<RpcAddress>,
+    /// Cursor start position; None starts from the beginning.
+    pub cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+    /// Maximum number of entries to return; None defaults to 1k entries. >5k entries requires `--unsaferpc` flag on a default node.
+    pub limit: Option<usize>,
+}
+
+impl GetUtxosByCovenantIdsRequest {
+    pub fn new(
+        covenant_ids: Vec<RpcHash>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        from_address: Option<RpcAddress>,
+        to_address: Option<RpcAddress>,
+        cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+        limit: Option<usize>,
+    ) -> Self {
+        Self { covenant_ids, from_daa_score, to_daa_score, from_address, to_address, cursor, limit }
+    }
+}
+
+impl Serializer for GetUtxosByCovenantIdsRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHash>, &self.covenant_ids, writer)?;
+        store!(Option<u64>, &self.from_daa_score, writer)?;
+        store!(Option<u64>, &self.to_daa_score, writer)?;
+        store!(Option<RpcAddress>, &self.from_address, writer)?;
+        store!(Option<RpcAddress>, &self.to_address, writer)?;
+        store!(Option<RpcGetUtxosByCovenantIdsCursor>, &self.cursor, writer)?;
+        store!(Option<usize>, &self.limit, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByCovenantIdsRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let covenant_ids = load!(Vec<RpcHash>, reader)?;
+        let from_daa_score = load!(Option<u64>, reader)?;
+        let to_daa_score = load!(Option<u64>, reader)?;
+        let from_address = load!(Option<RpcAddress>, reader)?;
+        let to_address = load!(Option<RpcAddress>, reader)?;
+        let cursor = load!(Option<RpcGetUtxosByCovenantIdsCursor>, reader)?;
+        let limit = load!(Option<usize>, reader)?;
+        Ok(Self { covenant_ids, from_daa_score, to_daa_score, from_address, to_address, cursor, limit })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByCovenantIdsResponse {
+    /// UTXO entries for the requested covenant ids and DAA-score range, in request order.
+    pub entries: Vec<RpcUtxosByCovenantIdsEntry>,
+    /// Cursor for the next page; None means there is no next page.
+    pub next_cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+}
+
+impl GetUtxosByCovenantIdsResponse {
+    pub fn new(entries: Vec<RpcUtxosByCovenantIdsEntry>, next_cursor: Option<RpcGetUtxosByCovenantIdsCursor>) -> Self {
+        Self { entries, next_cursor }
+    }
+}
+
+impl Serializer for GetUtxosByCovenantIdsResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcUtxosByCovenantIdsEntry>, &self.entries, writer)?;
+        serialize!(Option<RpcGetUtxosByCovenantIdsCursor>, &self.next_cursor, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByCovenantIdsResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcUtxosByCovenantIdsEntry>, reader)?;
+        let next_cursor = deserialize!(Option<RpcGetUtxosByCovenantIdsCursor>, reader)?;
+        Ok(Self { entries, next_cursor })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BanRequest {

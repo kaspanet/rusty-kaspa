@@ -356,6 +356,26 @@ from!(item: RpcResult<&kaspa_rpc_core::GetUtxosByAddressesV2Response>, protowire
     }
 });
 
+from!(item: &kaspa_rpc_core::GetUtxosByCovenantIdsRequest, protowire::GetUtxosByCovenantIdsRequestMessage, {
+    Self {
+        covenant_ids: item.covenant_ids.iter().map(|x| x.to_string()).collect(),
+        from_daa_score: item.from_daa_score,
+        to_daa_score: item.to_daa_score,
+        from_address: item.from_address.as_ref().map(|address| address.to_string()),
+        to_address: item.to_address.as_ref().map(|address| address.to_string()),
+        cursor: item.cursor.as_ref().map(|cursor| cursor.into()),
+        limit: item.limit.map(|l| l.try_into().unwrap_or(usize::MAX as u64)),
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetUtxosByCovenantIdsResponse>, protowire::GetUtxosByCovenantIdsResponseMessage, {
+    debug!("GRPC, Creating GetUtxosByCovenantIds message with {} entries", item.entries.len());
+    Self {
+        entries: item.entries.iter().map(|x| x.into()).collect(),
+        next_cursor: item.next_cursor.as_ref().map(|cursor| cursor.into()),
+        error: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::GetBalanceByAddressRequest, protowire::GetBalanceByAddressRequestMessage, {
     Self { address: (&item.address).into() }
 });
@@ -918,6 +938,24 @@ try_from!(item: &protowire::GetUtxosByAddressesV2RequestMessage, kaspa_rpc_core:
     }
 });
 try_from!(item: &protowire::GetUtxosByAddressesV2ResponseMessage, RpcResult<kaspa_rpc_core::GetUtxosByAddressesV2Response>, {
+    Self {
+        entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+        next_cursor: item.next_cursor.clone().map(|nc| nc.try_into()).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::GetUtxosByCovenantIdsRequestMessage, kaspa_rpc_core::GetUtxosByCovenantIdsRequest, {
+    Self {
+        covenant_ids: item.covenant_ids.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        from_daa_score: item.from_daa_score,
+        to_daa_score: item.to_daa_score,
+        from_address: item.from_address.as_deref().map(|address| address.try_into()).transpose()?,
+        to_address: item.to_address.as_deref().map(|address| address.try_into()).transpose()?,
+        cursor: item.cursor.clone().map(|c| c.try_into()).transpose()?,
+        limit: item.limit.map(|l| l.try_into()).transpose()?,
+    }
+});
+try_from!(item: &protowire::GetUtxosByCovenantIdsResponseMessage, RpcResult<kaspa_rpc_core::GetUtxosByCovenantIdsResponse>, {
     Self {
         entries: item.entries.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
         next_cursor: item.next_cursor.clone().map(|nc| nc.try_into()).transpose()?,

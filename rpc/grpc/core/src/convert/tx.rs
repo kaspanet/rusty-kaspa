@@ -199,6 +199,15 @@ from!(item: &kaspa_rpc_core::RpcUtxosByAddressesEntry, protowire::RpcUtxosByAddr
     }
 });
 
+from!(item: &kaspa_rpc_core::RpcUtxosByCovenantIdsEntry, protowire::RpcUtxosByCovenantIdsEntry, {
+    Self {
+        covenant_id: item.covenant_id.to_string(),
+        address: item.address.as_ref().map_or("".to_string(), |x| x.into()),
+        outpoint: Some((&item.outpoint).into()),
+        utxo_entry: Some((&item.utxo_entry).into()),
+    }
+});
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -450,6 +459,24 @@ try_from!(item: &protowire::RpcUtxosByAddressesEntry, kaspa_rpc_core::RpcUtxosBy
     }
 });
 
+try_from!(item: &protowire::RpcUtxosByCovenantIdsEntry, kaspa_rpc_core::RpcUtxosByCovenantIdsEntry, {
+    let address = if item.address.is_empty() { None } else { Some(item.address.as_str().try_into()?) };
+    Self {
+        covenant_id: RpcHash::from_str(&item.covenant_id)?,
+        address,
+        outpoint: item
+            .outpoint
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("UtxosByCovenantIdsEntry".to_string(), "outpoint".to_string()))?
+            .try_into()?,
+        utxo_entry: item
+            .utxo_entry
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("UtxosByCovenantIdsEntry".to_string(), "utxo_entry".to_string()))?
+            .try_into()?,
+    }
+});
+
 #[cfg(test)]
 mod tests {
     use crate::protowire;
@@ -486,5 +513,30 @@ mod tests {
         let decoded = RpcTransaction::try_from(&wire).unwrap();
         assert_eq!(decoded.inputs[0].compute_budget, 222);
         assert_eq!(decoded.storage_mass, 111);
+    }
+
+    #[test]
+    fn test_rpc_utxos_by_covenant_ids_entry_roundtrip() {
+        let entry = kaspa_rpc_core::RpcUtxosByCovenantIdsEntry {
+            covenant_id: kaspa_consensus_core::Hash::from_bytes([2; 32]),
+            address: None,
+            outpoint: kaspa_rpc_core::RpcTransactionOutpoint {
+                transaction_id: kaspa_consensus_core::Hash::from_bytes([1; 32]),
+                index: 3,
+            },
+            utxo_entry: kaspa_rpc_core::RpcUtxoEntry {
+                amount: 100,
+                script_public_key: kaspa_consensus_core::tx::ScriptPublicKey::from_vec(0, vec![1, 2, 3]),
+                block_daa_score: 7,
+                is_coinbase: false,
+                covenant_id: Some(kaspa_consensus_core::Hash::from_bytes([2; 32])),
+            },
+        };
+        let protowire: protowire::RpcUtxosByCovenantIdsEntry = (&entry).into();
+        let decoded: kaspa_rpc_core::RpcUtxosByCovenantIdsEntry = (&protowire).try_into().unwrap();
+        assert_eq!(decoded.covenant_id, entry.covenant_id);
+        assert_eq!(decoded.address, None);
+        assert_eq!(decoded.outpoint, entry.outpoint);
+        assert_eq!(decoded.utxo_entry, entry.utxo_entry);
     }
 }

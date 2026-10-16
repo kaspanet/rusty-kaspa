@@ -32,6 +32,13 @@ impl IndexConverter {
     pub fn get_ordered_utxos_by_addresses_entries(&self, item: &OrderedUtxoEntries) -> Vec<RpcUtxosByAddressesEntry> {
         ordered_utxo_set_into_rpc(item, self.config.prefix())
     }
+
+    pub fn get_ordered_utxos_by_covenant_ids_entries(
+        &self,
+        item: &kaspa_index_core::indexed_utxos::OrderedCovenantUtxoEntries,
+    ) -> Vec<kaspa_rpc_core::RpcUtxosByCovenantIdsEntry> {
+        kaspa_rpc_core::ordered_covenant_utxo_set_into_rpc(item, self.config.prefix())
+    }
 }
 
 #[async_trait]
