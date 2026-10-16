@@ -387,7 +387,7 @@ impl AddressDerivationManager {
     pub fn indexes(&self, manager: &Arc<AddressManager>) -> Result<Vec<u32>> {
         let map = &manager.inner().address_to_index_map;
         let mut indexes = vec![];
-        for (_, index) in map.iter() {
+        for index in map.values() {
             indexes.push(*index);
         }
         Ok(indexes)

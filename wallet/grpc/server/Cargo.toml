@@ -1,0 +1,27 @@
+[package]
+name = "kaspa-wallet-grpc-server"
+rust-version.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+include.workspace = true
+
+[dependencies]
+futures-util.workspace = true
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-wallet-core.workspace = true
+kaspa-wallet-grpc-core.workspace = true
+
+tokio.workspace = true
+tonic.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "test-util"] }
+
+[lints]
+workspace = true

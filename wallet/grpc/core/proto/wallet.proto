@@ -1,0 +1,61 @@
+syntax = "proto3";
+package protoserialization;
+
+option go_package = "github.com/kaspanet/kaspad/cmd/kaspawallet/libkaspawallet/serialization/protoserialization";
+
+message PartiallySignedTransaction{
+  TransactionMessage tx = 1;
+  repeated PartiallySignedInput partiallySignedInputs = 2;
+}
+
+message PartiallySignedInput{
+  bytes redeemScript = 1;
+  TransactionOutput prevOutput = 2;
+  uint32 minimumSignatures = 3;
+  repeated PubKeySignaturePair pubKeySignaturePairs = 4;
+  string derivationPath = 5;
+}
+
+message PubKeySignaturePair{
+  string extendedPubKey = 1;
+  bytes signature = 2;
+}
+
+message SubnetworkId{
+  bytes bytes = 1;
+}
+
+message TransactionMessage{
+  uint32 version = 1;
+  repeated TransactionInput inputs = 2;
+  repeated TransactionOutput outputs = 3;
+  uint64 lockTime = 4;
+  SubnetworkId subnetworkId = 5;
+  uint64 gas = 6;
+  bytes payload = 8;
+}
+
+message TransactionInput{
+  Outpoint previousOutpoint = 1;
+  bytes signatureScript = 2;
+  uint64 sequence = 3;
+  uint32 sigOpCount = 4;
+}
+
+message Outpoint{
+  TransactionId transactionId = 1;
+  uint32 index = 2;
+}
+
+message TransactionId{
+  bytes bytes = 1;
+}
+message ScriptPublicKey {
+  bytes script = 1;
+  uint32 version = 2;
+}
+
+message TransactionOutput{
+  uint64 value = 1;
+  ScriptPublicKey scriptPublicKey = 2;
+}
