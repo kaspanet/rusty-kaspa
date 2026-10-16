@@ -1,5 +1,91 @@
 #[doc(hidden)]
-pub use {faster_hex, malachite_base, malachite_nz, serde};
+pub use {alloc::format, alloc::string::String, alloc::vec::Vec, faster_hex, kaspa_utils, malachite_base, malachite_nz, serde};
+
+// Feature-gated impls for `construct_uint!` types. Each helper is a
+// cfg-selected pair, defined here, so the gate is evaluated against kaspa-math's
+// own features instead of whichever crate invokes the macro.
+#[cfg(feature = "std")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __uint_impl_memsize {
+    ($name:ident) => {
+        impl $crate::uint::kaspa_utils::mem_size::MemSizeEstimator for $name {
+            fn estimate_mem_units(&self) -> usize {
+                1
+            }
+        }
+    };
+}
+
+#[cfg(not(feature = "std"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __uint_impl_memsize {
+    ($name:ident) => {};
+}
+
+#[cfg(feature = "wasm32-sdk")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __uint_impl_wasm {
+    ($name:ident) => {
+        impl $name {
+            #[inline]
+            pub fn as_bigint(&self) -> Result<$crate::wasm::BigInt, $crate::Error> {
+                self.try_into()
+            }
+
+            #[inline]
+            pub fn to_bigint(self) -> Result<$crate::wasm::BigInt, $crate::Error> {
+                self.try_into()
+            }
+        }
+
+        impl TryFrom<&$name> for $crate::wasm::BigInt {
+            type Error = $crate::Error;
+            #[inline]
+            fn try_from(value: &$name) -> Result<$crate::wasm::BigInt, Self::Error> {
+                use $crate::wasm::*;
+                BigInt::new(&JsValue::from_str(&$crate::uint::format!("0x{value:x}")))
+                    .map_err(|err| $crate::Error::JsSys(Sendable(err)))
+            }
+        }
+
+        impl TryFrom<$name> for $crate::wasm::BigInt {
+            type Error = $crate::Error;
+            #[inline]
+            fn try_from(value: $name) -> Result<$crate::wasm::BigInt, Self::Error> {
+                use $crate::wasm::*;
+                BigInt::try_from(&value)
+            }
+        }
+
+        impl TryFrom<$crate::wasm::JsValue> for $name {
+            type Error = $crate::Error;
+            fn try_from(js_value: $crate::wasm::JsValue) -> Result<Self, Self::Error> {
+                use $crate::wasm::*;
+
+                if js_value.is_string() || js_value.is_array() {
+                    let bytes = js_value.try_as_vec_u8()?;
+                    Ok(Self::from_be_bytes_var(&bytes)?)
+                } else if js_value.is_bigint() {
+                    let v: &BigInt = js_value.dyn_ref().unwrap();
+                    let hex = $crate::uint::String::from(v.to_string(16)?);
+                    Ok(Self::from_hex(hex.as_str())?)
+                } else {
+                    return Err(Self::Error::NotCompatible);
+                }
+            }
+        }
+    };
+}
+
+#[cfg(not(feature = "wasm32-sdk"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __uint_impl_wasm {
+    ($name:ident) => {};
+}
 
 // TODO: Add u32 support for optimization on 32 bit machines.
 
@@ -252,10 +338,10 @@ macro_rules! construct_uint {
             }
 
             #[inline(always)]
-            pub fn to_be_bytes_var(self) -> Vec<u8> {
+            pub fn to_be_bytes_var(self) -> $crate::uint::Vec<u8> {
                 let bytes = self.to_be_bytes();
                 let start = bytes.iter().copied().position(|b| b != 0).unwrap_or(bytes.len());
-                Vec::from(&bytes[start..])
+                $crate::uint::Vec::from(&bytes[start..])
             }
 
             #[inline]
@@ -431,38 +517,23 @@ macro_rules! construct_uint {
                 Ok(Self::from_be_bytes(out))
             }
 
-            #[inline]
-            pub fn as_bigint(&self) -> Result<js_sys::BigInt, $crate::Error> {
-                self.try_into()
-            }
-
-            #[inline]
-            pub fn to_bigint(self) -> Result<js_sys::BigInt, $crate::Error> {
-                self.try_into()
-            }
-
         }
 
-        impl kaspa_utils::mem_size::MemSizeEstimator for $name {
-            fn estimate_mem_units(&self) -> usize {
-                1
+        $crate::__uint_impl_memsize!($name);
 
-            }
-        }
-
-        impl kaspa_utils::hex::ToHex for $name {
-            fn to_hex(&self) -> String {
+        impl $crate::uint::kaspa_utils::hex::ToHex for $name {
+            fn to_hex(&self) -> $crate::uint::String {
                 self.to_be_bytes().as_slice().to_hex()
             }
         }
 
-        impl kaspa_utils::hex::ToHex for &$name {
-            fn to_hex(&self) -> String {
+        impl $crate::uint::kaspa_utils::hex::ToHex for &$name {
+            fn to_hex(&self) -> $crate::uint::String {
                 self.to_be_bytes().as_slice().to_hex()
             }
         }
 
-        impl kaspa_utils::hex::FromHex for $name {
+        impl $crate::uint::kaspa_utils::hex::FromHex for $name {
             type Error = $crate::Error;
             fn from_hex(hex: &str) -> Result<$name, Self::Error> {
                 Ok($name::from_hex(hex)?)
@@ -813,7 +884,7 @@ macro_rules! construct_uint {
                 }
 
                 // SAFETY: everything up to `curr` is valid UTF8 because `DEC_DIGITS_LUT` is.
-                let buf_str = unsafe { std::str::from_utf8_unchecked(&buf[curr..]) };
+                let buf_str = unsafe { core::str::from_utf8_unchecked(&buf[curr..]) };
                 f.pad_integral(true, "", buf_str)
             }
         }
@@ -831,7 +902,7 @@ macro_rules! construct_uint {
                     }
                 }
                 // We only wrote '0' and '1' so this is always valid UTF-8
-                let buf_str = unsafe { std::str::from_utf8_unchecked(&buf[first_one..]) };
+                let buf_str = unsafe { core::str::from_utf8_unchecked(&buf[first_one..]) };
                 f.pad_integral(true, "0b", buf_str)
             }
         }
@@ -845,7 +916,7 @@ macro_rules! construct_uint {
                     let mut hex = [0u8; Self::BYTES * 2];
                     let bytes = self.to_be_bytes();
                     $crate::uint::faster_hex::hex_encode(&bytes, &mut hex).expect("The output is exactly twice the size of the input");
-                    let hex_str = unsafe { std::str::from_utf8_unchecked(&hex) };
+                    let hex_str = unsafe { core::str::from_utf8_unchecked(&hex) };
                     serializer.serialize_str(hex_str)
                 } else {
                     use $crate::uint::serde::ser::SerializeTuple;
@@ -862,7 +933,7 @@ macro_rules! construct_uint {
             #[inline]
             fn deserialize<D: $crate::uint::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
                 if deserializer.is_human_readable() {
-                    let hex = <std::string::String as serde::Deserialize>::deserialize(deserializer)?;
+                    let hex = <$crate::uint::String as $crate::uint::serde::Deserialize>::deserialize(deserializer)?;
                     Ok(Self::from_hex(&hex).map_err($crate::uint::serde::de::Error::custom)?)
                 } else {
                     use core::{fmt, marker::PhantomData};
@@ -960,41 +1031,7 @@ macro_rules! construct_uint {
 
         }
 
-        impl TryFrom<&$name> for js_sys::BigInt {
-            type Error = $crate::Error;
-            #[inline]
-            fn try_from(value: &$name) -> Result<js_sys::BigInt, Self::Error> {
-                use $crate::wasm::*;
-                BigInt::new(&JsValue::from_str(&format!("0x{value:x}"))).map_err(|err|$crate::Error::JsSys(Sendable(err)))
-            }
-        }
-
-        impl TryFrom<$name> for js_sys::BigInt {
-            type Error = $crate::Error;
-            #[inline]
-            fn try_from(value: $name) -> Result<js_sys::BigInt, Self::Error> {
-                use $crate::wasm::*;
-                BigInt::try_from(&value)
-            }
-        }
-
-        impl TryFrom<wasm_bindgen::JsValue> for $name {
-            type Error = $crate::Error;
-            fn try_from(js_value: wasm_bindgen::JsValue) -> Result<Self, Self::Error> {
-                use $crate::wasm::*;
-
-                if js_value.is_string() || js_value.is_array() {
-                    let bytes = js_value.try_as_vec_u8()?;
-                    Ok(Self::from_be_bytes_var(&bytes)?)
-                } else if js_value.is_bigint() {
-                    let v: &BigInt = js_value.dyn_ref().unwrap();
-                    let hex = String::from(v.to_string(16)?);
-                    Ok(Self::from_hex(hex.as_str())?)
-                } else {
-                    return Err(Self::Error::NotCompatible);
-                }
-            }
-        }
+        $crate::__uint_impl_wasm!($name);
 
     };
 }
@@ -1003,7 +1040,7 @@ macro_rules! construct_uint {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TryFromIntError;
 
-impl std::error::Error for TryFromIntError {}
+impl core::error::Error for TryFromIntError {}
 
 impl core::fmt::Display for TryFromIntError {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -1021,7 +1058,7 @@ impl From<core::convert::Infallible> for TryFromIntError {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TryFromSliceError;
 
-impl std::error::Error for TryFromSliceError {}
+impl core::error::Error for TryFromSliceError {}
 
 impl core::fmt::Display for TryFromSliceError {
     fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -1037,6 +1074,7 @@ impl From<core::convert::Infallible> for TryFromSliceError {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::String;
     use rand_chacha::{
         ChaCha8Rng,
         rand_core::{RngCore, SeedableRng},

@@ -9,13 +9,15 @@ use crate::{
     mass::{BlockLaneLimits, BlockMassLimits, MassCofactors},
     network::{NetworkId, NetworkType},
 };
-use kaspa_addresses::Prefix;
-use kaspa_math::Uint256;
-use serde::{Deserialize, Serialize};
-use std::{
+use alloc::string::String;
+use core::{
     cmp::min,
     ops::{Deref, DerefMut},
 };
+
+use kaspa_addresses::Prefix;
+use kaspa_math::Uint256;
+use serde::{Deserialize, Serialize};
 
 // Increased for stark proofs. This value is effectively covered by the
 // transient block mass limit: 1_000_000 transient mass / 4 grams-per-byte = 250_000

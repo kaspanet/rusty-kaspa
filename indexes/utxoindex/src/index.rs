@@ -260,13 +260,14 @@ mod tests {
     };
     use kaspa_consensus_core::{
         api::ConsensusApi,
+        tx::ScriptPublicKeys,
         utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
     };
     use kaspa_consensusmanager::ConsensusManager;
     use kaspa_core::info;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::ConnBuilder;
-    use std::{collections::HashSet, sync::Arc, time::Instant};
+    use std::{sync::Arc, time::Instant};
 
     /// TODO: use proper Simnet when implemented.
     #[test]
@@ -292,7 +293,7 @@ mod tests {
         let test_consensus_virtual_state = Arc::new(VirtualState {
             daa_score: 0,
             parents: Vec::from_iter(virtual_change_emulator.tips.clone()),
-            utxo_diff: UtxoDiff::new(virtual_change_emulator.utxo_collection.clone(), UtxoCollection::new()),
+            utxo_diff: UtxoDiff::new(virtual_change_emulator.utxo_collection.clone(), UtxoCollection::default()),
             ..Default::default()
         });
         // Write virtual state from emulator to test_consensus db.
@@ -319,7 +320,7 @@ mod tests {
             consensus_supply += utxo_entry.amount;
             let indexed_utxos = utxoindex
                 .read()
-                .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
+                .get_utxos_by_script_public_keys(ScriptPublicKeys::from_iter(vec![utxo_entry.script_public_key.clone()]))
                 .expect("expected script public key to be in database");
             for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
                 let utxo_key_suffix_record = UtxoEntryKeySuffixRecord::new(utxo_entry.block_daa_score, tx_outpoint);
@@ -410,7 +411,7 @@ mod tests {
         for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
             let indexed_utxos = utxoindex
                 .read()
-                .get_utxos_by_script_public_keys(HashSet::from_iter(vec![utxo_entry.script_public_key.clone()]))
+                .get_utxos_by_script_public_keys(ScriptPublicKeys::from_iter(vec![utxo_entry.script_public_key.clone()]))
                 .expect("expected script public key to be in database");
             for (indexed_script_public_key, indexed_compact_utxo_collection) in indexed_utxos.into_iter() {
                 let utxo_key_suffix_record = UtxoEntryKeySuffixRecord::new(utxo_entry.block_daa_score, tx_outpoint);

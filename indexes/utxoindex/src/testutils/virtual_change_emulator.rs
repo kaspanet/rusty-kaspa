@@ -25,7 +25,7 @@ pub struct VirtualChangeEmulator {
 impl VirtualChangeEmulator {
     pub fn new() -> Self {
         Self {
-            utxo_collection: UtxoCollection::new(),
+            utxo_collection: UtxoCollection::default(),
             tips: BlockHashSet::new(),
             circulating_supply: 0,
             accumulated_utxo_diff: Arc::new(UtxoDiff::default()),
@@ -83,7 +83,7 @@ impl VirtualChangeEmulator {
     }
 
     pub fn clear_virtual_state(&mut self) {
-        self.accumulated_utxo_diff = Arc::new(UtxoDiff::new(UtxoCollection::new(), UtxoCollection::new()));
+        self.accumulated_utxo_diff = Arc::new(UtxoDiff::new(UtxoCollection::default(), UtxoCollection::default()));
 
         self.virtual_parents = Arc::new(vec![]);
         self.selected_parent_blue_score = 0;

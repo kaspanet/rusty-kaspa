@@ -1,6 +1,14 @@
+use crate::HashSet;
 use alloc::borrow::Cow;
+#[cfg(feature = "wasm32-sdk")]
+use alloc::format;
+use alloc::string::String;
+use alloc::vec;
+use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::Formatter;
+use core::str::{self, FromStr};
+#[cfg(feature = "wasm32-sdk")]
 use js_sys::Object;
 use kaspa_utils::{
     hex::{FromHex, ToHex},
@@ -11,11 +19,9 @@ use serde::{
     de::{Error, Visitor},
 };
 use smallvec::SmallVec;
-use std::{
-    collections::HashSet,
-    str::{self, FromStr},
-};
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::prelude::*;
+#[cfg(feature = "wasm32-sdk")]
 use workflow_wasm::prelude::*;
 
 /// Size of the underlying script vector of a script.
@@ -29,11 +35,13 @@ pub type ScriptPublicKeyVersion = u16;
 
 /// Alias the `smallvec!` macro to ease maintenance
 pub use smallvec::smallvec as scriptvec;
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::prelude::wasm_bindgen;
 
 //Represents a Set of [`ScriptPublicKey`]s
 pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 
+#[cfg(feature = "wasm32-sdk")]
 #[wasm_bindgen(typescript_custom_section)]
 const TS_SCRIPT_PUBLIC_KEY: &'static str = r#"
 /**
@@ -49,15 +57,16 @@ export interface IScriptPublicKey {
 
 /// Represents a Kaspad ScriptPublicKey
 /// @category Consensus
-#[derive(Default, PartialEq, Eq, Clone, Hash, CastFromJs)]
-#[wasm_bindgen(inspectable)]
+#[derive(Default, PartialEq, Eq, Clone, Hash)]
+#[cfg_attr(feature = "wasm32-sdk", derive(CastFromJs))]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(inspectable))]
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
     pub(super) script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
-impl std::fmt::Debug for ScriptPublicKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for ScriptPublicKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("ScriptPublicKey").field("version", &self.version).field("script", &self.script.to_hex()).finish()
     }
 }
@@ -102,8 +111,8 @@ impl<'de> Deserialize<'de> for ScriptPublicKey {
         #[derive(Default)]
         pub struct ScriptPublicKeyVisitor<'de> {
             from_hex_visitor: FromHexVisitor<'de, ScriptPublicKey>,
-            marker: std::marker::PhantomData<ScriptPublicKey>,
-            lifetime: std::marker::PhantomData<&'de ()>,
+            marker: core::marker::PhantomData<ScriptPublicKey>,
+            lifetime: core::marker::PhantomData<&'de ()>,
         }
         impl<'de> Visitor<'de> for ScriptPublicKeyVisitor<'de> {
             type Value = ScriptPublicKey;
@@ -330,12 +339,14 @@ impl ScriptPublicKey {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "ScriptPublicKey | HexString")]
     pub type ScriptPublicKeyT;
 }
 
+#[cfg(feature = "wasm32-sdk")]
 #[wasm_bindgen]
 impl ScriptPublicKey {
     #[wasm_bindgen(constructor)]
@@ -356,7 +367,7 @@ impl ScriptPublicKey {
 //
 
 impl BorshSerialize for ScriptPublicKey {
-    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
         borsh::BorshSerialize::serialize(&self.version, writer)?;
         // Vectors and slices are all serialized internally the same way
         borsh::BorshSerialize::serialize(&self.script.as_slice(), writer)?;
@@ -365,13 +376,15 @@ impl BorshSerialize for ScriptPublicKey {
 }
 
 impl BorshDeserialize for ScriptPublicKey {
-    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
         // Deserialize into vec first since we have no custom smallvec support
         Ok(Self::from_vec(borsh::BorshDeserialize::deserialize_reader(reader)?, borsh::BorshDeserialize::deserialize_reader(reader)?))
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 type CastError = workflow_wasm::error::Error;
+#[cfg(feature = "wasm32-sdk")]
 impl TryCastFromJs for ScriptPublicKey {
     type Error = workflow_wasm::error::Error;
     fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>

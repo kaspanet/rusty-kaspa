@@ -1,6 +1,7 @@
+use hashbrown::hash_map::Entry::Vacant;
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashSet, hash_map::Entry::Vacant},
+    collections::{BinaryHeap, HashSet},
     sync::Arc,
 };
 
