@@ -190,10 +190,9 @@ impl UtxoSetByCovenantIdStoreReader for DbUtxoSetByCovenantIdStore {
         cursor: Option<CovenantUtxoPageCursor>,
         limit: Option<usize>,
     ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage> {
-        if covenant_ids.is_empty() {
+        let Some(first) = covenant_ids.first().copied() else {
             return Err(UtxoIndexError::QueryingEmptyCovenantIdSet);
-        }
-        let first = covenant_ids[0];
+        };
         let cursor = match cursor {
             Some(c) => {
                 if c.covenant_id != first || c.daa_score < *daa_score_range.start() || c.daa_score > *daa_score_range.end() {
@@ -328,6 +327,7 @@ impl UtxoSetByCovenantIdStore for DbUtxoSetByCovenantIdStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_consensus_core::HashMapCustomHasher;
     use kaspa_database::{create_temp_db, prelude::ConnBuilder};
 
     fn create_outpoint(word: u64, index: u32) -> TransactionOutpoint {

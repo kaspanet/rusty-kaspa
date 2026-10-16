@@ -3,7 +3,7 @@ use crate::core::model::{
     UtxoPageCursor, UtxoSetByScriptPublicKey,
 };
 use crate::errors::{UtxoIndexError, UtxoIndexResult};
-use zerocopy::big_endian::U64 as BigEndianU64;
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, big_endian::U64 as BigEndianU64, little_endian::U32 as LittleEndianU32};
 
 use itertools::Itertools;
 use kaspa_consensus_core::tx::{
@@ -80,37 +80,35 @@ pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_
 
 /// [TransactionOutpoint] key which references the [CompactUtxoEntry] within a [ScriptPublicKeyBucket]
 /// Consists of 32 bytes of [TransactionId], followed by 4 bytes of little endian [TransactionIndexType]
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
-pub struct TransactionOutpointKey([u8; TRANSACTION_OUTPOINT_KEY_SIZE]);
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Immutable, FromBytes, IntoBytes, KnownLayout)]
+pub struct TransactionOutpointKey {
+    transaction_id: Hash,
+    output_index: LittleEndianU32,
+}
+
+const _: () = assert!(size_of::<TransactionOutpointKey>() == TRANSACTION_OUTPOINT_KEY_SIZE);
 
 impl TransactionOutpointKey {
     pub fn from_bytes(bytes: [u8; TRANSACTION_OUTPOINT_KEY_SIZE]) -> Self {
-        Self(bytes)
+        Self::read_from_bytes(&bytes).expect("expected transaction outpoint key size")
     }
 }
 
 impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
-        let transaction_id = Hash::from_slice(&key.0[..kaspa_hashes::HASH_SIZE]);
-        let index = TransactionIndexType::from_le_bytes(
-            <[u8; size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..]).expect("expected index size"),
-        );
-        Self::new(transaction_id, index)
+        Self::new(key.transaction_id, key.output_index.get())
     }
 }
 
 impl From<&TransactionOutpoint> for TransactionOutpointKey {
     fn from(outpoint: &TransactionOutpoint) -> Self {
-        let mut bytes = [0; TRANSACTION_OUTPOINT_KEY_SIZE];
-        bytes[..kaspa_hashes::HASH_SIZE].copy_from_slice(&outpoint.transaction_id.as_bytes());
-        bytes[kaspa_hashes::HASH_SIZE..].copy_from_slice(&outpoint.index.to_le_bytes());
-        Self(bytes)
+        Self { transaction_id: outpoint.transaction_id, output_index: LittleEndianU32::new(outpoint.index) }
     }
 }
 
 impl AsRef<[u8]> for TransactionOutpointKey {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        self.as_bytes()
     }
 }
 
@@ -154,7 +152,7 @@ impl UtxoEntryDbKey {
                 .try_into()
                 .unwrap(),
         );
-        let transaction_outpoint = TransactionOutpoint::from(TransactionOutpointKey(
+        let transaction_outpoint = TransactionOutpoint::from(TransactionOutpointKey::from_bytes(
             self.0[(self.0.len() - TRANSACTION_OUTPOINT_KEY_SIZE)..].try_into().unwrap(),
         ));
         (script_public_key, UtxoEntryKeySuffixRecord::new(daa_score, transaction_outpoint))
@@ -255,7 +253,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                                     .try_into()
                                     .unwrap(),
                             ),
-                            TransactionOutpoint::from(TransactionOutpointKey(
+                            TransactionOutpoint::from(TransactionOutpointKey::from_bytes(
                                 key[(key.len() - TRANSACTION_OUTPOINT_KEY_SIZE)..].try_into().unwrap(),
                             )),
                         ),

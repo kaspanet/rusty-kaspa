@@ -1,4 +1,7 @@
-use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+use kaspa_consensus_core::{
+    BlockHashMap,
+    tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry},
+};
 use kaspa_hashes::Hash;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::de::{Error as DeError, SeqAccess, Visitor};
@@ -147,7 +150,7 @@ impl OrderedCovenantUtxoEntriesPage {
 pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
 
 /// A collection of covenant index writes keyed by [`Hash`] (the covenant id) with no payload.
-pub type UtxoSetByCovenantId = HashMap<Hash, Vec<(ScriptPublicKey, UtxoEntryKeySuffixRecord)>>;
+pub type UtxoSetByCovenantId = BlockHashMap<Vec<(ScriptPublicKey, UtxoEntryKeySuffixRecord)>>;
 
 /// Covenant index writes derived from a utxo diff: per covenant id, the (script public key,
 /// key suffix record) triples to remove and to add, with no payload.
