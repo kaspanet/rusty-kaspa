@@ -19,6 +19,7 @@ include = [
 [features]
 wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-rpc-core/wasm32-sdk","workflow-rpc/wasm32-sdk"]
 default = []
+test-util = []
 
 [lib]
 crate-type = ["cdylib", "lib"]

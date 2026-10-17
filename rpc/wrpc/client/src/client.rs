@@ -14,6 +14,7 @@ use kaspa_rpc_core::{
 };
 pub use kaspa_rpc_macros::build_wrpc_client_interface;
 use std::fmt::Debug;
+use std::sync::Weak;
 use workflow_core::{channel::Multiplexer, runtime as application_runtime};
 use workflow_dom::utils::window;
 use workflow_rpc::client::Ctl as WrpcCtl;
@@ -246,9 +247,42 @@ impl RpcResolver for Inner {
     }
 }
 
+/// Resolves URLs through a *weak* reference to [`Inner`], so that handing the resolver to the
+/// underlying WebSocket client does not create an `Inner -> rpc_client -> resolver -> Inner`
+/// reference cycle that would keep the client state alive after the last handle is dropped.
+struct ResolverProxy(Weak<Inner>);
+
+#[async_trait]
+impl RpcResolver for ResolverProxy {
+    async fn resolve_url(&self) -> ResolverResult {
+        match self.0.upgrade() {
+            Some(inner) => inner.resolve_url().await,
+            None => Err(WebSocketError::custom("KaspaRpcClient was dropped before its URL could be resolved")),
+        }
+    }
+}
+
 const WRPC_CLIENT: &str = "wrpc-client";
 
 /// # [`KaspaRpcClient`] connects to Kaspa wRPC endpoint via binary Borsh or JSON protocols.
+///
+/// ## Resource Management
+///
+/// `KaspaRpcClient` manages background tasks and network connections.
+/// For a clean shutdown, call [`disconnect()`](Self::disconnect) before dropping:
+///
+/// ```ignore
+/// let client = KaspaRpcClient::new(...)?;
+/// client.connect(None).await?;
+/// // ... use client ...
+/// client.disconnect().await?;
+/// ```
+///
+/// If the last clone of a client is dropped while still connected, a warning is logged and a
+/// best-effort background shutdown is performed; the internal state is released once that
+/// completes. This cleanup is not guaranteed to finish if the async runtime exits immediately.
+///
+/// ## Architecture
 ///
 /// RpcClient has two ways to interface with the underlying RPC subsystem:
 /// [`Interface`] that has a [`notification()`](Interface::notification)
@@ -260,9 +294,79 @@ const WRPC_CLIENT: &str = "wrpc-client";
 /// can be used to resolve a public node address dynamically. [`Resolver`] can also
 /// be configured to operate against custom node clusters.
 ///
+/// Guard dropped exactly once, when the last user-held [`KaspaRpcClient`] clone is dropped.
+///
+/// Background tasks hold `Arc<Inner>` but never this guard, so its `Drop` is a reliable
+/// "no more user handles" signal (unlike `Arc::strong_count`, which also counts internal
+/// holders and is racy to act on). On drop it breaks the internal reference cycles and, if
+/// the client is still connected, performs a best-effort asynchronous shutdown so that
+/// `Inner` can actually be freed.
+struct ClientGuard {
+    inner: Arc<Inner>,
+}
+
+impl Drop for ClientGuard {
+    fn drop(&mut self) {
+        // Break the `Inner -> Notifier -> Subscriber -> Arc<Inner>` cycle by taking the notifier
+        // out of `Inner`. It is kept so it can be joined below if it is still running.
+        let notifier = self.inner.notifier.lock().ok().and_then(|mut notifier| notifier.take());
+
+        if self.inner.background_services_running.load(Ordering::SeqCst) {
+            log_warn!("KaspaRpcClient dropped while still connected. Call disconnect() before dropping for clean shutdown.");
+
+            // Best-effort asynchronous shutdown, in the same order as `disconnect()` + `stop()`.
+            // The task holds `Inner` only until it completes; once it returns nothing references
+            // `Inner` anymore and it is freed.
+            //
+            // The notification channels must not be closed up front: the rpc ctl service task
+            // keeps polling `notification_relay_channel.receiver` and only exits on the
+            // `service_ctl` signal, so a closed channel would turn its loop into a busy loop
+            // that never yields.
+            let inner = self.inner.clone();
+            spawn(async move {
+                let _ = inner.rpc_client.shutdown().await;
+                // Stops the rpc ctl service task, which releases its own `Arc<Inner>`.
+                let _ = inner.service_ctl.signal(()).await;
+                // Closes the old intake channel so the notifier's collector can exit, then joins
+                // the notifier tasks (a no-op if it was never started).
+                inner.reset_notification_intake_channel();
+                if let Some(notifier) = notifier {
+                    let _ = notifier.join().await;
+                }
+                inner.background_services_running.store(false, Ordering::SeqCst);
+            });
+        }
+        // Otherwise the client was never connected or was already disconnected (services stopped
+        // and the notifier already joined), so dropping the taken notifier is sufficient.
+    }
+}
+
+/// A weak handle to a [`KaspaRpcClient`]'s internal state, for tests that need to verify the
+/// state is actually freed once the last client handle is dropped.
+#[cfg(feature = "test-util")]
+pub struct WeakKaspaRpcClient(Weak<Inner>);
+
+#[cfg(feature = "test-util")]
+impl WeakKaspaRpcClient {
+    /// Number of strong references to the internal client state (0 once it has been freed).
+    pub fn strong_count(&self) -> usize {
+        self.0.strong_count()
+    }
+}
+
+#[cfg(feature = "test-util")]
+impl KaspaRpcClient {
+    /// Returns a weak handle to the internal client state. Test utility only.
+    pub fn weak_clone(&self) -> WeakKaspaRpcClient {
+        WeakKaspaRpcClient(Arc::downgrade(&self.inner))
+    }
+}
+
 #[derive(Clone)]
 pub struct KaspaRpcClient {
     inner: Arc<Inner>,
+    // Dropped only when the last clone is dropped; see [`ClientGuard`].
+    _guard: Arc<ClientGuard>,
 }
 
 impl Debug for KaspaRpcClient {
@@ -300,7 +404,8 @@ impl KaspaRpcClient {
     ) -> Result<KaspaRpcClient> {
         let inner = Arc::new(Inner::new(encoding, url, resolver, network_id)?);
         inner.build_notifier(subscription_context)?;
-        let client = KaspaRpcClient { inner };
+        let _guard = Arc::new(ClientGuard { inner: inner.clone() });
+        let client = KaspaRpcClient { inner, _guard };
         //     notification_mode: NotificationMode,
         //     url: &str,
         //     subscription_context: Option<SubscriptionContext>,
@@ -452,7 +557,7 @@ impl KaspaRpcClient {
             max_message_size: Some(1024 * 1024 * 1024),
             max_frame_size: Some(1024 * 1024 * 1024),
             accept_unmasked_frames: false,
-            resolver: Some(self.inner.clone()),
+            resolver: Some(Arc::new(ResolverProxy(Arc::downgrade(&self.inner)))),
             ..Default::default()
         };
 
@@ -701,5 +806,26 @@ impl RpcApi for KaspaRpcClient {
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         self.notifier().try_stop_notify(id, scope)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod drop_tests {
+    use super::*;
+
+    #[test]
+    fn inner_state_is_freed_when_last_handle_is_dropped_without_connecting() {
+        // A freshly constructed client already holds the `Inner -> Notifier -> Subscriber -> Inner`
+        // cycle; dropping the last handle must break it so `Inner` is actually freed.
+        let client = KaspaRpcClient::new(WrpcEncoding::Borsh, Some("ws://127.0.0.1:1"), None, None, None).unwrap();
+        let weak = Arc::downgrade(&client.inner);
+        let clone = client.clone();
+
+        // Dropping a non-last clone must not tear anything down.
+        drop(client);
+        assert!(weak.strong_count() > 0, "a remaining clone must keep the client state alive");
+
+        drop(clone);
+        assert_eq!(weak.strong_count(), 0, "client state must be freed once the last handle is dropped");
     }
 }
