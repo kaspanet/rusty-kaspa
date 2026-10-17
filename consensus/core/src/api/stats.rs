@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "workflow")]
 use workflow_serializer::prelude::*;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -14,6 +15,7 @@ impl BlockCount {
     }
 }
 
+#[cfg(feature = "workflow")]
 impl Serializer for BlockCount {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
@@ -24,6 +26,7 @@ impl Serializer for BlockCount {
     }
 }
 
+#[cfg(feature = "workflow")]
 impl Deserializer for BlockCount {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;

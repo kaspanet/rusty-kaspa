@@ -15,7 +15,7 @@ impl KeyDataId {
     }
 
     pub fn new_from_slice(vec: &[u8]) -> Self {
-        Self(<[u8; 8]>::try_from(<&[u8]>::clone(&vec)).expect("Error: invalid slice size for id"))
+        Self(<[u8; 8]>::try_from(vec).expect("Error: invalid slice size for id"))
     }
 }
 

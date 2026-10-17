@@ -1662,13 +1662,13 @@ mod comprehensive_tests {
 
         // Assign first extranonce
         let extranonce1 =
-            counter.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
+            counter.try_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
         assert!(extranonce1.is_ok());
         assert_eq!(extranonce1.unwrap(), 0);
 
         // Assign second extranonce
         let extranonce2 =
-            counter.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
+            counter.try_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
         assert!(extranonce2.is_ok());
         assert_eq!(extranonce2.unwrap(), 1);
     }
