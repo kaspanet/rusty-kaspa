@@ -1,12 +1,8 @@
 use super::{VirtualStateProcessor, bounds::SeqCommitBounds};
+// Variants are imported from the concrete enum: `crate::errors::RuleError` is a type
+// alias (hasher pinned), and variants cannot be `use`d through a type alias.
 use crate::{
-    errors::{
-        BlockProcessResult,
-        RuleError::{
-            BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext,
-            WrongHeaderPruningPoint, WrongSelectedParentOrder,
-        },
-    },
+    errors::BlockProcessResult,
     model::stores::{
         block_transactions::BlockTransactionsStoreReader,
         daa::DaaStoreReader,
@@ -20,6 +16,10 @@ use crate::{
             tx_validation_in_utxo_context::TxValidationFlags,
         },
     },
+};
+use kaspa_consensus_core::errors::block::RuleError::{
+    BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext, WrongHeaderPruningPoint,
+    WrongSelectedParentOrder,
 };
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,

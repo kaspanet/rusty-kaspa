@@ -1,7 +1,9 @@
+#[cfg(feature = "sighash-sync")]
+use alloc::sync::Arc;
+#[cfg(feature = "sighash-sync")]
 use arc_swap::ArcSwapOption;
+use core::cell::Cell;
 use kaspa_hashes::{Hash, Hasher, HasherBase, TransactionSigningHash, TransactionSigningHashECDSA, ZERO_HASH};
-use std::cell::Cell;
-use std::sync::Arc;
 
 use crate::tx::{ScriptPublicKey, Transaction, TransactionOutpoint, TransactionOutput, VerifiableTransaction};
 
@@ -25,6 +27,7 @@ impl SigHashReusedValuesUnsync {
     }
 }
 
+#[cfg(feature = "sighash-sync")]
 #[derive(Default)]
 pub struct SigHashReusedValuesSync {
     previous_outputs_hash: ArcSwapOption<Hash>,
@@ -34,6 +37,7 @@ pub struct SigHashReusedValuesSync {
     payload_hash: ArcSwapOption<Hash>,
 }
 
+#[cfg(feature = "sighash-sync")]
 impl SigHashReusedValuesSync {
     pub fn new() -> Self {
         Self::default()
@@ -90,6 +94,7 @@ impl SigHashReusedValues for SigHashReusedValuesUnsync {
     }
 }
 
+#[cfg(feature = "sighash-sync")]
 impl SigHashReusedValues for SigHashReusedValuesSync {
     fn previous_outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
         if let Some(value) = self.previous_outputs_hash.load().as_ref() {

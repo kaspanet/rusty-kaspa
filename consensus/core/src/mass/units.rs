@@ -7,8 +7,8 @@ pub const SCRIPT_UNITS_PER_GRAM: u64 = 100;
 pub const SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT: u64 = GRAMS_PER_COMPUTE_BUDGET_UNIT * SCRIPT_UNITS_PER_GRAM;
 
 /// Legacy v0 sigop-count inputs stay pegged to the historical 1000-gram sigop price.
-/// So SigopCount(1) equals one actual sigop only while mass_per_sig_op == 1000;
-/// that mismatch is acceptable because v0 is a deprecated compatibility path.
+/// SigopCount(1) equals one actual sigop under that fixed v0 pricing; v0 is a
+/// deprecated compatibility path.
 pub const SCRIPT_UNITS_PER_SIGOP_COUNT_UNIT: u64 = GRAMS_PER_SIGOP_COUNT_UNIT * SCRIPT_UNITS_PER_GRAM;
 
 /// A fixed per-input script execution allowance applied before committed compute budget.
@@ -33,6 +33,11 @@ impl SigopCount {
     #[inline(always)]
     pub const fn value(self) -> u8 {
         self.0
+    }
+
+    #[inline(always)]
+    pub const fn to_grams(self) -> Gram {
+        Gram(self.0 as u64 * GRAMS_PER_SIGOP_COUNT_UNIT)
     }
 }
 
@@ -93,7 +98,7 @@ impl From<u16> for ComputeBudget {
 }
 
 impl TryFrom<ScriptUnits> for ComputeBudget {
-    type Error = std::num::TryFromIntError;
+    type Error = core::num::TryFromIntError;
 
     #[inline]
     fn try_from(units: ScriptUnits) -> Result<Self, Self::Error> {
@@ -170,7 +175,7 @@ impl ScriptUnits {
     }
 }
 
-impl std::ops::Add for ScriptUnits {
+impl core::ops::Add for ScriptUnits {
     type Output = Self;
 
     #[inline(always)]
@@ -179,7 +184,7 @@ impl std::ops::Add for ScriptUnits {
     }
 }
 
-impl std::ops::Sub for ScriptUnits {
+impl core::ops::Sub for ScriptUnits {
     type Output = Self;
 
     #[inline(always)]

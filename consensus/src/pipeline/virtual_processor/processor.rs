@@ -32,7 +32,7 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
-            virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
+            virtual_state::{LkgVirtualState, SeqCommit, VirtualState, VirtualStateStoreReader, VirtualStores},
         },
     },
     params::Params,
@@ -96,7 +96,7 @@ use rayon::{
 use rocksdb::WriteBatch;
 use std::{
     cmp::min,
-    collections::{BinaryHeap, HashMap, VecDeque},
+    collections::{BinaryHeap, VecDeque},
     ops::Deref,
     sync::{Arc, atomic::Ordering},
 };
@@ -573,11 +573,8 @@ impl VirtualStateProcessor {
         // Update the accumulated diff
         accumulated_diff.with_diff_in_place(&ctx.mergeset_diff).unwrap();
 
-        // Compute accepted_id_digests: single-element vec containing the seq_commit.
-        // The virtual's SmtBuild is ephemeral - only chain blocks persist SMT state.
-        // TODO: narrow accepted_id_digests below (VirtualState field) to a dedicated
-        // single-hash type instead of a Vec, once the on-disk format allows it.
-        let accepted_id_digests = vec![self.compute_seq_commit(&ctx, &virtual_ghostdag_data, virtual_daa_window.daa_score)];
+        // Compute the virtual's seq_commit. Its SmtBuild is ephemeral - only chain blocks persist SMT state.
+        let seq_commit = SeqCommit(self.compute_seq_commit(&ctx, &virtual_ghostdag_data, virtual_daa_window.daa_score));
 
         // Build the new virtual state
         let virtual_state = Arc::new(VirtualState::new(
@@ -587,7 +584,7 @@ impl VirtualStateProcessor {
             virtual_past_median_time,
             ctx.multiset_hash,
             ctx.mergeset_diff,
-            accepted_id_digests,
+            seq_commit,
             ctx.mergeset_rewards,
             virtual_daa_window.mergeset_non_daa,
             virtual_ghostdag_data,
@@ -640,10 +637,7 @@ impl VirtualStateProcessor {
         commit
     }
 
-    /// Build the `accepted_id_digests` for the genesis block.
-    ///
-    /// Pre-KIP21: Vec of genesis tx ids.
-    /// Post-KIP21: single-element vec with the genesis `seq_commit`.
+    /// Compute the genesis block's `seq_commit`, which seeds the initial virtual state.
     ///
     /// Computed unconditionally in post-Toccata form. On a network whose genesis predates the
     /// activation, this value never becomes the one in use: a node with an existing database
@@ -652,7 +646,7 @@ impl VirtualStateProcessor {
     /// that skips genesis and seeds virtual state at the current pruning point. Any network
     /// defined from now on is post-activation at genesis, so the post-Toccata form is the live
     /// one there.
-    pub(super) fn compute_genesis_accepted_id_digests(&self, ghostdag_data: &GhostdagData) -> Vec<Hash> {
+    pub(super) fn compute_genesis_seq_commit(&self, ghostdag_data: &GhostdagData) -> SeqCommit {
         let txs = self.genesis.build_genesis_transactions();
 
         use kaspa_consensus_core::BlueWorkType;
@@ -711,7 +705,7 @@ impl VirtualStateProcessor {
         let pd = payload_and_context_digest(&context_hash, &payload_root);
         let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
         let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
-        vec![commit]
+        SeqCommit(commit)
     }
 
     /// Read stored SMT metadata for the pruning point.
@@ -1026,7 +1020,7 @@ impl VirtualStateProcessor {
                         heap.into_sorted_iter().take_while(|s| s.blue_work >= filtering_blue_work).map(|s| s.hash).collect(),
                     );
                 } else {
-                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
+                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate);
                 }
             } else if finality_point != pruning_point {
                 // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
@@ -1342,7 +1336,7 @@ impl VirtualStateProcessor {
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
 
-        let mut invalid_transactions = HashMap::new();
+        let mut invalid_transactions = hashbrown::HashMap::default();
         let results = self.validate_block_template_transactions_in_parallel(&txs, &virtual_state, &virtual_utxo_view);
         for (tx, res) in txs.iter().zip(results) {
             match res {
@@ -1403,7 +1397,7 @@ impl VirtualStateProcessor {
         utxo_view: &impl UtxoView,
     ) -> Result<(), RuleError> {
         // Search for invalid transactions
-        let mut invalid_transactions = HashMap::new();
+        let mut invalid_transactions = hashbrown::HashMap::default();
         for tx in txs.iter() {
             if let Err(e) = self.validate_block_template_transaction(tx, virtual_state, utxo_view) {
                 invalid_transactions.insert(tx.id(), e);
@@ -1446,8 +1440,8 @@ impl VirtualStateProcessor {
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;
 
-        // Post-KIP21: accepted_id_digests[0] = seq_commit
-        let accepted_id_merkle_root = virtual_state.accepted_id_digests[0];
+        // Post-KIP21: the header commits to the virtual's seq_commit
+        let accepted_id_merkle_root = virtual_state.seq_commit.0;
 
         let header = Header::new_finalized(
             version,
@@ -1508,13 +1502,13 @@ impl VirtualStateProcessor {
         self.db.write(batch).unwrap();
         drop(selected_chain_write);
 
-        // Init virtual state - pre-compute accepted_id_digests here so
+        // Init virtual state - pre-compute the genesis seq_commit here so
         // VirtualState::from_genesis stays a plain data constructor.
         let ghostdag_data = self.ghostdag_manager.ghostdag(&[self.genesis.hash]);
-        let accepted_id_digests = self.compute_genesis_accepted_id_digests(&ghostdag_data);
+        let seq_commit = self.compute_genesis_seq_commit(&ghostdag_data);
         self.commit_virtual_state(
             self.virtual_stores.upgradable_read(),
-            Arc::new(VirtualState::from_genesis(&self.genesis, ghostdag_data, accepted_id_digests)),
+            Arc::new(VirtualState::from_genesis(&self.genesis, ghostdag_data, seq_commit)),
             &Default::default(),
             &Default::default(),
         );

@@ -16,6 +16,7 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
+use kaspa_consensus::model::stores::virtual_state::SeqCommit;
 use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, TESTNET_PARAMS};
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
@@ -1658,6 +1659,7 @@ async fn staging_consensus_lifecycle_test() {
         200,
         Arc::new(MiningRules::default()),
         kaspa_database::prelude::RocksDbPreset::Default,
+        kaspa_database::prelude::RocksDbPreset::Default.mem_budget(1.0),
         None,
         None,
     ));
@@ -1864,8 +1866,8 @@ async fn covenant_opcode_accepted_test() {
     // Use the persisted SMT stores to verify tx inclusion in the seqcommit.
     assert_tx_in_chain_seq_commit(&consensus, accepting_block, &tx);
 
-    // Post-KIP21: accepted_id_digests[0] = seq_commit (not individual tx digests)
-    assert_eq!(consensus.lkg_virtual_state.load().accepted_id_digests.len(), 1);
+    // Post-KIP21: the virtual state carries the seq_commit the next block template commits to
+    assert_ne!(consensus.lkg_virtual_state.load().seq_commit, SeqCommit::default());
 
     consensus.shutdown(wait_handles);
 }

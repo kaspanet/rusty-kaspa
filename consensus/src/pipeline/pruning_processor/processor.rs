@@ -25,6 +25,7 @@ use crate::{
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
+use hashbrown::hash_map::Entry::Vacant;
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel,
@@ -44,7 +45,7 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{VecDeque, hash_map::Entry::Vacant},
+    collections::VecDeque,
     ops::Deref,
     sync::{
         Arc,
@@ -417,7 +418,7 @@ impl PruningProcessor {
                     pruned_tips.len(),
                     pruned_tips.iter().take(5.min(pruned_tips.len().div_ceil(2))).reusable_format(", "),
                     pruned_tips.iter().rev().take(5.min(pruned_tips.len() / 2)).reusable_format(", ")
-                )
+                );
             }
 
             // Prune the selected chain index below the pruning point

@@ -67,6 +67,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetVirtualChainFromBlockV2);
     impl_into_kaspad_request!(GetBlockRewardInfo);
     impl_into_kaspad_request!(GetSeqCommitLaneProof);
+    impl_into_kaspad_request!(GetUtxosByAddressesV2);
 
     impl_into_kaspad_request!(NotifyBlockAdded);
     impl_into_kaspad_request!(NotifyNewBlockTemplate);
@@ -208,6 +209,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetVirtualChainFromBlockV2);
     impl_into_kaspad_response!(GetBlockRewardInfo);
     impl_into_kaspad_response!(GetSeqCommitLaneProof);
+    impl_into_kaspad_response!(GetUtxosByAddressesV2);
 
     impl_into_kaspad_notify_response!(NotifyBlockAdded);
     impl_into_kaspad_notify_response!(NotifyNewBlockTemplate);

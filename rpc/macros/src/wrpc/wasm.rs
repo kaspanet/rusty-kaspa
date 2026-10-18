@@ -49,7 +49,7 @@ impl ToTokens for RpcHandlers {
             // / @param {object} value - an object containing { message: String, privateKey: String|PrivateKey }
             // / @returns {String} the signature, in hex string format
 
-            let links = format! {"@see {{@link {ts_request_type}}}, {{@link {ts_response_type}}}"};
+            let links = format!("@see {{@link {ts_request_type}}}, {{@link {ts_response_type}}}");
             let throws = "@throws `string` on an RPC error or a server-side error.";
             targets_no_args.push(quote! {
                 #(#docs)*
@@ -74,7 +74,7 @@ impl ToTokens for RpcHandlers {
                 fn_call, fn_camel, fn_no_suffix, ts_request_type, ts_response_type, request_type, response_type, docs, ..
             } = Handler::new(handler);
 
-            let links = format! {"@see {{@link {ts_request_type}}}, {{@link {ts_response_type}}}"};
+            let links = format!("@see {{@link {ts_request_type}}}, {{@link {ts_response_type}}}");
             let throws = "@throws `string` on an RPC error, a server-side error or when supplying incorrect arguments.";
             targets_with_args.push(quote! {
                 #(#docs)*

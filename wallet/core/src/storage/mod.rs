@@ -30,11 +30,9 @@ pub use metadata::AccountMetadata;
 pub use storable::Storable;
 pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionRecord};
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
 
-    use super::*;
-    use crate::account::variants::bip32::*;
     use crate::imports::*;
     use crate::storage::local::Payload;
     use crate::storage::local::WalletStorage;

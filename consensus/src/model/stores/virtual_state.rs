@@ -17,12 +17,63 @@ use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use rocksdb::WriteBatch;
-use serde::{Deserialize, Serialize};
+use serde::de::{Error as _, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
 
 /// Version suffix appended to every post-Toccata `VirtualState` row's DB key.
 /// Pre-Toccata rows have no suffix and are decoded through
 /// [`PreToccataVirtualState`] by the version-aware path in [`CachedDbItem`].
 pub const POST_TOCCATA_VIRTUAL_STATE_VERSION: u8 = 1;
+
+/// The virtual block's KIP-21 sequencing commitment (the next header's `accepted_id_merkle_root`).
+/// Encoded as a one-element sequence; an empty sequence decodes to the zero hash.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct SeqCommit(pub Hash);
+
+impl SeqCommit {
+    /// Collapses a pre-Toccata `accepted_id_digests` vector. A lone element is kept; the
+    /// pre-KIP21 multi-digest form has no post-Toccata meaning and maps to the zero hash.
+    /// Such a row belongs to a node that is far behind activation, and the state is
+    /// replaced while it syncs (see `compute_genesis_seq_commit` in the virtual processor).
+    fn from_legacy_digests(digests: &[Hash]) -> Self {
+        match digests {
+            [hash] => Self(*hash),
+            _ => Self::default(),
+        }
+    }
+}
+
+impl Serialize for SeqCommit {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(std::iter::once(&self.0))
+    }
+}
+
+impl<'de> Deserialize<'de> for SeqCommit {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct SeqCommitVisitor;
+
+        impl<'de> Visitor<'de> for SeqCommitVisitor {
+            type Value = SeqCommit;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a sequence of at most one seq_commit hash")
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<SeqCommit, A::Error> {
+                let Some(hash) = seq.next_element::<Hash>()? else { return Ok(SeqCommit::default()) };
+                if seq.next_element::<Hash>()?.is_some() {
+                    return Err(A::Error::invalid_length(2, &self));
+                }
+                Ok(SeqCommit(hash))
+            }
+        }
+
+        deserializer.deserialize_seq(SeqCommitVisitor)
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct VirtualState {
@@ -33,13 +84,7 @@ pub struct VirtualState {
     pub past_median_time: u64,
     pub multiset: MuHash,
     pub utxo_diff: UtxoDiff, // This is the UTXO diff from the selected tip to the virtual. i.e., if this diff is applied on the past UTXO of the selected tip, we'll get the virtual UTXO set.
-    /// Pre-KIP21: tx digests for accepted_id_merkle_root computation.
-    /// Post-KIP21: single-element vec containing the seq_commit hash.
-    // TODO: post-Toccata this always holds exactly one element. Replace `Vec<Hash>` with a
-    // dedicated single-hash type whose Serialize/Deserialize impl encodes as a one-element
-    // vector, so the on-disk and wire format stay byte-identical while the type makes the
-    // single-element invariant explicit and drops the Vec from the API.
-    pub accepted_id_digests: Vec<Hash>,
+    pub seq_commit: SeqCommit,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
     pub mergeset_non_daa: BlockHashSet,
 }
@@ -53,7 +98,7 @@ impl VirtualState {
         past_median_time: u64,
         multiset: MuHash,
         utxo_diff: UtxoDiff,
-        accepted_id_digests: Vec<Hash>,
+        seq_commit: SeqCommit,
         mergeset_rewards: BlockHashMap<BlockRewardData>,
         mergeset_non_daa: BlockHashSet,
         ghostdag_data: GhostdagData,
@@ -66,17 +111,15 @@ impl VirtualState {
             past_median_time,
             multiset,
             utxo_diff,
-            accepted_id_digests,
+            seq_commit,
             mergeset_rewards,
             mergeset_non_daa,
         }
     }
 
-    /// Build the initial virtual state for genesis. `accepted_id_digests` must be
-    /// pre-computed by the caller (the virtual processor) — pre-KIP21 it's the vec
-    /// of genesis tx ids; post-KIP21 it's a single-element vec with the genesis
-    /// `seq_commit`.
-    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData, accepted_id_digests: Vec<Hash>) -> Self {
+    /// Build the initial virtual state for genesis. `seq_commit` is the genesis block's
+    /// sequencing commitment, pre-computed by the caller (the virtual processor).
+    pub fn from_genesis(genesis: &GenesisBlock, ghostdag_data: GhostdagData, seq_commit: SeqCommit) -> Self {
         Self {
             parents: vec![genesis.hash],
             ghostdag_data,
@@ -85,7 +128,7 @@ impl VirtualState {
             past_median_time: genesis.timestamp,
             multiset: MuHash::new(),
             utxo_diff: UtxoDiff::default(), // Virtual diff is initially empty since genesis receives no reward
-            accepted_id_digests,
+            seq_commit,
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::from_iter(std::iter::once(genesis.hash)),
         }
@@ -144,7 +187,7 @@ impl From<PreToccataVirtualState> for VirtualState {
             past_median_time: v.past_median_time,
             multiset: v.multiset,
             utxo_diff: v.utxo_diff.into(),
-            accepted_id_digests: v.accepted_id_digests,
+            seq_commit: SeqCommit::from_legacy_digests(&v.accepted_id_digests),
             mergeset_rewards: v.mergeset_rewards,
             mergeset_non_daa: v.mergeset_non_daa,
         }
@@ -283,6 +326,61 @@ impl VirtualStateStore for DbVirtualStateStore {
 }
 
 #[cfg(test)]
+mod seq_commit_tests {
+    //! Encoding compat tests for [`SeqCommit`]: it must be byte-identical to the
+    //! one-element `Vec<Hash>` it replaced, and tolerate the empty vector that the
+    //! placeholder `VirtualState::default()` used to persist.
+    use super::*;
+    use kaspa_hashes::ZERO_HASH;
+
+    fn hash(byte: u8) -> Hash {
+        Hash::from_bytes([byte; 32])
+    }
+
+    #[test]
+    fn encodes_as_one_element_vec() {
+        let commit = SeqCommit(hash(0x42));
+        let bytes = bincode::serialize(&commit).unwrap();
+        assert_eq!(bytes, bincode::serialize(&vec![hash(0x42)]).unwrap());
+        assert_eq!(bincode::deserialize::<SeqCommit>(&bytes).unwrap(), commit);
+    }
+
+    #[test]
+    fn decodes_one_element_vec() {
+        let bytes = bincode::serialize(&vec![hash(0x42)]).unwrap();
+        assert_eq!(bincode::deserialize::<SeqCommit>(&bytes).unwrap(), SeqCommit(hash(0x42)));
+    }
+
+    #[test]
+    fn decodes_empty_vec_as_zero_hash() {
+        let bytes = bincode::serialize(&Vec::<Hash>::new()).unwrap();
+        assert_eq!(bincode::deserialize::<SeqCommit>(&bytes).unwrap(), SeqCommit::default());
+        assert_eq!(SeqCommit::default().0, ZERO_HASH);
+    }
+
+    #[test]
+    fn rejects_multi_element_vec() {
+        let bytes = bincode::serialize(&vec![hash(1), hash(2)]).unwrap();
+        assert!(bincode::deserialize::<SeqCommit>(&bytes).is_err());
+    }
+
+    #[test]
+    fn placeholder_virtual_state_round_trips() {
+        // The state written while a pruning point is applied (`..VirtualState::default()`).
+        let state = VirtualState::default();
+        let decoded: VirtualState = bincode::deserialize(&bincode::serialize(&state).unwrap()).unwrap();
+        assert_eq!(decoded.seq_commit, SeqCommit::default());
+    }
+
+    #[test]
+    fn legacy_digest_vectors_collapse_to_a_single_commit() {
+        assert_eq!(SeqCommit::from_legacy_digests(&[hash(0x88)]), SeqCommit(hash(0x88)));
+        assert_eq!(SeqCommit::from_legacy_digests(&[]), SeqCommit::default());
+        assert_eq!(SeqCommit::from_legacy_digests(&[hash(1), hash(2)]), SeqCommit::default());
+    }
+}
+
+#[cfg(test)]
 mod tests {
     //! End-to-end compat tests for `DbVirtualStateStore` across the Toccata
     //! version boundary. These drive a real RocksDB and exercise every
@@ -290,13 +388,13 @@ mod tests {
     //! `CachedDbItem`, the `PreToccataVirtualState` shadow decoder, and
     //! the row-level key layout.
     use super::*;
+    use kaspa_consensus_core::HashMap;
     use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
     use kaspa_consensus_core::utxo::pre_toccata::{PreToccataUtxoDiff, PreToccataUtxoEntry};
     use kaspa_consensus_core::utxo::utxo_diff::UtxoDiff;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_hashes::Hash;
-    use std::collections::HashMap;
 
     fn legacy_row_key() -> Vec<u8> {
         DatabaseStorePrefixes::VirtualState.into()
@@ -332,10 +430,10 @@ mod tests {
     fn legacy_virtual_state_decodes_via_shadow() {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
 
-        let mut add = HashMap::new();
+        let mut add = HashMap::default();
         add.insert(outpoint(0x11, 0), pre_toccata_entry(0x0123_4567_89ab_cdef, 42, true, &[0x76, 0xa9, 0x14]));
         add.insert(outpoint(0x33, 4), pre_toccata_entry(500, 100, false, &[0xaa, 0xbb]));
-        let mut remove = HashMap::new();
+        let mut remove = HashMap::default();
         remove.insert(outpoint(0x22, 7), pre_toccata_entry(2_000_000, 99, false, &[0x51, 0x52]));
         remove.insert(outpoint(0x44, 11), pre_toccata_entry(777, 12, true, &[0xde, 0xad, 0xbe, 0xef]));
         let pre_diff = PreToccataUtxoDiff { add, remove };
@@ -364,6 +462,7 @@ mod tests {
         assert_eq!(loaded.daa_score, 999);
         assert_eq!(loaded.bits, 0x1f00ffff);
         assert_eq!(loaded.past_median_time, 1_700_000_000);
+        assert_eq!(loaded.seq_commit, SeqCommit(Hash::from_bytes([0x88; 32])));
         assert_eq!(loaded.utxo_diff.add.len(), 2);
         assert_eq!(loaded.utxo_diff.remove.len(), 2);
         for entry in loaded.utxo_diff.add.values().chain(loaded.utxo_diff.remove.values()) {
@@ -384,7 +483,7 @@ mod tests {
         let lkg = LkgVirtualState::default();
         let mut store = DbVirtualStateStore::new(db.clone(), lkg);
 
-        let mut add = HashMap::new();
+        let mut add = HashMap::default();
         add.insert(
             outpoint(0x77, 3),
             UtxoEntry::new(
@@ -405,7 +504,7 @@ mod tests {
             past_median_time: 1_710_000_000,
             multiset: MuHash::new(),
             utxo_diff: diff,
-            accepted_id_digests: vec![Hash::from_bytes([0x10; 32])],
+            seq_commit: SeqCommit(Hash::from_bytes([0x10; 32])),
             mergeset_rewards: BlockHashMap::new(),
             mergeset_non_daa: BlockHashSet::default(),
         });
@@ -421,6 +520,7 @@ mod tests {
         let round = fresh.get().unwrap();
         assert_eq!(round.daa_score, state.daa_score);
         assert_eq!(round.bits, state.bits);
+        assert_eq!(round.seq_commit, state.seq_commit);
         assert_eq!(round.utxo_diff.add.len(), 1);
         let entry = round.utxo_diff.add.values().next().unwrap();
         assert_eq!(entry.covenant_id, Some(Hash::from_bytes([0x5a; 32])));

@@ -4,13 +4,9 @@ use super::prelude::{Cache, DbKey, DbWriter};
 use parking_lot::{RwLock, RwLockReadGuard};
 use rocksdb::{IterateBounds, IteratorMode, ReadOptions};
 use serde::{Serialize, de::DeserializeOwned};
-use std::{
-    collections::{HashSet, hash_map::RandomState},
-    fmt::Debug,
-    hash::BuildHasher,
-    marker::PhantomData,
-    sync::Arc,
-};
+use std::{collections::hash_map::RandomState, fmt::Debug, hash::BuildHasher, marker::PhantomData, sync::Arc};
+
+use hashbrown::HashSet;
 
 /// A read-only lock. Essentially a wrapper to [`parking_lot::RwLock`] which allows only reading.
 #[derive(Default, Debug)]

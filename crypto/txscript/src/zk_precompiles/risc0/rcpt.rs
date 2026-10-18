@@ -141,7 +141,7 @@ impl SuccinctReceipt {
 
         // Verify that the globals also only contain allowed control roots.
         if control_root != ALLOWED_CONTROL_ROOT {
-            return Err(VerificationError::ControlVerificationError { control_id: control_root })?;
+            Err(VerificationError::ControlVerificationError { control_id: control_root })?;
         }
 
         // Verify the output hash matches that data
@@ -149,7 +149,7 @@ impl SuccinctReceipt {
         // to what has been claimed in the receipt.
         let output_hash = read_sha_halfs(&mut seal_claim).map_err(|_| VerificationError::ReceiptFormatError)?;
         if output_hash != self.claim {
-            return Err(VerificationError::JournalDigestMismatch)?;
+            Err(VerificationError::JournalDigestMismatch)?;
         }
 
         // Everything passed
