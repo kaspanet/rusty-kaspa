@@ -37,7 +37,7 @@ kaspa-smt.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils = { workspace = true, default-features = true }
 kaspa-utxoindex.workspace = true
-kaspa-wrpc-client.workspace = true
+kaspa-wrpc-client = { workspace = true, features = ["test-util"] }
 kaspa-wrpc-server.workspace = true
 kaspad.workspace = true
 

@@ -18,6 +18,8 @@ pub mod client;
 pub mod error;
 mod imports;
 pub mod result;
+#[cfg(feature = "test-util")]
+pub use client::WeakKaspaRpcClient;
 pub use imports::{KaspaRpcClient, Resolver, WrpcEncoding};
 pub mod node;
 pub mod parse;

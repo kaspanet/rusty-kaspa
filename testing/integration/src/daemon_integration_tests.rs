@@ -1297,3 +1297,60 @@ async fn daemon_banned_ip_inbound_rejection_test() {
     kaspad1.shutdown();
     kaspad2.shutdown();
 }
+
+/// Verifies that dropping the last `KaspaRpcClient` handle releases the client's internal state
+/// (strong count reaches 0), both when dropped while still connected (without `disconnect()`)
+/// and when dropped after an explicit `disconnect()`. Either way the internal reference cycles
+/// must be broken and the background services stopped.
+///
+/// See: https://github.com/kaspanet/rusty-kaspa/issues/683
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_wrpc_client_drop_test() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("info,kaspa_wrpc_client=trace");
+
+    let args = Args { devnet: true, disable_upnp: true, ..Default::default() };
+    let total_fd_limit = 10;
+    let mut kaspad = Daemon::new_random_with_args(args, total_fd_limit);
+
+    // Keep the daemon running via a gRPC client and give the wRPC server a moment to come up.
+    let _grpc_client = kaspad.start().await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Waits (bounded) for the asynchronous, best-effort shutdown to release the client state.
+    async fn wait_until_freed(weak: &kaspa_wrpc_client::WeakKaspaRpcClient) -> usize {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while weak.strong_count() > 0 && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        weak.strong_count()
+    }
+
+    // 1. Dropped while still connected, WITHOUT disconnect(): the last-handle guard must shut
+    //    the services down and break the cycles on its own.
+    let weak = {
+        let wrpc_client = kaspad.new_wrpc_client();
+        wrpc_client.connect(None).await.expect("wRPC client should connect");
+        let server_info = wrpc_client.get_server_info().await.expect("should get server info");
+        assert!(!server_info.server_version.is_empty(), "server version should not be empty");
+        let weak = wrpc_client.weak_clone();
+        assert!(weak.strong_count() > 0);
+        drop(wrpc_client);
+        weak
+    };
+    assert_eq!(wait_until_freed(&weak).await, 0, "client state should be freed after dropping a connected client");
+
+    // 2. Explicit disconnect() first, then drop: the notifier cycle outlives disconnect() and
+    //    must still be broken by the guard.
+    let weak = {
+        let wrpc_client = kaspad.new_wrpc_client();
+        wrpc_client.connect(None).await.expect("wRPC client should connect");
+        wrpc_client.disconnect().await.expect("wRPC client should disconnect");
+        let weak = wrpc_client.weak_clone();
+        drop(wrpc_client);
+        weak
+    };
+    assert_eq!(wait_until_freed(&weak).await, 0, "client state should be freed after dropping a disconnected client");
+
+    kaspad.shutdown();
+}
