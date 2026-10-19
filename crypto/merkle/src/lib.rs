@@ -24,6 +24,19 @@ pub fn merkle_hash_with_hasher(left: Hash, right: Hash, mut hasher: impl Hasher)
     hasher.finalize()
 }
 
+/// Index of a node within one active Merkle level.
+type NodeIndex = usize;
+
+#[inline]
+fn left_child(node: NodeIndex) -> NodeIndex {
+    node * 2
+}
+
+#[inline]
+fn right_child(node: NodeIndex) -> NodeIndex {
+    node * 2 + 1
+}
+
 /// Standard Merkle convention: a tree with one leaf is the leaf itself.
 /// Callers must ensure the set of valid leaf hashes is disjoint from valid
 /// internal-node hashes (typically via per-domain hashers) so the two cases
@@ -36,19 +49,22 @@ pub fn calc_merkle_root_with_hasher<H: Hasher>(mut hashes: impl ExactSizeIterato
         _ => {}
     }
     let mut merkles = vec::Vec::with_capacity(hashes.len().div_ceil(2));
+    // Initial level of the tree, hashing pairs of leaves together
     while let Some(left) = hashes.next() {
         let right = hashes.next().unwrap_or(ZERO_HASH);
         merkles.push(merkle_hash_with_hasher(left, right, H::default()));
     }
     let mut level_len = merkles.len();
     while level_len > 1 {
-        for i in 0..level_len / 2 {
-            merkles[i] = merkle_hash_with_hasher(merkles[2 * i], merkles[2 * i + 1], H::default());
+        let parents_level_size = level_len.div_ceil(2);
+        // Limit lookups to the active level, excluding stale entries from earlier levels.
+        let level = &mut merkles[..level_len];
+        for parent_index in 0..parents_level_size {
+            let left = level[left_child(parent_index)];
+            let right = level.get(right_child(parent_index)).copied().unwrap_or(ZERO_HASH);
+            level[parent_index] = merkle_hash_with_hasher(left, right, H::default());
         }
-        if level_len % 2 != 0 {
-            merkles[level_len / 2] = merkle_hash_with_hasher(merkles[level_len - 1], ZERO_HASH, H::default());
-        }
-        level_len = level_len.div_ceil(2);
+        level_len = parents_level_size;
     }
     merkles[0]
 }
