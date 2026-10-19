@@ -68,7 +68,11 @@ cfg_if::cfg_if! {
         pub fn ensure_crypto_provider() {
             static ONCE: std::sync::Once = std::sync::Once::new();
             ONCE.call_once(|| {
-                let _ = rustls::crypto::ring::default_provider().install_default();
+                if rustls::crypto::ring::default_provider().install_default().is_err() {
+                    workflow_log::log_error!(
+                        "failed to install the `ring` rustls crypto provider: a process-level provider is already installed"
+                    );
+                }
             });
         }
     } else {

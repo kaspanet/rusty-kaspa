@@ -120,6 +120,11 @@ features = [
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 home.workspace = true
 
+# ahash brings getrandom 0.3, whose wasm32 builds need the `wasm_js` backend
+# feature (the backend cfg is set in the workspace .cargo/config.toml).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
 [dev-dependencies]
 hex-literal.workspace = true
 serde_repr.workspace = true

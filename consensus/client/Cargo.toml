@@ -39,6 +39,11 @@ itertools.workspace = true
 workflow-wasm.workspace = true
 workflow-log.workspace = true
 
+# ahash brings getrandom 0.3, whose wasm32 builds need the `wasm_js` backend
+# feature (the backend cfg is set in the workspace .cargo/config.toml).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
 [dev-dependencies]
 wasm-bindgen-test.workspace = true
 

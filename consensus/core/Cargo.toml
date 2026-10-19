@@ -48,6 +48,12 @@ workflow-log.workspace = true
 workflow-serializer.workspace = true
 workflow-wasm.workspace = true
 
+# workflow-serializer brings ahash, which pulls getrandom 0.3; its wasm32 builds
+# need the `wasm_js` backend feature (the backend cfg is set in the workspace
+# .cargo/config.toml).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
 [dev-dependencies]
 criterion.workspace = true
 bincode.workspace = true
