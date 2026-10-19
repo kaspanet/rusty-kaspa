@@ -3767,6 +3767,7 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
+ "kaspa-workflow-perf-monitor",
  "log",
  "parking_lot",
  "paste",
@@ -3777,7 +3778,6 @@ dependencies = [
  "triggered",
  "workflow-core",
  "workflow-log",
- "workflow-perf-monitor",
  "workflow-serializer",
 ]
 
@@ -3872,11 +3872,11 @@ name = "kaspa-perf-monitor"
 version = "2.1.0"
 dependencies = [
  "kaspa-core",
+ "kaspa-workflow-perf-monitor",
  "log",
  "portable-atomic",
  "thiserror 2.0.18",
  "tokio",
- "workflow-perf-monitor",
 ]
 
 [[package]]
@@ -4141,6 +4141,7 @@ dependencies = [
  "kaspa-txscript-errors",
  "kaspa-utils",
  "kaspa-utxoindex",
+ "kaspa-workflow-perf-monitor",
  "kaspa-wrpc-client",
  "kaspa-wrpc-server",
  "kaspad",
@@ -4157,7 +4158,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "workflow-perf-monitor",
 ]
 
 [[package]]
@@ -4540,6 +4540,20 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "workflow-wasm",
+]
+
+[[package]]
+name = "kaspa-workflow-perf-monitor"
+version = "0.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57e2edb6f323c3ac4dcf8f5c6d352fc7467ddcf9425aa930350c4dd7ab3fc5b4"
+dependencies = [
+ "bindgen",
+ "cc",
+ "libc",
+ "mach",
+ "thiserror 1.0.64",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -7152,9 +7166,9 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.9.8"
+version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
 
 [[package]]
 name = "stability"
@@ -8904,19 +8918,6 @@ dependencies = [
  "cfg-if",
  "wasm-bindgen",
  "web-sys",
-]
-
-[[package]]
-name = "workflow-perf-monitor"
-version = "0.0.3"
-source = "git+https://github.com/kaspanet/workflow-perf-monitor-rs.git?tag=v0.0.3#d63b1dd1738a9893d674d647b0b528bec7d818a1"
-dependencies = [
- "bindgen",
- "cc",
- "libc",
- "mach",
- "thiserror 1.0.64",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
