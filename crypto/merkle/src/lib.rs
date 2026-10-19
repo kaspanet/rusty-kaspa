@@ -32,23 +32,25 @@ pub fn calc_merkle_root_with_hasher<H: Hasher>(mut hashes: impl ExactSizeIterato
     match hashes.len() {
         0 => return cold_path_empty(),
         1 => return hashes.next().unwrap(),
+        2 => return merkle_hash_with_hasher(hashes.next().unwrap(), hashes.next().unwrap(), H::default()),
         _ => {}
     }
-    let next_pot = hashes.len().next_power_of_two();
-    let vec_len = 2 * next_pot - 1;
-
-    let mut merkles = vec![None; vec_len];
-    for (i, hash) in hashes.enumerate() {
-        merkles[i] = Some(hash);
+    let mut merkles = vec::Vec::with_capacity(hashes.len().div_ceil(2));
+    while let Some(left) = hashes.next() {
+        let right = hashes.next().unwrap_or(ZERO_HASH);
+        merkles.push(merkle_hash_with_hasher(left, right, H::default()));
     }
-    for (offset, i) in (next_pot..).zip((0..vec_len - 1).step_by(2)) {
-        if merkles[i].is_none() {
-            merkles[offset] = None;
-        } else {
-            merkles[offset] = Some(merkle_hash_with_hasher(merkles[i].unwrap(), merkles[i + 1].unwrap_or(ZERO_HASH), H::default()));
+    let mut level_len = merkles.len();
+    while level_len > 1 {
+        for i in 0..level_len / 2 {
+            merkles[i] = merkle_hash_with_hasher(merkles[2 * i], merkles[2 * i + 1], H::default());
         }
+        if level_len % 2 != 0 {
+            merkles[level_len / 2] = merkle_hash_with_hasher(merkles[level_len - 1], ZERO_HASH, H::default());
+        }
+        level_len = level_len.div_ceil(2);
     }
-    merkles.last().unwrap().unwrap()
+    merkles[0]
 }
 
 #[inline(never)]
