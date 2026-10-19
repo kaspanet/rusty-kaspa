@@ -95,6 +95,9 @@ workflow-log = { workspace = true, optional = true }
 workflow-serializer = { workspace = true, optional = true }
 workflow-wasm = { workspace = true, optional = true }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { workspace = true, features = ["wasm_js"] }
+
 [dev-dependencies]
 criterion.workspace = true
 bincode.workspace = true

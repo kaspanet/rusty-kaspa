@@ -120,6 +120,9 @@ features = [
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 home.workspace = true
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { workspace = true, features = ["wasm_js"] }
+
 [dev-dependencies]
 hex-literal.workspace = true
 serde_repr.workspace = true

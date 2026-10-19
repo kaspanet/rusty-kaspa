@@ -10,7 +10,6 @@
 //! implementation](https://docs.rs/kaspa-wrpc-client/latest/kaspa_wrpc_client/wasm/struct.RpcClient.html)
 //! (based on wRPC).
 //!
-
 // This attribute is required by BorshSerialize/Deserialize
 #![recursion_limit = "256"]
 
