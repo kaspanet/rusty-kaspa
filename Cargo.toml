@@ -81,6 +81,7 @@ edition = "2024"
 include = [
     "src/**/*.rs",
     "src/**/*.s",
+    "src/**/*.asm",
     "src/**/*.r",
     "proto/**/*.proto",
     "benches/**/*.rs",
