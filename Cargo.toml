@@ -199,6 +199,11 @@ flate2 = "1.0.28"
 futures = { version = "0.3.29" }
 futures-util = { version = "0.3.29", default-features = false, features = ["alloc"] }
 getrandom = { version = "0.2.10", features = ["js"] }
+# getrandom 0.3 enters the graph through ahash (ark-*/risc0 chains and
+# workflow-serializer consumers). Crates that pull it in declare `getrandom_03`
+# under a cfg(wasm32) target section with the `wasm_js` backend feature (the
+# backend cfg is set in .cargo/config.toml).
+getrandom_03 = { package = "getrandom", version = "0.3" }
 h2 = "0.4.6"
 hashbrown = { version = "0.15", default-features = false, features = ["default-hasher", "inline-more", "serde"] }
 # h2 = "0.3.21"

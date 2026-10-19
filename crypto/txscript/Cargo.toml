@@ -55,11 +55,8 @@ thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 
-# The ark-* crates bring ahash, which pulls getrandom 0.3; its wasm32 builds
-# need the `wasm_js` backend feature (the backend cfg is set in the workspace
-# .cargo/config.toml).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom_03 = { workspace = true, features = ["wasm_js"] }
 
 # Pull risc0-zkvm-platform directly with `export-syscalls` so it defines its
 # host stubs (e.g. sys_alloc_aligned as `unimplemented!()`); otherwise the symbol
