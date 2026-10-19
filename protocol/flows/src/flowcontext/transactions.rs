@@ -39,6 +39,8 @@ impl TransactionsSpread {
     /// and if so, mark the task as running.
     pub fn should_run_mempool_scanning_task(&mut self) -> bool {
         let now = Instant::now();
+
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(TIMESTAMP): `SCANNING_TASK_INTERVAL` is small enough.")]
         if self.scanning_task_running || now < self.last_scanning_time + Duration::from_secs(SCANNING_TASK_INTERVAL) {
             return false;
         }
@@ -46,9 +48,17 @@ impl TransactionsSpread {
         // Keep the launching times aligned to exact intervals. Note that `delta=10.1` seconds will result in
         // adding 10 seconds to last scan time, while `delta=11` will result in adding 20 (assuming scanning
         // interval is 10 seconds).
-        self.last_scanning_time += Duration::from_secs(delta.as_secs().div_ceil(SCANNING_TASK_INTERVAL) * SCANNING_TASK_INTERVAL);
+        let delta = Duration::from_secs(delta.as_secs().next_multiple_of(SCANNING_TASK_INTERVAL));
 
-        self.scanning_job_count += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(TIMESTAMP): `delta` is small enough.")]
+        {
+            self.last_scanning_time += delta;
+        }
+
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            self.scanning_job_count += 1;
+        }
         self.scanning_task_running = true;
         true
     }
@@ -79,6 +89,8 @@ impl TransactionsSpread {
         self.transaction_ids.enqueue_chunk(transaction_ids);
 
         let now = Instant::now();
+
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(TIMESTAMP)")]
         if now < self.last_broadcast_time + BROADCAST_INTERVAL && self.transaction_ids.len() < MAX_INV_PER_TX_INV_MSG {
             return;
         }

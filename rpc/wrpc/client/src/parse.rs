@@ -109,6 +109,7 @@ pub fn parse_host(input: &str) -> Result<ParseHostOutput<'_>, ParseHostError> {
     }
 
     // Attempt to parse the host as an IPv6 address enclosed in square brackets.
+    #[allow(clippy::arithmetic_side_effects, reason = "`host.len() >= 2` because it starts with '[' and ends with ']'.")]
     if host.starts_with('[') && host.ends_with(']') {
         let ipv6 = &host[1..host.len() - 1];
         if let Ok(ipv6) = ipv6.parse::<Ipv6Addr>() {

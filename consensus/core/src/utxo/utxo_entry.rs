@@ -1,10 +1,12 @@
-use std::fmt;
+use core::fmt;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_hashes::Hash;
+#[cfg(feature = "mem_size")]
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::de::{Error as DeError, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::prelude::*;
 
 use crate::tx::ScriptPublicKey;
@@ -15,17 +17,17 @@ use crate::tx::ScriptPublicKey;
 /// much it pays.
 /// @category Consensus
 #[derive(Debug, Default, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize)]
-#[wasm_bindgen(inspectable, js_name = TransactionUtxoEntry)]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(inspectable, js_name = TransactionUtxoEntry))]
 #[serde(rename_all = "camelCase")]
 pub struct UtxoEntry {
     pub amount: u64,
-    #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = scriptPublicKey, getter_with_clone))]
     pub script_public_key: ScriptPublicKey,
-    #[wasm_bindgen(js_name = blockDaaScore)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = blockDaaScore))]
     pub block_daa_score: u64,
-    #[wasm_bindgen(js_name = isCoinbase)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = isCoinbase))]
     pub is_coinbase: bool,
-    #[wasm_bindgen(js_name = covenantId)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = covenantId))]
     #[serde(default)]
     pub covenant_id: Option<Hash>,
 }
@@ -42,6 +44,7 @@ impl UtxoEntry {
     }
 }
 
+#[cfg(feature = "mem_size")]
 impl MemSizeEstimator for UtxoEntry {}
 
 /// Shadow struct used on the human-readable serde path so JSON/RPC consumers

@@ -3,11 +3,11 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
+use crate::errors::{ProofWeakness, PruningImportError, PruningImportResult};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockLevel, BlueWorkType,
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
-    errors::pruning::{ProofWeakness, PruningImportError, PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningProofMetadata},
 };
@@ -186,6 +186,9 @@ impl ProofContext {
             let mut selected_tip =
                 proof[level_idx].first().map(|header| header.hash).ok_or(PruningImportError::PruningProofNotEnoughHeaders)?;
             for (i, header) in proof[level_idx].iter().enumerate() {
+                if header.parents_by_level.is_empty() && header.hash != ppm.genesis_hash {
+                    return Err(PruningImportError::NonGenesisParentlessHeader(header.hash));
+                }
                 let (header_level, pow_passes) = calc_block_level_check_pow(header, ppm.max_block_level);
                 if header_level < level {
                     return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));

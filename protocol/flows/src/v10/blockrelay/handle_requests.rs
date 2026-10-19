@@ -3,7 +3,6 @@ use kaspa_core::debug;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
-    convert::header::HeaderFormat,
     dequeue_with_request_id, make_message, make_response,
     pb::{InvRelayBlockMessage, kaspad_message::Payload},
 };
@@ -13,7 +12,6 @@ pub struct HandleRelayBlockRequests {
     ctx: FlowContext,
     router: Arc<Router>,
     incoming_route: IncomingRoute,
-    header_format: HeaderFormat,
 }
 
 #[async_trait::async_trait]
@@ -28,8 +26,8 @@ impl Flow for HandleRelayBlockRequests {
 }
 
 impl HandleRelayBlockRequests {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, header_format: HeaderFormat) -> Self {
-        Self { ctx, router, incoming_route, header_format }
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute) -> Self {
+        Self { ctx, router, incoming_route }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
@@ -46,7 +44,7 @@ impl HandleRelayBlockRequests {
 
             for hash in hashes {
                 let block = session.async_get_block(hash).await?;
-                self.router.enqueue(make_response!(Payload::Block, (self.header_format, &block).into(), request_id)).await?;
+                self.router.enqueue(make_response!(Payload::Block, (&block).into(), request_id)).await?;
                 debug!("relayed block with hash {} to peer {}", hash, self.router);
             }
         }

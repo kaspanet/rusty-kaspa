@@ -3,14 +3,16 @@ pub mod constants;
 pub mod genesis;
 pub mod params;
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 
 #[cfg(feature = "devnet-prealloc")]
 use crate::utxo::utxo_collection::UtxoCollection;
 #[cfg(feature = "devnet-prealloc")]
-use std::sync::Arc;
+use alloc::sync::Arc;
 
-use std::ops::Deref;
+use core::ops::Deref;
 
 use {
     constants::perf::{PERF_PARAMS, PerfParams},

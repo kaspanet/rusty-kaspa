@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use super::coinbase_mock::CoinbaseManagerMock;
 use kaspa_consensus_core::{
     api::{
@@ -35,7 +36,7 @@ impl ConsensusMock {
         Self {
             transactions: RwLock::new(HashMap::default()),
             statuses: RwLock::new(HashMap::default()),
-            utxos: RwLock::new(HashMap::default()),
+            utxos: RwLock::new(UtxoCollection::default()),
         }
     }
 

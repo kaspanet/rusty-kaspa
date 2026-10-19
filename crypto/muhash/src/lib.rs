@@ -1,3 +1,7 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
 // Make u3072 public if we're fuzzing
 #[cfg(fuzzing)]
 pub mod u3072;
@@ -5,13 +9,13 @@ pub mod u3072;
 mod u3072;
 
 use crate::u3072::U3072;
+use core::error::Error;
+use core::fmt::Display;
 use kaspa_hashes::{Hash, Hasher, HasherBase, MuHashElementHash, MuHashFinalizeHash};
 use kaspa_math::Uint3072;
 use rand_chacha::ChaCha20Rng;
 use rand_chacha::rand_core::{RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
-use std::fmt::Display;
 
 pub const HASH_SIZE: usize = 32;
 pub const SERIALIZED_MUHASH_SIZE: usize = ELEMENT_BYTE_SIZE;
@@ -38,7 +42,7 @@ pub struct MuHash {
 pub struct OverflowError;
 
 impl Display for OverflowError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "Overflow in the MuHash field")
     }
 }
@@ -179,6 +183,7 @@ impl Default for MuHash {
 mod tests {
     use crate::OverflowError;
     use crate::{EMPTY_MUHASH, MuHash, U3072};
+    use alloc::vec::Vec;
     use kaspa_hashes::Hash;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;

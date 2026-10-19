@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 //! # Reachability and Storage Invariants
 //!
 //! This module relies on a set of structural invariants relating the different

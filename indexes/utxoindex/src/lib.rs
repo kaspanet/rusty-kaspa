@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 pub mod core; //all things visible to the outside
 mod index;
 mod stores;

@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 // public for benchmarks
 #[doc(hidden)]
 pub mod matrix;

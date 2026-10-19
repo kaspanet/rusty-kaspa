@@ -1,3 +1,6 @@
+// Test code is exempt from the arithmetic-side-effects lint.
+#![allow(clippy::arithmetic_side_effects)]
+
 use ark_bn254::{Bn254, G1Affine};
 use ark_groth16::Proof;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -13,7 +16,7 @@ use kaspa_txscript_zk_sdk::{ZkScriptBuilder, prepare_r0_groth16_proof};
 use risc0_zkvm::{Digest, Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 
 fn zk_test_flags() -> EngineFlags {
-    EngineFlags { covenants_enabled: true, ..Default::default() }
+    Default::default()
 }
 
 fn execute_p2sh(sig_script: Vec<u8>, redeem_script: &[u8]) -> Result<(), TxScriptError> {

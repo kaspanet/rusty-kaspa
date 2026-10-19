@@ -12,3 +12,4 @@ pub mod notification;
 pub mod optional;
 pub mod peer;
 pub mod tx;
+pub mod utxo_cursor;

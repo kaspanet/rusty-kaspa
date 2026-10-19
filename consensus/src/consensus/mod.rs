@@ -1524,13 +1524,6 @@ impl ConsensusApi for Consensus {
         }
 
         let header = self.headers_store.get_header(block_hash).unwrap();
-
-        // KIP-21 activity_root only exists post-Toccata. Drop the gate after all
-        // nets activate.
-        if !self.config.params.toccata_activation.is_active(header.daa_score) {
-            return Err(ConsensusError::GeneralOwned(format!("toccata is not active at block {block_hash}")));
-        }
-
         let selected_parent = header.post_toccata_chainblock_selected_parent();
         let parent_header = self.headers_store.get_header(selected_parent).unwrap();
 
@@ -1554,9 +1547,9 @@ impl ConsensusApi for Consensus {
         let metadata =
             self.storage.smt_metadata_store.get(block_hash).map_err(|e| ConsensusError::GeneralOwned(format!("smt_metadata: {e}")))?;
 
-        // Toccata is active (checked above), so the metadata carries a concrete
-        // shortcut block. Its header must exist: block_hash was verified to be a
-        // chain block between the pruning point and sink, so its shortcut block
+        // The metadata carries a concrete shortcut block. Its header must exist:
+        // block_hash was verified to be a chain block between the pruning point
+        // and sink, so its shortcut block
         // lies on the chain segment [pp - F, sink] which is not pruned (and we
         // hold the pruning lock read guard). Fold to seq_commit via the virtual
         // processor.

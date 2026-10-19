@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 //! Backward-compatibility tests for DB-persisted consensus-core structs across
 //! the Toccata hardfork.
 //!

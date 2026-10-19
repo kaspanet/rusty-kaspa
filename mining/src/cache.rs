@@ -30,7 +30,7 @@ impl Inner {
     pub(crate) fn get_immutable_cached_template(&self) -> Option<Arc<BlockTemplate>> {
         let now = unix_now();
         // We verify that `now > last update` in order to avoid theoretic clock change bugs
-        if now > self.last_update_time + self.cache_lifetime || now < self.last_update_time {
+        if now > self.last_update_time.saturating_add(self.cache_lifetime) || now < self.last_update_time {
             None
         } else {
             self.block_template.clone()

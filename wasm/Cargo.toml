@@ -22,7 +22,7 @@ kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
-kaspa-math.workspace = true
+kaspa-math = { workspace = true, features = ["std"] }
 kaspa-pow.workspace = true
 kaspa-txscript.workspace = true
 kaspa-txscript-zk-sdk.workspace = true

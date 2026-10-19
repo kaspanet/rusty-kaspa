@@ -129,7 +129,7 @@ impl ToTokens for ApiHandlers {
         for handler in self.handlers.elems.iter() {
             let Handler { fn_call, fn_camel, fn_no_suffix, request_type, ts_request_type, ts_response_type, docs, .. } =
                 Handler::new(handler);
-            let links = format! {"@see {{@link {ts_request_type}}} {{@link {ts_response_type}}}"};
+            let links = format!("@see {{@link {ts_request_type}}} {{@link {ts_response_type}}}");
             let throws = "@throws `string` in case of an error.";
             targets.push(quote! {
                 #(#docs)*
@@ -175,6 +175,8 @@ fn extract_literal(expr: &Expr) -> Result<String> {
 }
 
 fn insert_typedoc(text: &str, insertion: &str) -> String {
+    // This can panic only on the unrealistic case where `text` or `line` are greater than `usize::MAX / 2`.
+    #![allow(clippy::arithmetic_side_effects)]
     if let Some(mut index) = text.find("/**") {
         index += 3;
         let insertion = insertion

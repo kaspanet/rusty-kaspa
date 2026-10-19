@@ -17,7 +17,7 @@ where
     /// The implementation bases on Kahn's in-degree algorithm.
     fn topological_index(&'a self) -> TopologicalIndexResult<Vec<TKey>> {
         let mut sorted = Vec::with_capacity(self.topology_nodes().len());
-        let mut in_degree: HashMap<TKey, u32> = HashMap::with_capacity(self.topology_nodes().len());
+        let mut in_degree: HashMap<TKey, usize> = HashMap::with_capacity(self.topology_nodes().len());
         self.topology_nodes().for_each(|key| {
             in_degree.insert(key.clone(), 0);
         });
@@ -25,7 +25,10 @@ where
         self.topology_nodes().for_each(|key| {
             if let Some(edges) = self.topology_node_edges(key) {
                 edges.for_each(|node| {
-                    *in_degree.get_mut(node).unwrap() += 1;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        *in_degree.get_mut(node).unwrap() += 1;
+                    }
                 });
             }
         });
@@ -42,7 +45,14 @@ where
             if let Some(edges) = self.topology_node_edges(&current) {
                 edges.for_each(|node| {
                     let degree = in_degree.get_mut(node).unwrap();
-                    *degree -= 1;
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "Since the edge goes into `node`, the degree must be at least 1."
+                    )]
+                    {
+                        *degree -= 1;
+                    }
+
                     if *degree == 0 {
                         queue.push_back(node.clone());
                     }

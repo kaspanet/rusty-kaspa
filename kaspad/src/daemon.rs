@@ -220,8 +220,8 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 
 /// Configure RocksDB parameters from CLI arguments.
 ///
-/// Returns: (preset, cache_budget, wal_directory)
-fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathBuf>) {
+/// Returns: (preset, mem_budget, cache_budget, wal_directory)
+fn configure_rocksdb(args: &Args) -> (RocksDbPreset, usize, Option<usize>, Option<PathBuf>) {
     // Parse preset
     let preset = if let Some(preset_str) = &args.rocksdb_preset {
         match preset_str.parse::<RocksDbPreset>() {
@@ -240,14 +240,14 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
         RocksDbPreset::Default
     };
 
-    // Calculate cache budget for HDD preset
-    let cache_budget = if matches!(preset, RocksDbPreset::Hdd) {
+    // Calculate cache budget for the HDD and low-IO presets
+    let cache_budget = if matches!(preset, RocksDbPreset::Hdd | RocksDbPreset::LowIo) {
         if let Some(cache_mb) = args.rocksdb_cache_size {
-            let cache_bytes = cache_mb * 1024 * 1024;
+            let cache_bytes = cache_mb.checked_mul(1024 * 1024).unwrap();
             info!("Custom RocksDB cache size: {} MB", cache_mb);
             Some(cache_bytes)
         } else {
-            let base_cache = 256 * 1024 * 1024;
+            let base_cache = if preset == RocksDbPreset::LowIo { 1024 * 1024 * 1024 } else { 256 * 1024 * 1024 };
             let scaled_cache = (base_cache as f64 * args.ram_scale) as usize;
             let min_cache = 64 * 1024 * 1024;
             let final_cache = scaled_cache.max(min_cache);
@@ -265,7 +265,12 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
         wal_path
     });
 
-    (preset, cache_budget, wal_dir)
+    let mem_budget = preset.mem_budget(args.ram_scale);
+    if preset == RocksDbPreset::LowIo {
+        info!("RocksDB write buffer size: {} MB (scaled by ram-scale)", mem_budget / 4 / 1024 / 1024);
+    }
+
+    (preset, mem_budget, cache_budget, wal_dir)
 }
 
 /// Create [`Core`] instance with supplied [`Args`] and [`Runtime`].
@@ -282,17 +287,23 @@ fn configure_rocksdb(args: &Args) -> (RocksDbPreset, Option<usize>, Option<PathB
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
 
-    let mut fd_remaining = fd_total_budget;
-    let utxo_files_limit = if args.utxoindex {
+    let mut fd_remaining: u32 = fd_total_budget.try_into().unwrap();
+    let utxo_files_limit: i32 = if args.utxoindex {
         let utxo_files_limit = fd_remaining / 10;
-        fd_remaining -= utxo_files_limit;
-        utxo_files_limit
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "Dividing fd_remaining by 10 produces a value no greater than fd_remaining, so the subtraction cannot underflow."
+        )]
+        {
+            fd_remaining -= utxo_files_limit;
+        }
+        utxo_files_limit.try_into().unwrap()
     } else {
         0
     };
 
     // Configure RocksDB parameters
-    let (rocksdb_preset, cache_budget, wal_dir) = configure_rocksdb(args);
+    let (rocksdb_preset, rocksdb_mem_budget, cache_budget, wal_dir) = configure_rocksdb(args);
 
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
@@ -376,12 +387,11 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
         let retention_period_milliseconds = (retention_period_days * 24.0 * 60.0 * 60.0 * 1000.0).ceil() as u64;
         if MINIMUM_RETENTION_PERIOD_DAYS <= retention_period_days {
-            let total_blocks = retention_period_milliseconds / target_time_per_block;
+            let total_blocks = retention_period_milliseconds.checked_div(target_time_per_block).unwrap();
             // This worst case usage only considers block space. It does not account for usage of
             // other stores (reachability, block status, mempool, etc.)
-            let worst_case_usage = ((total_blocks + finality_depth)
-                * (config.block_mass_limits().after().transient / TRANSIENT_BYTE_TO_MASS_FACTOR))
-                as f64
+            let worst_case_usage = ((total_blocks as f64 + finality_depth as f64)
+                * (config.block_mass_limits.transient as f64 / TRANSIENT_BYTE_TO_MASS_FACTOR as f64))
                 / ONE_GIGABYTE;
 
             info!(
@@ -398,6 +408,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .with_db_path(meta_db_dir.clone())
         .with_files_limit(META_DB_FILE_LIMIT)
         .with_preset(rocksdb_preset)
+        .with_mem_budget(rocksdb_mem_budget)
         .with_wal_dir(wal_dir.clone())
         .with_cache_budget(cache_budget)
         .build()
@@ -416,6 +427,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     .with_db_path(consensus_db_dir.clone().join(dir_name))
                     .with_files_limit(1)
                     .with_preset(rocksdb_preset)
+                    .with_mem_budget(rocksdb_mem_budget)
                     .with_wal_dir(wal_dir.clone())
                     .with_cache_budget(cache_budget)
                     .build()
@@ -475,6 +487,7 @@ Do you confirm? (y/n)";
                         .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
                         .with_files_limit(10)
                         .with_preset(rocksdb_preset)
+                        .with_mem_budget(rocksdb_mem_budget)
                         .with_wal_dir(wal_dir.clone())
                         .with_cache_budget(cache_budget)
                         .build()
@@ -485,7 +498,7 @@ Do you confirm? (y/n)";
 
                     let mut writer = DirectDbWriter::new(&consensus_db);
 
-                    let end_level: u8 = config.max_block_level + 1;
+                    let end_level: u8 = config.max_block_level.checked_add(1).expect("max_block_level + 1 should not overflow u8");
                     let end_level_bytes = end_level.to_le_bytes();
 
                     let start_parents_prefix_vec: Vec<_> =
@@ -543,6 +556,7 @@ Do you confirm? (y/n)";
             .with_db_path(meta_db_dir)
             .with_files_limit(META_DB_FILE_LIMIT)
             .with_preset(rocksdb_preset)
+            .with_mem_budget(rocksdb_mem_budget)
             .with_wal_dir(wal_dir.clone())
             .with_cache_budget(cache_budget)
             .build()
@@ -594,9 +608,10 @@ Do you confirm? (y/n)";
         notification_root.clone(),
         processing_counters.clone(),
         tx_script_cache_counters.clone(),
-        fd_remaining,
+        fd_remaining.try_into().unwrap(),
         mining_rules.clone(),
         rocksdb_preset,
+        rocksdb_mem_budget,
         wal_dir.clone(),
         cache_budget,
     ));
@@ -623,14 +638,33 @@ Do you confirm? (y/n)";
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
-            .with_db_path(utxoindex_db_dir)
+        let mut utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
+            .with_db_path(utxoindex_db_dir.clone())
             .with_files_limit(utxo_files_limit)
             .with_preset(rocksdb_preset)
+            .with_mem_budget(rocksdb_mem_budget)
             .with_wal_dir(wal_dir.clone())
             .with_cache_budget(cache_budget)
             .build()
             .unwrap();
+
+        if UtxoIndex::has_legacy_db_version(utxoindex_db.clone()).expect("failed checking UTXO index db version") {
+            let msg = "UTXO index database has an older db version and must be rebuilt to continue. Do you confirm rebuilding the UTXO index DB? (y/n)";
+            get_user_approval_or_exit(msg, args.yes);
+            drop(utxoindex_db);
+            fs::remove_dir_all(utxoindex_db_dir.as_path()).unwrap();
+            fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+
+            utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
+                .with_db_path(utxoindex_db_dir.clone())
+                .with_files_limit(utxo_files_limit)
+                .with_preset(rocksdb_preset)
+                .with_wal_dir(wal_dir.clone())
+                .with_cache_budget(cache_budget)
+                .build()
+                .unwrap();
+        }
+
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
         let index_service = Arc::new(IndexService::new(&notify_service.notifier(), subscription_context.clone(), Some(utxoindex)));
         Some(index_service)
@@ -643,8 +677,7 @@ Do you confirm? (y/n)";
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block(),
         false,
-        config.mempool_block_mass_limits(),
-        config.toccata_activation,
+        config.block_mass_limits,
         config.block_lane_limits,
         config.ram_scale,
         config.block_template_cache_lifetime,

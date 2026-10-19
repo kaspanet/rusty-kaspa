@@ -67,7 +67,7 @@ kaspa-hashes.workspace = true
 kaspa-metrics-core.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
-kaspa-txscript-errors.workspace = true
+kaspa-txscript-errors = { workspace = true, features = ["std"] }
 kaspa-txscript.workspace = true
 kaspa-utils = { workspace = true, features = ["hashmap"] }
 kaspa-wallet-keys.workspace = true
@@ -82,7 +82,7 @@ pbkdf2.workspace = true
 rand.workspace = true
 regex.workspace = true
 ripemd.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 separator.workspace = true
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true
@@ -128,6 +128,7 @@ getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] 
 [dev-dependencies]
 hex-literal.workspace = true
 serde_repr.workspace = true
+wasm-bindgen-test.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true

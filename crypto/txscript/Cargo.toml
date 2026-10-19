@@ -35,7 +35,7 @@ js-sys = { workspace = true, optional = true }
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
-kaspa-txscript-errors.workspace = true
+kaspa-txscript-errors = { workspace = true, features = ["std"] }
 kaspa-utils.workspace = true
 kaspa-wasm-core = { workspace = true, optional = true }
 log.workspace = true
@@ -52,7 +52,7 @@ risc0-zkp.workspace = true
 # cdylib (LNK2019), breaking every Windows cdylib that depends on kaspa-txscript.
 # Kaspa only verifies on the host, so the stub is never actually called.
 risc0-zkvm-platform = { workspace = true, features = ["export-syscalls"] }
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -67,6 +67,8 @@ workflow-wasm.workspace = true
 # .cargo/config.toml).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+[target.'cfg(windows)'.dependencies]
+risc0-zkvm-platform = { workspace = true, features = ["export-syscalls"] }
 
 [dev-dependencies]
 bytemuck.workspace = true

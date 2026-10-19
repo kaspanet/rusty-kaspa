@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 //! Proving a single lane's activity across a chain of blocks.
 //!
 //! A verifier who knows only the final `seq_commit` from a block header
