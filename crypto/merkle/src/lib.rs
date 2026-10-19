@@ -37,6 +37,12 @@ fn right_child(node: NodeIndex) -> NodeIndex {
     node * 2 + 1
 }
 
+#[inline]
+#[allow(dead_code)]
+fn parent(node: NodeIndex) -> NodeIndex {
+    node / 2
+}
+
 /// Standard Merkle convention: a tree with one leaf is the leaf itself.
 /// Callers must ensure the set of valid leaf hashes is disjoint from valid
 /// internal-node hashes (typically via per-domain hashers) so the two cases
