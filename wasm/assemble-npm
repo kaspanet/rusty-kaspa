@@ -1,0 +1,18 @@
+#!/bin/bash
+# This script assembles and packs the @kaspa/sdk-wasm npm package
+
+set -e
+
+cd "$(dirname "$0")"
+
+node build/npm/assemble.js
+
+pushd npm-release/sdk-wasm > /dev/null
+npm pack --pack-destination ../ > /dev/null
+popd > /dev/null
+
+TARBALL=$(ls npm-release/*.tgz)
+echo ""
+echo "npm package tarball ready: wasm/$TARBALL"
+echo "smoke test it with:        node build/npm/smoke-test.js $TARBALL"
+echo "to publish:                npm publish wasm/$TARBALL"
