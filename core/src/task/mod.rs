@@ -1,3 +1,4 @@
+pub mod blocking;
 pub mod runtime;
 pub mod service;
 pub mod tick;
