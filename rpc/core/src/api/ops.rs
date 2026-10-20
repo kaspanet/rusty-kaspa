@@ -105,7 +105,6 @@ pub enum RpcApiOps {
     /// Instructs this node to shut down Returns an empty response or an error message
     Shutdown = 133,
     //
-    GetHeaders = 134,
     /// Get a list of available UTXOs for a given address
     GetUtxosByAddresses = 135,
     /// Get a balance for a given address
