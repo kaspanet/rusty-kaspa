@@ -7,7 +7,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::StoreResultExt;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbWriter, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
@@ -29,6 +29,55 @@ pub trait UtxoSetStore: UtxoSetStoreReader {
 }
 
 pub const UTXO_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_of::<TransactionIndexType>();
+
+// Used only by the two explicit IBD import methods below, under the existing
+// exclusive store lock. Ordinary UTXO writes keep their original writer.
+const IMPORT_BATCH_ENTRIES: usize = 1_000;
+const IMPORT_BATCH_BYTES: usize = 1 << 20;
+
+struct UtxoImportWriter<'a> {
+    db: &'a DB,
+    batch: WriteBatch,
+}
+
+impl<'a> UtxoImportWriter<'a> {
+    fn new(db: &'a DB) -> Self {
+        Self { db, batch: WriteBatch::default() }
+    }
+
+    fn flush(&mut self) -> Result<(), rocksdb::Error> {
+        if !self.batch.is_empty() {
+            self.db.write(std::mem::take(&mut self.batch))?;
+        }
+        Ok(())
+    }
+
+    fn flush_if_full(&mut self) -> Result<(), rocksdb::Error> {
+        // The byte bound can be exceeded by one individual record, never by
+        // an entire peer-supplied chunk. There is no cross-chunk buffering.
+        if self.batch.len() >= IMPORT_BATCH_ENTRIES || self.batch.size_in_bytes() >= IMPORT_BATCH_BYTES {
+            self.flush()?;
+        }
+        Ok(())
+    }
+}
+
+impl DbWriter for UtxoImportWriter<'_> {
+    fn put<K: AsRef<[u8]>, V: AsRef<[u8]>>(&mut self, key: K, value: V) -> Result<(), rocksdb::Error> {
+        self.batch.put(key, value);
+        self.flush_if_full()
+    }
+
+    fn delete<K: AsRef<[u8]>>(&mut self, key: K) -> Result<(), rocksdb::Error> {
+        self.batch.delete(key);
+        self.flush_if_full()
+    }
+
+    fn delete_range<K: AsRef<[u8]>>(&mut self, from: K, to: K) -> Result<(), rocksdb::Error> {
+        self.batch.delete_range(from, to);
+        self.flush_if_full()
+    }
+}
 
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct UtxoKey([u8; UTXO_KEY_SIZE]);
@@ -103,6 +152,29 @@ impl DbUtxoSetStore {
         Self::new(Arc::clone(&self.db), cache_policy, self.prefix.clone())
     }
 
+    /// IBD-only bulk ingestion. The caller holds the pruning-meta write lock;
+    /// flush every pending write before it updates the imported commitment.
+    /// Previously the same path committed each individual row separately, so
+    /// bounded batches strengthen rather than split the old atomicity boundary.
+    pub(crate) fn write_imported_chunk(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
+        let mut writer = UtxoImportWriter::new(&self.db);
+        self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        writer.flush()?;
+        Ok(())
+    }
+
+    /// Copy verified imported state into virtual under its write lock. Keep
+    /// the existing cache invalidation and finish the final batch before return.
+    pub(crate) fn copy_imported_from_iterator(
+        &mut self,
+        utxos: impl IntoIterator<Item = (TransactionOutpoint, Arc<UtxoEntry>)>,
+    ) -> Result<(), StoreError> {
+        let mut writer = UtxoImportWriter::new(&self.db);
+        self.access.write_many_without_cache(&mut writer, &mut utxos.into_iter().map(|(o, e)| (o.into(), e)))?;
+        writer.flush()?;
+        Ok(())
+    }
+
     /// See comment at [`UtxoSetStore::write_diff`]
     pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
@@ -175,6 +247,10 @@ impl UtxoSetStore for DbUtxoSetStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "utxo_set/import_tests.rs"]
+mod import_tests;
 
 #[cfg(test)]
 mod tests {
