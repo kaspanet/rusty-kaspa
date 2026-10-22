@@ -380,7 +380,6 @@ workflow-http = { version = "0.19.0", default-features = false, features = ["rus
 # nw-sys = { path = "../nw-sys" }
 
 [profile.release]
-lto = "thin"
 strip = true
 overflow-checks = true
 
