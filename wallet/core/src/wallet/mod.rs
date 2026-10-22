@@ -466,7 +466,7 @@ impl Wallet {
     }
 
     pub async fn deactivate_accounts(self: &Arc<Wallet>, ids: Option<&[AccountId]>, _guard: &WalletGuard<'_>) -> Result<()> {
-        let _guard = self.inner.guard.lock().await;
+        // let _guard = self.inner.guard.lock().await;
 
         let (ids, futures) = if let Some(ids) = ids {
             let accounts =
