@@ -22,6 +22,11 @@ pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE: usize = 5_000;
 pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT: usize = 5_000;
 pub const DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT: usize = 1_000;
 
+// constants pertaining to the get_utxos_by_covenant_ids RPC method
+pub const MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_PAGE_SIZE: usize = 5_000;
+pub const MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT: usize = 5_000;
+pub const DEFAULT_GET_UTXOS_BY_COVENANT_IDS_LIMIT: usize = 1_000;
+
 /// Client RPC Api
 ///
 /// The [`RpcApi`] trait defines RPC calls taking a request message as unique parameter.
@@ -398,6 +403,33 @@ pub trait RpcApi: Sync + Send + AnySync {
         connection: Option<&DynRpcConnection>,
         request: GetUtxosByAddressesV2Request,
     ) -> RpcResult<GetUtxosByAddressesV2Response>;
+
+    /// Requests UTXOs for multiple covenant ids, optionally filtered by an inclusive
+    /// DAA-score range and a script public key list. Ids are traversed in ascending covenant
+    /// id order regardless of request order; a cursor resumes at its covenant id, skipping
+    /// ids that sort before it.
+    ///
+    /// This call is only available when this node was started with `--utxoindex --covenant-index`.
+    async fn get_utxos_by_covenant_ids(
+        &self,
+        covenant_ids: Vec<RpcHash>,
+        script_public_keys: Vec<RpcScriptPublicKey>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+        limit: Option<usize>,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse> {
+        self.get_utxos_by_covenant_ids_call(
+            None,
+            GetUtxosByCovenantIdsRequest::new(covenant_ids, script_public_keys, from_daa_score, to_daa_score, cursor, limit),
+        )
+        .await
+    }
+    async fn get_utxos_by_covenant_ids_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetUtxosByCovenantIdsRequest,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse>;
 
     /// Requests the blue score of the current selected parent of the virtual block.
     async fn get_sink_blue_score(&self) -> RpcResult<u64> {
