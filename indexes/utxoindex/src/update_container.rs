@@ -46,34 +46,34 @@ impl UtxoIndexChanges {
 
     fn insert_added(&mut self, transaction_outpoint: TransactionOutpoint, utxo_entry: UtxoEntry, covenant_index: bool) {
         let UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, covenant_id } = utxo_entry;
-        self.utxo_changes.added.insert_into_nested(
-            script_public_key.clone(),
-            UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint),
-            CompactUtxoEntry::new(amount, is_coinbase, covenant_id),
-        );
         if covenant_index && let Some(covenant_id) = covenant_id {
             self.covenant_utxo_changes
                 .added
                 .entry(covenant_id)
                 .or_default()
-                .push((script_public_key, UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint)));
+                .push((script_public_key.clone(), UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint)));
         }
+        self.utxo_changes.added.insert_into_nested(
+            script_public_key,
+            UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint),
+            CompactUtxoEntry::new(amount, is_coinbase, covenant_id),
+        );
     }
 
     fn insert_removed(&mut self, transaction_outpoint: TransactionOutpoint, utxo_entry: UtxoEntry, covenant_index: bool) {
         let UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, covenant_id } = utxo_entry;
-        self.utxo_changes.removed.insert_into_nested(
-            script_public_key.clone(),
-            UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint),
-            CompactUtxoEntry::new(amount, is_coinbase, covenant_id),
-        );
         if covenant_index && let Some(covenant_id) = covenant_id {
             self.covenant_utxo_changes
                 .removed
                 .entry(covenant_id)
                 .or_default()
-                .push((script_public_key, UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint)));
+                .push((script_public_key.clone(), UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint)));
         }
+        self.utxo_changes.removed.insert_into_nested(
+            script_public_key,
+            UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint),
+            CompactUtxoEntry::new(amount, is_coinbase, covenant_id),
+        );
     }
 
     /// Add a [`Vec<(TransactionOutpoint, UtxoEntry)>`] the [`UtxoIndexChanges`] struct
