@@ -1365,6 +1365,49 @@ mod tests {
     }
 
     #[test]
+    fn test_page_empty_store_with_foreign_prefix_keys() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let spk_store = DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty);
+        let store =
+            DbUtxoSetByCovenantIdStore::new(db.clone(), CachePolicy::Empty, DbUtxoSetByScriptPublicKeyStore::clone(&spk_store));
+
+        // no covenant rows exist; the first seek lands directly in foreign prefix space
+        db.put(vec![197u8], vec![]).unwrap();
+        db.put(vec![197u8, 0xDE, 0xAD], vec![0xC0]).unwrap();
+        let id = Hash::from_slice(&[0x01u8; HASH_SIZE]);
+        let (rows, next_cursor) = page_rows(&store, vec![id], 0..=u64::MAX, &[], None, None);
+        assert_eq!(rows, vec![]);
+        assert!(next_cursor.is_none());
+    }
+
+    #[test]
+    fn test_page_foreign_prefix_keys_end_pass_and_pending_ids_continue() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut spk_store = DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty);
+        let mut store =
+            DbUtxoSetByCovenantIdStore::new(db.clone(), CachePolicy::Empty, DbUtxoSetByScriptPublicKeyStore::clone(&spk_store));
+
+        let id_z = Hash::from_slice(&[0x05u8; HASH_SIZE]);
+        let id_ghost = Hash::from_slice(&[0x07u8; HASH_SIZE]);
+        let script_public_key = ScriptPublicKey::from_vec(0, vec![0x01]);
+        populate(
+            &mut spk_store,
+            &mut store,
+            vec![
+                (id_z, 5, script_public_key.clone(), create_outpoint(1, 0), 100),
+                (id_z, 6, script_public_key, create_outpoint(2, 0), 200),
+            ],
+        );
+
+        // the id_z pass and the ghost id's seek both end on foreign prefix keys
+        db.put(vec![197u8], vec![]).unwrap();
+        db.put(vec![197u8, 0xDE, 0xAD], vec![0xC0]).unwrap();
+        let (rows, next_cursor) = page_rows(&store, vec![id_z, id_ghost], 0..=u64::MAX, &[], None, None);
+        assert_eq!(rows, vec![(id_z, 5, vec![0x01]), (id_z, 6, vec![0x01])]);
+        assert!(next_cursor.is_none());
+    }
+
+    #[test]
     fn test_page_keys_of_later_store_prefix_are_ignored() {
         let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let mut spk_store = DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty);
