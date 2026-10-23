@@ -35,40 +35,44 @@ impl UtxoIndexChanges {
 
         for (transaction_outpoint, utxo_entry) in to_add.into_iter() {
             self.supply_change += utxo_entry.amount as CirculatingSupplyDiff;
-            self.insert_added(transaction_outpoint, &utxo_entry, covenant_index);
+            self.insert_added(transaction_outpoint, utxo_entry, covenant_index);
         }
 
         for (transaction_outpoint, utxo_entry) in to_remove.into_iter() {
             self.supply_change -= utxo_entry.amount as CirculatingSupplyDiff;
-            self.insert_removed(transaction_outpoint, &utxo_entry, covenant_index);
+            self.insert_removed(transaction_outpoint, utxo_entry, covenant_index);
         }
     }
 
-    fn insert_added(&mut self, transaction_outpoint: TransactionOutpoint, utxo_entry: &UtxoEntry, covenant_index: bool) {
+    fn insert_added(&mut self, transaction_outpoint: TransactionOutpoint, utxo_entry: UtxoEntry, covenant_index: bool) {
+        let UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, covenant_id } = utxo_entry;
         self.utxo_changes.added.insert_into_nested(
-            utxo_entry.script_public_key.clone(),
-            UtxoEntryKeySuffixRecord::new(utxo_entry.block_daa_score, transaction_outpoint),
-            CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.is_coinbase, utxo_entry.covenant_id),
+            script_public_key.clone(),
+            UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint),
+            CompactUtxoEntry::new(amount, is_coinbase, covenant_id),
         );
-        if covenant_index && let Some(covenant_id) = utxo_entry.covenant_id {
-            self.covenant_utxo_changes.added.entry(covenant_id).or_default().push((
-                utxo_entry.script_public_key.clone(),
-                UtxoEntryKeySuffixRecord::new(utxo_entry.block_daa_score, transaction_outpoint),
-            ));
+        if covenant_index && let Some(covenant_id) = covenant_id {
+            self.covenant_utxo_changes
+                .added
+                .entry(covenant_id)
+                .or_default()
+                .push((script_public_key, UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint)));
         }
     }
 
-    fn insert_removed(&mut self, transaction_outpoint: TransactionOutpoint, utxo_entry: &UtxoEntry, covenant_index: bool) {
+    fn insert_removed(&mut self, transaction_outpoint: TransactionOutpoint, utxo_entry: UtxoEntry, covenant_index: bool) {
+        let UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase, covenant_id } = utxo_entry;
         self.utxo_changes.removed.insert_into_nested(
-            utxo_entry.script_public_key.clone(),
-            UtxoEntryKeySuffixRecord::new(utxo_entry.block_daa_score, transaction_outpoint),
-            CompactUtxoEntry::new(utxo_entry.amount, utxo_entry.is_coinbase, utxo_entry.covenant_id),
+            script_public_key.clone(),
+            UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint),
+            CompactUtxoEntry::new(amount, is_coinbase, covenant_id),
         );
-        if covenant_index && let Some(covenant_id) = utxo_entry.covenant_id {
-            self.covenant_utxo_changes.removed.entry(covenant_id).or_default().push((
-                utxo_entry.script_public_key.clone(),
-                UtxoEntryKeySuffixRecord::new(utxo_entry.block_daa_score, transaction_outpoint),
-            ));
+        if covenant_index && let Some(covenant_id) = covenant_id {
+            self.covenant_utxo_changes
+                .removed
+                .entry(covenant_id)
+                .or_default()
+                .push((script_public_key, UtxoEntryKeySuffixRecord::new(block_daa_score, transaction_outpoint)));
         }
     }
 
@@ -78,7 +82,7 @@ impl UtxoIndexChanges {
     pub fn add_utxos_from_vector(&mut self, utxo_vector: Vec<(TransactionOutpoint, UtxoEntry)>, covenant_index: bool) {
         for (transaction_outpoint, utxo_entry) in utxo_vector.into_iter() {
             self.supply_change += utxo_entry.amount as CirculatingSupplyDiff;
-            self.insert_added(transaction_outpoint, &utxo_entry, covenant_index);
+            self.insert_added(transaction_outpoint, utxo_entry, covenant_index);
         }
     }
 
