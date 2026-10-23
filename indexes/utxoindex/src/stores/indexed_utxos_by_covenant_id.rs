@@ -3,10 +3,11 @@ use crate::core::model::{
 };
 use crate::errors::{UtxoIndexError, UtxoIndexResult};
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint};
-use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DbKey, DirectDbWriter, StoreError, StoreResult};
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB, DbKey, DirectDbWriter, StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::{HASH_SIZE, Hash};
 use kaspa_utils::mem_size::MemSizeEstimator;
+use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 use std::sync::Arc;
@@ -163,14 +164,18 @@ impl DbUtxoSetByCovenantIdStore {
                 ));
                 if batch.len() == COVENANT_BACKFILL_BATCH_SIZE {
                     let mut iter = batch.into_iter();
-                    self.access.write_many_without_cache(DirectDbWriter::new(&self.db), &mut iter)?;
+                    let mut db_batch = WriteBatch::default();
+                    self.access.write_many_without_cache(BatchDbWriter::new(&mut db_batch), &mut iter)?;
+                    self.db.write(db_batch)?;
                     batch = Vec::with_capacity(COVENANT_BACKFILL_BATCH_SIZE);
                 }
             }
         }
         if !batch.is_empty() {
             let mut iter = batch.into_iter();
-            self.access.write_many_without_cache(DirectDbWriter::new(&self.db), &mut iter)?;
+            let mut db_batch = WriteBatch::default();
+            self.access.write_many_without_cache(BatchDbWriter::new(&mut db_batch), &mut iter)?;
+            self.db.write(db_batch)?;
         }
         Ok(())
     }
@@ -364,7 +369,8 @@ impl UtxoSetByCovenantIdStore for DbUtxoSetByCovenantIdStore {
             return Ok(());
         }
 
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
 
         let mut to_remove = utxo_entries.iter().flat_map(move |(covenant_id, entries)| {
             entries.iter().map(move |(script_public_key, utxo_key_suffix_record)| {
@@ -378,6 +384,7 @@ impl UtxoSetByCovenantIdStore for DbUtxoSetByCovenantIdStore {
         });
 
         self.access.delete_many(&mut writer, &mut to_remove)?;
+        self.db.write(batch)?;
 
         Ok(())
     }
@@ -387,7 +394,8 @@ impl UtxoSetByCovenantIdStore for DbUtxoSetByCovenantIdStore {
             return Ok(());
         }
 
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut batch = WriteBatch::default();
+        let mut writer = BatchDbWriter::new(&mut batch);
 
         let mut to_add = utxo_entries.iter().flat_map(move |(covenant_id, entries)| {
             entries.iter().map(move |(script_public_key, utxo_key_suffix_record)| {
@@ -404,6 +412,7 @@ impl UtxoSetByCovenantIdStore for DbUtxoSetByCovenantIdStore {
         });
 
         self.access.write_many(&mut writer, &mut to_add)?;
+        self.db.write(batch)?;
 
         Ok(())
     }
