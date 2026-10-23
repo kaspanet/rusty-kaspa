@@ -3,12 +3,12 @@ use crate::core::model::{
     UtxoPageCursor, UtxoSetByScriptPublicKey,
 };
 use crate::errors::{UtxoIndexError, UtxoIndexResult};
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, big_endian::U64 as BigEndianU64, little_endian::U32 as LittleEndianU32};
+use zerocopy::{
+    FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned, big_endian::U64 as BigEndianU64, little_endian::U32 as LittleEndianU32,
+};
 
 use itertools::Itertools;
-use kaspa_consensus_core::tx::{
-    ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
-};
+use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionOutpoint};
 use kaspa_core::debug;
 use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DirectDbWriter, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
@@ -75,18 +75,17 @@ impl AsRef<[u8]> for ScriptPublicKeyBucket {
 // Keys:
 
 // TransactionOutpoint:
-/// Size of the [TransactionOutpointKey] in bytes.
-pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_of::<TransactionIndexType>();
-
 /// [TransactionOutpoint] key which references the [CompactUtxoEntry] within a [ScriptPublicKeyBucket]
 /// Consists of 32 bytes of [TransactionId], followed by 4 bytes of little endian [TransactionIndexType]
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Immutable, FromBytes, IntoBytes, KnownLayout)]
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Immutable, FromBytes, IntoBytes, KnownLayout, Unaligned)]
+#[repr(C)]
 pub struct TransactionOutpointKey {
     transaction_id: Hash,
     output_index: LittleEndianU32,
 }
 
-const _: () = assert!(size_of::<TransactionOutpointKey>() == TRANSACTION_OUTPOINT_KEY_SIZE);
+/// Size of the [TransactionOutpointKey] in bytes.
+pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = size_of::<TransactionOutpointKey>();
 
 impl TransactionOutpointKey {
     pub fn from_bytes(bytes: [u8; TRANSACTION_OUTPOINT_KEY_SIZE]) -> Self {
