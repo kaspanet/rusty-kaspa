@@ -604,10 +604,7 @@ message GetUtxosByAddressesV2ResponseMessage {
 }
 
 message RpcGetUtxosByAddressesCursor {
-  // Cursor start address; Note: On the request side, this should always match the first address of the request's address list
-  // i.e. if the cursor points past some addresses in the request's address list, these should be removed in the following call
-  // for the page retrieval.
-  // leaving this blank takes the first address of the request's address list as the start address.
+  // Cursor start address, leaving it blank makes start address = first address of the request's address list.
   optional string startAddress = 1;
   // Cursor start DAA score for startAddress; omitted starts from fromDaaScore.
   uint64 startDaaScore = 2;
