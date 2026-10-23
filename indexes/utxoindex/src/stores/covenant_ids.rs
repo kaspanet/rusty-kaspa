@@ -7,7 +7,7 @@ use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB, Db
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::{HASH_SIZE, Hash};
 use kaspa_utils::mem_size::MemSizeEstimator;
-use rocksdb::WriteBatch;
+use rocksdb::{ReadOptions, WriteBatch};
 use serde::{Deserialize, Serialize};
 use std::ops::RangeInclusive;
 use std::sync::Arc;
@@ -190,7 +190,9 @@ impl DbUtxoSetByCovenantIdStore {
     /// preferring seeks over scans: crossing into a new daa score rewinds to the first
     /// bucket, a key past the last bucket skips to the next daa score, and keys below the
     /// current bucket seek up to it. When a covenant id's pass ends, the iterator seeks the
-    /// next requested id's prefix bottom.
+    /// next requested id's prefix bottom. The iterator is bounded to the key space spanned
+    /// by the lowest and highest requested ids and the daa score range, so it never leaves
+    /// the store's prefix.
     fn iterate_covenant_rows<'a>(
         &'a self,
         covenant_ids: Vec<Hash>,
@@ -199,13 +201,22 @@ impl DbUtxoSetByCovenantIdStore {
         start: CovenantUtxoEntryDbKey,
     ) -> impl Iterator<Item = StoreResult<(Hash, ScriptPublicKey, UtxoEntryKeySuffixRecord)>> + 'a {
         let prefix = self.access.prefix().to_vec();
-        let mut iter = self.db.raw_iterator();
+        let from_daa_score = *daa_score_range.start();
+        let to_daa_score = *daa_score_range.end();
+        // ids are sorted ascending, so the first and last one span the requested key space
+        let min_id = *covenant_ids.first().expect("at least one covenant id");
+        let max_id = *covenant_ids.last().expect("at least one covenant id");
+        let lower = DbKey::new(&prefix, CovenantUtxoEntryDbKey::prefix_start(min_id, from_daa_score));
+        // the query entry caps the range end at u64::MAX - 1, keeping the + 1 overflow-free
+        let upper = DbKey::new(&prefix, CovenantUtxoEntryDbKey::prefix_start(max_id, to_daa_score + 1));
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_iterate_lower_bound(lower.as_ref());
+        read_opts.set_iterate_upper_bound(upper.as_ref());
+        let mut iter = self.db.raw_iterator_opt(read_opts);
         iter.seek(DbKey::new(&prefix, start).as_ref());
 
         let mut pending_covenant_ids = covenant_ids.into_iter();
         let mut covenant_id = pending_covenant_ids.next().expect("at least one covenant id");
-        let from_daa_score = *daa_score_range.start();
-        let to_daa_score = *daa_score_range.end();
         let mut current_daa_score: Option<u64> = None;
         let mut bucket_index = 0usize;
         let mut done = false;
@@ -242,10 +253,6 @@ impl DbUtxoSetByCovenantIdStore {
                     seek_next_covenant_id!();
                 }
                 let raw_key = iter.key().expect("a valid iterator holds a key");
-                // keys outside this store's prefix end the pass
-                if !raw_key.starts_with(prefix.as_slice()) {
-                    seek_next_covenant_id!();
-                }
                 let key = CovenantUtxoKeyView(&raw_key[prefix.len()..]);
                 // a different covenant id ends the pass
                 if key.covenant_id() != covenant_id.as_slice() {
@@ -278,9 +285,6 @@ impl DbUtxoSetByCovenantIdStore {
                 }
                 let Some(bucket) = spk_buckets.get(bucket_index) else {
                     // past the last bucket, no match remains at this daa score: skip to the next one
-                    if daa_score == u64::MAX {
-                        seek_next_covenant_id!();
-                    }
                     iter.seek(DbKey::new(&prefix, CovenantUtxoEntryDbKey::prefix_start(covenant_id, daa_score + 1)).as_ref());
                     continue;
                 };
@@ -306,6 +310,10 @@ impl UtxoSetByCovenantIdStoreReader for DbUtxoSetByCovenantIdStore {
         cursor: Option<CovenantUtxoPageCursor>,
         limit: Option<usize>,
     ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage> {
+        // daa scores never reach u64::MAX in practice, so the effective range end is capped at
+        // u64::MAX - 1; this keeps the + 1 of the exclusive upper iterator bound overflow-free
+        let daa_score_range = *daa_score_range.start()..=(*daa_score_range.end()).min(u64::MAX - 1);
+
         // ids and buckets are seeked in ascending store key order
         let mut covenant_ids = covenant_ids;
         covenant_ids.sort();
@@ -1089,14 +1097,14 @@ mod tests {
             &mut spk_store,
             &mut store,
             vec![
-                (id_1, u64::MAX, script_m.clone(), create_outpoint(1, 0), 100),
-                (id_2, u64::MAX, script_a.clone(), create_outpoint(2, 0), 200),
+                (id_1, u64::MAX - 1, script_m.clone(), create_outpoint(1, 0), 100),
+                (id_2, u64::MAX - 1, script_a.clone(), create_outpoint(2, 0), 200),
             ],
         );
 
-        // the id_1 pass exhausts the list at daa u64::MAX and stops, the id_2 row at u64::MAX is in range
+        // the id_1 pass exhausts the list at daa u64::MAX - 1 and stops, the id_2 row at u64::MAX - 1 is in range
         let (rows, next_cursor) = page_rows(&store, vec![id_1, id_2], 0..=u64::MAX, &[script_a], None, None);
-        assert_eq!(rows, vec![(id_2, u64::MAX, vec![0x01])]);
+        assert_eq!(rows, vec![(id_2, u64::MAX - 1, vec![0x01])]);
         assert!(next_cursor.is_none());
     }
 
@@ -1353,12 +1361,12 @@ mod tests {
             &mut store,
             vec![
                 (id_1, 1, script_a.clone(), create_outpoint(1, 0), 100),
-                (id_1, u64::MAX, script_m, create_outpoint(2, 0), 200),
+                (id_1, u64::MAX - 1, script_m, create_outpoint(2, 0), 200),
                 (id_2, 2, script_a.clone(), create_outpoint(3, 0), 300),
             ],
         );
 
-        // a matched row then a past-list row at daa u64::MAX end the id_1 pass, id_2 still returns
+        // a matched row then a past-list row at daa u64::MAX - 1 end the id_1 pass, id_2 still returns
         let (rows, next_cursor) = page_rows(&store, vec![id_2, id_1], 0..=u64::MAX, std::slice::from_ref(&script_a), None, None);
         assert_eq!(rows, vec![(id_1, 1, vec![0x01]), (id_2, 2, vec![0x01])]);
         assert!(next_cursor.is_none());
@@ -1442,5 +1450,141 @@ mod tests {
         concatenated.extend(page2);
         assert_eq!(concatenated, full);
         assert!(next_cursor.is_none());
+    }
+
+    #[test]
+    fn test_page_keys_of_neighbour_prefixes_stay_out_of_bounds() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut spk_store = DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty);
+        let mut store =
+            DbUtxoSetByCovenantIdStore::new(db.clone(), CachePolicy::Empty, DbUtxoSetByScriptPublicKeyStore::clone(&spk_store));
+
+        let id_min = Hash::from_slice(&[0x00u8; HASH_SIZE]);
+        let id_max = Hash::from_slice(&[0xFFu8; HASH_SIZE]);
+        let script_public_key = ScriptPublicKey::from_vec(0, vec![0x01]);
+        populate(
+            &mut spk_store,
+            &mut store,
+            vec![
+                (id_min, 0, script_public_key.clone(), create_outpoint(1, 0), 100),
+                (id_max, 1, script_public_key.clone(), create_outpoint(2, 0), 200),
+                (id_max, u64::MAX - 1, script_public_key.clone(), create_outpoint(3, 0), 300),
+            ],
+        );
+
+        // keys under the adjacent store prefixes (195 sorts before the covenant prefix 196, 197
+        // after it) and the bare covenant prefix itself, all sorting directly around the range
+        db.put([195u8].into_iter().chain([0xFF; 40]).collect::<Vec<_>>(), vec![]).unwrap();
+        db.put(vec![196u8], vec![]).unwrap();
+        db.put(vec![197u8], vec![]).unwrap();
+        db.put(vec![197u8, 0x00], vec![]).unwrap();
+
+        let (rows, next_cursor) = page_rows(&store, vec![id_max, id_min], 0..=u64::MAX, &[], None, None);
+        assert_eq!(rows, vec![(id_min, 0, vec![0x01]), (id_max, 1, vec![0x01]), (id_max, u64::MAX - 1, vec![0x01])]);
+        assert!(next_cursor.is_none());
+
+        // a single all-0x00 id spans its own bounds from daa 0
+        let (rows, _) = page_rows(&store, vec![id_min], 0..=u64::MAX, &[], None, None);
+        assert_eq!(rows, vec![(id_min, 0, vec![0x01])]);
+    }
+
+    #[test]
+    fn test_page_daa_range_edges_are_inclusive_for_min_mid_max_ids() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut spk_store = DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty);
+        let mut store = DbUtxoSetByCovenantIdStore::new(db, CachePolicy::Empty, DbUtxoSetByScriptPublicKeyStore::clone(&spk_store));
+
+        let id_a = Hash::from_slice(&[0x01u8; HASH_SIZE]);
+        let id_m = Hash::from_slice(&[0x02u8; HASH_SIZE]);
+        let id_b = Hash::from_slice(&[0x03u8; HASH_SIZE]);
+        let script_public_key = ScriptPublicKey::from_vec(0, vec![0x01]);
+        let mut to_populate = vec![];
+        for (i, id) in [id_a, id_m, id_b].into_iter().enumerate() {
+            for daa in [1u64, 2, 5, 6] {
+                to_populate.push((id, daa, script_public_key.clone(), create_outpoint(i as u64 * 10 + daa, 0), daa));
+            }
+        }
+        populate(&mut spk_store, &mut store, to_populate);
+
+        // rows exactly at from_daa 2 and to_daa 5 return, the one-off neighbours 1 and 6 do not
+        let (rows, next_cursor) = page_rows(&store, vec![id_b, id_a, id_m], 2..=5, &[], None, None);
+        assert_eq!(
+            rows,
+            vec![
+                (id_a, 2, vec![0x01]),
+                (id_a, 5, vec![0x01]),
+                (id_m, 2, vec![0x01]),
+                (id_m, 5, vec![0x01]),
+                (id_b, 2, vec![0x01]),
+                (id_b, 5, vec![0x01]),
+            ]
+        );
+        assert!(next_cursor.is_none());
+    }
+
+    #[test]
+    fn test_page_open_daa_end_caps_at_max_minus_one() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut spk_store = DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty);
+        let mut store = DbUtxoSetByCovenantIdStore::new(db, CachePolicy::Empty, DbUtxoSetByScriptPublicKeyStore::clone(&spk_store));
+
+        let id = Hash::from_slice(&[0x01u8; HASH_SIZE]);
+        let script_public_key = ScriptPublicKey::from_vec(0, vec![0x01]);
+        populate(
+            &mut spk_store,
+            &mut store,
+            vec![
+                (id, u64::MAX - 2, script_public_key.clone(), create_outpoint(1, 0), 100),
+                (id, u64::MAX - 1, script_public_key.clone(), create_outpoint(2, 0), 200),
+                (id, u64::MAX, script_public_key.clone(), create_outpoint(3, 0), 300),
+            ],
+        );
+
+        // the range end u64::MAX (the omitted-end default) caps at u64::MAX - 1: the top two
+        // rows return, a row at u64::MAX does not
+        let (open, next_cursor) = page_rows(&store, vec![id], 0..=u64::MAX, &[], None, None);
+        assert_eq!(open, vec![(id, u64::MAX - 2, vec![0x01]), (id, u64::MAX - 1, vec![0x01])]);
+        assert!(next_cursor.is_none());
+        let (explicit, _) = page_rows(&store, vec![id], 0..=u64::MAX - 1, &[], None, None);
+        assert_eq!(explicit, open);
+
+        // limit-1 pages resume through the capped boundary
+        let mut collected = vec![];
+        let mut cursor = None;
+        loop {
+            let (rows, next) = page_rows(&store, vec![id], 0..=u64::MAX, &[], cursor, Some(1));
+            collected.extend(rows);
+            cursor = match next {
+                Some(c) => Some(c),
+                None => break,
+            };
+        }
+        assert_eq!(collected, open);
+    }
+
+    #[test]
+    fn test_page_cursor_boundaries_under_capped_daa_range() {
+        let (_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let mut spk_store = DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty);
+        let mut store = DbUtxoSetByCovenantIdStore::new(db, CachePolicy::Empty, DbUtxoSetByScriptPublicKeyStore::clone(&spk_store));
+
+        let id = Hash::from_slice(&[0x01u8; HASH_SIZE]);
+        let script_public_key = ScriptPublicKey::from_vec(0, vec![0x01]);
+        populate(
+            &mut spk_store,
+            &mut store,
+            (1..=3u64).map(|daa| (id, daa, script_public_key.clone(), create_outpoint(daa, 0), daa * 100)).collect(),
+        );
+
+        // a cursor exactly at the range start resumes from the first row
+        let cursor = CovenantUtxoPageCursor::new(id, 1, script_public_key.clone(), create_outpoint(1, 0));
+        let (rows, next_cursor) = page_entries(&store, vec![id], 1..=3, &[], Some(cursor), None);
+        assert_eq!(rows, vec![(id, 1), (id, 2), (id, 3)]);
+        assert!(next_cursor.is_none());
+
+        // a cursor at daa u64::MAX lies past the capped range end and is rejected
+        let cursor = CovenantUtxoPageCursor::new(id, u64::MAX, script_public_key, create_outpoint(3, 0));
+        let result = store.get_utxos_by_covenant_ids_page(vec![id], 0..=u64::MAX, &[], Some(cursor), None);
+        assert!(matches!(result.unwrap_err(), UtxoIndexError::InvalidCovenantCursor(_)));
     }
 }
