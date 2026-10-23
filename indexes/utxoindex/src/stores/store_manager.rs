@@ -43,7 +43,7 @@ pub struct Store {
 impl Store {
     pub fn new(db: Arc<DB>) -> Self {
         Self {
-            utxoindex_tips_store: DbUtxoIndexTipsStore::new(db.clone(), DatabaseStorePrefixes::UtxoIndexTips),
+            utxoindex_tips_store: DbUtxoIndexTipsStore::new(db.clone(), DatabaseStorePrefixes::UtxoIndexScriptPublicKeyTips),
             circulating_supply_store: DbCirculatingSupplyStore::new(db.clone()),
             db_version_store: DbUtxoIndexDbMetaStore::new(db.clone()),
             utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db.clone(), CachePolicy::Empty),

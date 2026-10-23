@@ -203,7 +203,10 @@ pub struct DbUtxoSetByScriptPublicKeyStore {
 
 impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndex.into()) }
+        Self {
+            db: Arc::clone(&db),
+            access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndexScriptPublicKey.into()),
+        }
     }
 
     /// Streams every row as (script public key, key suffix record, compact entry) in key order.

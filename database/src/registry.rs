@@ -71,8 +71,8 @@ pub enum DatabaseStorePrefixes {
     BannedAddresses = 129,
 
     // ---- Indexes ----
-    UtxoIndex = 192,
-    UtxoIndexTips = 193,
+    UtxoIndexScriptPublicKey = 192,
+    UtxoIndexScriptPublicKeyTips = 193,
     CirculatingSupply = 194,
     UtxoIndexDbVersion = 195,
     UtxoIndexCovenant = 196,
