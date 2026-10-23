@@ -20,9 +20,9 @@ use crate::{
     errors::{UtxoIndexError, UtxoIndexResult},
     model::UtxoSetByScriptPublicKey,
     stores::{
+        covenant_ids::{DbUtxoSetByCovenantIdStore, UtxoSetByCovenantIdStore, UtxoSetByCovenantIdStoreReader},
         db_metadata::{DbUtxoIndexDbMetaStore, UtxoIndexDbMetaData, UtxoIndexDbMetaStore, UtxoIndexDbMetaStoreReader},
-        indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
-        indexed_utxos_by_covenant_id::{DbUtxoSetByCovenantIdStore, UtxoSetByCovenantIdStore, UtxoSetByCovenantIdStoreReader},
+        script_public_keys::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},
         tips::{DbUtxoIndexTipsStore, UtxoIndexTipsStore, UtxoIndexTipsStoreReader},
     },

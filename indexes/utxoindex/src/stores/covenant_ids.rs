@@ -13,7 +13,7 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 use zerocopy::FromBytes;
 
-use super::indexed_utxos::{
+use super::script_public_keys::{
     DAA_SCORE_KEY_SIZE, DaaScoreKey, DbUtxoSetByScriptPublicKeyStore, ScriptPublicKeyBucket, TRANSACTION_OUTPOINT_KEY_SIZE,
     TransactionOutpointKey,
 };
@@ -541,7 +541,7 @@ mod tests {
 
     use crate::core::model::{CompactUtxoEntry, CovenantUtxoPageCursor, UtxoSetByScriptPublicKey};
     use crate::errors::UtxoIndexError;
-    use crate::stores::indexed_utxos::UtxoSetByScriptPublicKeyStore as _;
+    use crate::stores::script_public_keys::UtxoSetByScriptPublicKeyStore as _;
     use std::ops::RangeInclusive;
 
     type PopulateRow = (Hash, u64, ScriptPublicKey, TransactionOutpoint, u64);
