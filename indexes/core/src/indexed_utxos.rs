@@ -66,13 +66,12 @@ impl Display for UtxoPageCursor {
     }
 }
 
-/// Cursor over the covenant index. A missing script public key positions at the
-/// bottom of the (covenant id, daa score) key prefix.
+/// Cursor over the covenant index.
 #[derive(Clone, Debug)]
 pub struct CovenantUtxoPageCursor {
     pub covenant_id: Hash,
     pub daa_score: u64,
-    pub script_public_key: Option<ScriptPublicKey>,
+    pub script_public_key: ScriptPublicKey,
     pub transaction_outpoint: TransactionOutpoint,
 }
 
@@ -80,7 +79,7 @@ impl CovenantUtxoPageCursor {
     pub fn new(
         covenant_id: Hash,
         daa_score: u64,
-        script_public_key: Option<ScriptPublicKey>,
+        script_public_key: ScriptPublicKey,
         transaction_outpoint: TransactionOutpoint,
     ) -> Self {
         Self { covenant_id, daa_score, script_public_key, transaction_outpoint }

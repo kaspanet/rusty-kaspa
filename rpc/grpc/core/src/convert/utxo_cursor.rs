@@ -33,10 +33,10 @@ try_from!(item: protowire::RpcGetUtxosByAddressesCursor, kaspa_rpc_core::RpcGetU
 
 from!(item: &kaspa_rpc_core::RpcGetUtxosByCovenantIdsCursor, protowire::RpcGetUtxosByCovenantIdsCursor, {
     Self {
-        start_covenant_id: item.start_covenant_id.as_ref().map(|id| id.to_string()),
+        start_covenant_id: item.start_covenant_id.to_string(),
         start_daa_score: item.start_daa_score,
-        start_script_public_key: item.start_script_public_key.as_ref().map(|spk| spk.into()),
-        start_outpoint: item.start_outpoint.as_ref().map(|o| o.into()),
+        start_script_public_key: Some((&item.start_script_public_key).into()),
+        start_outpoint: Some((&item.start_outpoint).into()),
     }
 });
 
@@ -46,12 +46,20 @@ from!(item: &kaspa_rpc_core::RpcGetUtxosByCovenantIdsCursor, protowire::RpcGetUt
 
 try_from!(item: protowire::RpcGetUtxosByCovenantIdsCursor, kaspa_rpc_core::RpcGetUtxosByCovenantIdsCursor, {
     Self {
-        start_covenant_id: item.start_covenant_id.as_deref().map(kaspa_rpc_core::RpcHash::from_str).transpose()?,
+        start_covenant_id: kaspa_rpc_core::RpcHash::from_str(&item.start_covenant_id)?,
         start_daa_score: item.start_daa_score,
-        start_script_public_key: item.start_script_public_key.as_ref().map(|spk| spk.try_into()).transpose()?,
-        start_outpoint: item.start_outpoint.as_ref().map(|o| o.try_into()).transpose()?,
+        start_script_public_key: item.start_script_public_key.as_ref().ok_or_else(missing_start_script_public_key)?.try_into()?,
+        start_outpoint: item.start_outpoint.as_ref().ok_or_else(missing_start_outpoint)?.try_into()?,
     }
 });
+
+fn missing_start_script_public_key() -> RpcError {
+    RpcError::MissingRpcFieldError("RpcGetUtxosByCovenantIdsCursor".to_string(), "startScriptPublicKey".to_string())
+}
+
+fn missing_start_outpoint() -> RpcError {
+    RpcError::MissingRpcFieldError("RpcGetUtxosByCovenantIdsCursor".to_string(), "startOutpoint".to_string())
+}
 
 #[cfg(test)]
 mod tests {
@@ -60,10 +68,10 @@ mod tests {
     #[test]
     fn test_rpc_get_utxos_by_covenant_ids_cursor_roundtrip() {
         let cursor = kaspa_rpc_core::RpcGetUtxosByCovenantIdsCursor {
-            start_covenant_id: Some(Hash::from_bytes([3; 32])),
+            start_covenant_id: Hash::from_bytes([3; 32]),
             start_daa_score: 9,
-            start_script_public_key: None,
-            start_outpoint: Some(kaspa_rpc_core::RpcTransactionOutpoint { transaction_id: Hash::from_bytes([1; 32]), index: 2 }),
+            start_script_public_key: kaspa_consensus_core::tx::ScriptPublicKey::from_vec(0, vec![0x07]),
+            start_outpoint: kaspa_rpc_core::RpcTransactionOutpoint { transaction_id: Hash::from_bytes([1; 32]), index: 2 },
         };
         let protowire: crate::protowire::RpcGetUtxosByCovenantIdsCursor = (&cursor).into();
         let decoded: kaspa_rpc_core::RpcGetUtxosByCovenantIdsCursor = protowire.try_into().unwrap();

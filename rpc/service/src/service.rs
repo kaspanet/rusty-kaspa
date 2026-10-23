@@ -919,7 +919,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     async fn get_utxos_by_covenant_ids_call(
         &self,
         _connection: Option<&DynRpcConnection>,
-        mut request: GetUtxosByCovenantIdsRequest,
+        request: GetUtxosByCovenantIdsRequest,
     ) -> RpcResult<GetUtxosByCovenantIdsResponse> {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
@@ -949,36 +949,27 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest("limit must be greater than zero".to_string()));
         }
 
-        // Some checks and preparations for the cursor and DAA score range.
-        let (from_daa_score, to_daa_score) = if let Some(ref mut cursor) = request.cursor {
-            if let Some(start_covenant_id) = cursor.start_covenant_id {
-                // if set manually, it must be one of the requested covenant ids.
-                if !request.covenant_ids.contains(&start_covenant_id) {
+        // A request carries either a full cursor (echoed from a previous response's nextCursor)
+        // or none at all; partial cursors are rejected at the conversion boundary.
+        let from_daa_score = request.from_daa_score.unwrap_or(0);
+        let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
+        let cursor = request
+            .cursor
+            .map(|cursor| {
+                if !request.covenant_ids.contains(&cursor.start_covenant_id) {
                     return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(
                         "cursor start covenant id must be one of the requested covenant ids".to_string(),
                     ));
                 }
-            } else {
-                // point the start covenant id of the cursor to the first id in the request if it is not already set.
-                cursor.start_covenant_id = Some(request.covenant_ids[0]);
-            };
-
-            // make sure cursor's start DAA score is within the specified DAA score range.
-            let from_daa_score = request.from_daa_score.unwrap_or(0);
-            let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
-
-            if cursor.start_daa_score < from_daa_score || cursor.start_daa_score > to_daa_score {
-                return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(format!(
-                    "cursor.daa_score {} must be within from_daa_score and to_daa_score",
-                    cursor.start_daa_score
-                )));
-            }
-            // return the DAA score range for further processing.
-            (from_daa_score, to_daa_score)
-        } else {
-            // return the DAA score range for further processing.
-            (request.from_daa_score.unwrap_or(0), request.to_daa_score.unwrap_or(u64::MAX))
-        };
+                if cursor.start_daa_score < from_daa_score || cursor.start_daa_score > to_daa_score {
+                    return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(format!(
+                        "cursor.daa_score {} must be within from_daa_score and to_daa_score",
+                        cursor.start_daa_score
+                    )));
+                }
+                Ok(cursor.into())
+            })
+            .transpose()?;
 
         let session = self.consensus_manager.consensus().unguarded_session();
         // do not retrieve utxos while in unstable ibd state.
@@ -994,7 +985,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 request.covenant_ids.clone(),
                 from_daa_score..=to_daa_score,
                 request.script_public_keys.clone(),
-                request.cursor.map(|r| r.try_into()).transpose()?,
+                cursor,
                 Some(limit),
             )
             .await

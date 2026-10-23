@@ -615,15 +615,16 @@ message RpcGetUtxosByAddressesCursor {
   RpcOutpoint startOutpoint = 3;
 }
 
+// Cursor for resuming a GetUtxosByCovenantIds page: a request either carries a full
+// cursor (echoed from a previous response's nextCursor) or none at all.
 message RpcGetUtxosByCovenantIdsCursor {
   // Cursor start covenant id; must be one of the requested covenant ids. Ids sorting before
   // it are skipped, so a resume request may keep the original id list unchanged.
-  // Leaving this blank takes the first covenant id of the request's list as the start id.
-  optional string startCovenantId = 1;
-  // Cursor start DAA score for startCovenantId; omitted starts from fromDaaScore.
+  string startCovenantId = 1;
+  // Cursor start DAA score; must lie within the requested DAA-score range.
   uint64 startDaaScore = 2;
-  // Cursor start script public key; omitted starts from the bottom of the (covenant id, DAA score) range.
-  optional RpcScriptPublicKey startScriptPublicKey = 3;
+  // Cursor start script public key.
+  RpcScriptPublicKey startScriptPublicKey = 3;
   // transaction outpoint
   RpcOutpoint startOutpoint = 4;
 }

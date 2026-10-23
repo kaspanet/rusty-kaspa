@@ -93,18 +93,18 @@ cfg_if::cfg_if! {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct RpcGetUtxosByCovenantIdsCursor {
-    pub start_covenant_id: Option<RpcHash>,
+    pub start_covenant_id: RpcHash,
     pub start_daa_score: u64,
-    pub start_script_public_key: Option<RpcScriptPublicKey>,
-    pub start_outpoint: Option<RpcTransactionOutpoint>,
+    pub start_script_public_key: RpcScriptPublicKey,
+    pub start_outpoint: RpcTransactionOutpoint,
 }
 
 impl RpcGetUtxosByCovenantIdsCursor {
     pub fn new(
-        start_covenant_id: Option<RpcHash>,
+        start_covenant_id: RpcHash,
         start_daa_score: u64,
-        start_script_public_key: Option<RpcScriptPublicKey>,
-        start_outpoint: Option<RpcTransactionOutpoint>,
+        start_script_public_key: RpcScriptPublicKey,
+        start_outpoint: RpcTransactionOutpoint,
     ) -> Self {
         Self { start_covenant_id, start_daa_score, start_script_public_key, start_outpoint }
     }
@@ -113,10 +113,10 @@ impl RpcGetUtxosByCovenantIdsCursor {
 impl Serializer for RpcGetUtxosByCovenantIdsCursor {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u8, &1, writer)?;
-        store!(Option<RpcHash>, &self.start_covenant_id, writer)?;
+        store!(RpcHash, &self.start_covenant_id, writer)?;
         store!(u64, &self.start_daa_score, writer)?;
-        store!(Option<RpcScriptPublicKey>, &self.start_script_public_key, writer)?;
-        serialize!(Option<RpcTransactionOutpoint>, &self.start_outpoint, writer)?;
+        store!(RpcScriptPublicKey, &self.start_script_public_key, writer)?;
+        serialize!(RpcTransactionOutpoint, &self.start_outpoint, writer)?;
         Ok(())
     }
 }
@@ -124,10 +124,10 @@ impl Serializer for RpcGetUtxosByCovenantIdsCursor {
 impl Deserializer for RpcGetUtxosByCovenantIdsCursor {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version: u8 = load!(u8, reader)?;
-        let start_covenant_id: Option<RpcHash> = load!(Option<RpcHash>, reader)?;
+        let start_covenant_id: RpcHash = load!(RpcHash, reader)?;
         let start_daa_score: u64 = load!(u64, reader)?;
-        let start_script_public_key: Option<RpcScriptPublicKey> = load!(Option<RpcScriptPublicKey>, reader)?;
-        let start_outpoint: Option<RpcTransactionOutpoint> = deserialize!(Option<RpcTransactionOutpoint>, reader)?;
+        let start_script_public_key: RpcScriptPublicKey = load!(RpcScriptPublicKey, reader)?;
+        let start_outpoint: RpcTransactionOutpoint = deserialize!(RpcTransactionOutpoint, reader)?;
         Ok(Self { start_covenant_id, start_daa_score, start_script_public_key, start_outpoint })
     }
 }
@@ -135,27 +135,21 @@ impl Deserializer for RpcGetUtxosByCovenantIdsCursor {
 impl From<&CovenantUtxoPageCursor> for RpcGetUtxosByCovenantIdsCursor {
     fn from(cursor: &CovenantUtxoPageCursor) -> Self {
         Self {
-            start_covenant_id: Some(cursor.covenant_id),
+            start_covenant_id: cursor.covenant_id,
             start_daa_score: cursor.daa_score,
             start_script_public_key: cursor.script_public_key.clone(),
-            start_outpoint: Some(cursor.transaction_outpoint.into()),
+            start_outpoint: cursor.transaction_outpoint.into(),
         }
     }
 }
 
-impl TryFrom<RpcGetUtxosByCovenantIdsCursor> for CovenantUtxoPageCursor {
-    type Error = RpcError;
-
-    fn try_from(cursor: RpcGetUtxosByCovenantIdsCursor) -> Result<Self, RpcError> {
-        let start_covenant_id = cursor.start_covenant_id.ok_or_else(|| {
-            RpcError::MissingRpcFieldError("RpcGetUtxosByCovenantIdsCursor".to_string(), "startCovenantId".to_string())
-        })?;
-
-        Ok(Self {
-            covenant_id: start_covenant_id,
+impl From<RpcGetUtxosByCovenantIdsCursor> for CovenantUtxoPageCursor {
+    fn from(cursor: RpcGetUtxosByCovenantIdsCursor) -> Self {
+        Self {
+            covenant_id: cursor.start_covenant_id,
             daa_score: cursor.start_daa_score,
             script_public_key: cursor.start_script_public_key,
-            transaction_outpoint: cursor.start_outpoint.unwrap_or(TransactionOutpoint::EMPTY.into()).into(),
-        })
+            transaction_outpoint: cursor.start_outpoint.into(),
+        }
     }
 }

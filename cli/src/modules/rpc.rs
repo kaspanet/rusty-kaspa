@@ -436,29 +436,27 @@ impl Rpc {
                     return Err(Error::custom(USAGE));
                 }
 
-                let cursor = if start_covenant_id.is_none()
-                    && start_daa_score.is_none()
-                    && start_script_public_key.is_none()
-                    && start_outpoint_transaction_id.is_none()
-                    && start_outpoint_index.is_none()
-                {
-                    None
-                } else if start_daa_score.is_some() && start_outpoint_transaction_id.is_some() && start_outpoint_index.is_some() {
-                    Some(RpcGetUtxosByCovenantIdsCursor::new(
-                        start_covenant_id,
-                        start_daa_score.ok_or(RpcError::General("no start_daa_score specified for cursor".to_string()))?,
-                        start_script_public_key,
-                        Some(RpcTransactionOutpoint {
-                            transaction_id: start_outpoint_transaction_id
-                                .ok_or(RpcError::General("no start_outpoint_transaction_id specified for cursor".to_string()))?,
-                            index: start_outpoint_index
-                                .ok_or(RpcError::General("no start_outpoint_index specified for cursor".to_string()))?,
-                        }),
-                    ))
-                } else {
-                    return Err(Error::custom(
-                        "incomplete cursor parameters; start_covenant_id and start_script_public_key may be None, but start_daa_score and start_outpoint must be provided together".to_string(),
-                    ));
+                let start_outpoint = match (start_outpoint_transaction_id, start_outpoint_index) {
+                    (Some(transaction_id), Some(index)) => Some(RpcTransactionOutpoint { transaction_id, index }),
+                    (None, None) => None,
+                    _ => {
+                        return Err(Error::custom(
+                            "incomplete cursor parameters; start-tx-id and start-outpoint-index must be provided together".to_string(),
+                        ));
+                    }
+                };
+                // a request carries either a full cursor or none at all
+                let cursor = match (start_covenant_id, start_daa_score, start_script_public_key, start_outpoint) {
+                    (None, None, None, None) => None,
+                    (Some(start_covenant_id), Some(start_daa_score), Some(start_script_public_key), Some(start_outpoint)) => {
+                        Some(RpcGetUtxosByCovenantIdsCursor::new(
+                            start_covenant_id,
+                            start_daa_score,
+                            start_script_public_key,
+                            start_outpoint,
+                        ))
+                    }
+                    _ => return Err(Error::custom("incomplete cursor parameters; provide all cursor fields or none".to_string())),
                 };
 
                 let result = rpc

@@ -308,32 +308,30 @@ impl UtxoSetByCovenantIdStoreReader for DbUtxoSetByCovenantIdStore {
         let Some(first) = covenant_ids.first().copied() else {
             return Err(UtxoIndexError::QueryingEmptyCovenantIdSet);
         };
-        let cursor = match cursor {
+        // ids sorting before the cursor's id were consumed by earlier pages
+        let (resume, start) = match cursor {
             Some(c) => {
                 if !covenant_ids.contains(&c.covenant_id) || !daa_score_range.contains(&c.daa_score) {
                     return Err(UtxoIndexError::InvalidCovenantCursor(c));
                 }
-                c
+                let resume = covenant_ids.iter().position(|id| *id == c.covenant_id).expect("cursor id membership validated");
+                (
+                    resume,
+                    CovenantUtxoEntryDbKey::new(
+                        c.covenant_id,
+                        DaaScoreKey::from(c.daa_score),
+                        ScriptPublicKeyBucket::from(&c.script_public_key),
+                        TransactionOutpointKey::from(&c.transaction_outpoint),
+                    ),
+                )
             }
-            None => CovenantUtxoPageCursor::new(first, *daa_score_range.start(), None, TransactionOutpoint::EMPTY),
+            None => (0, CovenantUtxoEntryDbKey::prefix_start(first, *daa_score_range.start())),
         };
+        let covenant_ids = covenant_ids.split_off(resume);
 
         let mut spk_buckets: Vec<ScriptPublicKeyBucket> = script_public_keys.iter().map(ScriptPublicKeyBucket::from).collect();
         spk_buckets.sort();
         spk_buckets.dedup();
-
-        // ids sorting before the cursor's id were consumed by earlier pages
-        let resume = covenant_ids.iter().position(|id| *id == cursor.covenant_id).expect("cursor id membership validated");
-        let covenant_ids = covenant_ids.split_off(resume);
-        let start = match &cursor.script_public_key {
-            Some(script_public_key) => CovenantUtxoEntryDbKey::new(
-                cursor.covenant_id,
-                DaaScoreKey::from(cursor.daa_score),
-                ScriptPublicKeyBucket::from(script_public_key),
-                TransactionOutpointKey::from(&cursor.transaction_outpoint),
-            ),
-            None => CovenantUtxoEntryDbKey::prefix_start(cursor.covenant_id, cursor.daa_score),
-        };
 
         let extended_limit = limit.map(|l| l.saturating_add(1)).unwrap_or(usize::MAX);
         let mut rows: Vec<(Hash, ScriptPublicKey, UtxoEntryKeySuffixRecord, CompactUtxoEntry)> = Vec::new();
@@ -353,7 +351,7 @@ impl UtxoSetByCovenantIdStoreReader for DbUtxoSetByCovenantIdStore {
             None
         } else {
             let (covenant_id, script_public_key, suffix, _) = rows.pop().unwrap();
-            Some(CovenantUtxoPageCursor::new(covenant_id, suffix.daa_score(), Some(script_public_key), *suffix.transaction_outpoint()))
+            Some(CovenantUtxoPageCursor::new(covenant_id, suffix.daa_score(), script_public_key, *suffix.transaction_outpoint()))
         };
 
         Ok(OrderedCovenantUtxoEntriesPage::new(Arc::new(rows), next_cursor))
@@ -680,11 +678,11 @@ mod tests {
         let script_public_key = ScriptPublicKey::from_vec(0, vec![0x01]);
         populate(&mut spk_store, &mut store, vec![(id, 1, script_public_key.clone(), create_outpoint(1, 0), 100)]);
 
-        let out_of_range = CovenantUtxoPageCursor::new(id, 99, Some(script_public_key.clone()), create_outpoint(1, 0));
+        let out_of_range = CovenantUtxoPageCursor::new(id, 99, script_public_key.clone(), create_outpoint(1, 0));
         let result = store.get_utxos_by_covenant_ids_page(vec![id], 0..=10, &[], Some(out_of_range), None);
         assert!(matches!(result.unwrap_err(), UtxoIndexError::InvalidCovenantCursor(_)));
 
-        let wrong_id = CovenantUtxoPageCursor::new(other_id, 1, Some(script_public_key), create_outpoint(1, 0));
+        let wrong_id = CovenantUtxoPageCursor::new(other_id, 1, script_public_key, create_outpoint(1, 0));
         let result = store.get_utxos_by_covenant_ids_page(vec![id], 0..=10, &[], Some(wrong_id), None);
         assert!(matches!(result.unwrap_err(), UtxoIndexError::InvalidCovenantCursor(_)));
 
@@ -1191,7 +1189,7 @@ mod tests {
         );
 
         // resume at the last sorted id, mid-daa 2, keeps only the filtered id_b tail
-        let cursor = CovenantUtxoPageCursor::new(id_b, 2, Some(script_x.clone()), create_outpoint(10, 0));
+        let cursor = CovenantUtxoPageCursor::new(id_b, 2, script_x.clone(), create_outpoint(10, 0));
         let (rows, next_cursor) = page_entries(&store, vec![id_a, id_b], 0..=u64::MAX, &[script_x], Some(cursor), None);
         assert_eq!(rows, vec![(id_b, 2), (id_b, 2), (id_b, 3)]);
         assert!(next_cursor.is_none());
@@ -1324,7 +1322,7 @@ mod tests {
         assert_eq!(rows, vec![(id_a, 1, vec![0x01]), (id_b, 2, vec![0x02]), (id_c, 3, vec![0x01])]);
         let cursor = next_cursor.unwrap();
         assert_eq!((cursor.covenant_id, cursor.daa_score), (id_d, 4));
-        assert_eq!(cursor.script_public_key, Some(script_2));
+        assert_eq!(cursor.script_public_key, script_2);
 
         let (tail, next_cursor) = page_rows(&store, vec![id_d, id_b, id_a, id_c], 0..=u64::MAX, &[], Some(cursor), None);
         assert_eq!(tail, vec![(id_d, 4, vec![0x02])]);
