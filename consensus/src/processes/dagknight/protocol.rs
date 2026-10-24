@@ -670,37 +670,6 @@ mod tests {
         selected_parent: Hash,
     }
 
-    #[test]
-    fn test_cascade() {
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations = MemoryRelationsStore::new();
-
-        // Build the DAG
-        {
-            let plan = DagPlan {
-                genesis: 1,
-                blocks: vec![
-                    (2, vec![1]),
-                    (3, vec![1]),
-                    (4, vec![2, 3]),
-                    (5, vec![4]),
-                    (6, vec![1]),
-                    (7, vec![5, 6]),
-                    (8, vec![1]),
-                    (9, vec![1]),
-                    (10, vec![7, 8, 9]),
-                    (11, vec![1]),
-                    (12, vec![11, 10]),
-                ],
-            };
-            let mut builder = DagBuilder::new(&mut reachability, &mut relations);
-            builder.init().add_block(DagBlock::genesis(plan.genesis.into()));
-            for (block, parents) in plan.blocks.iter() {
-                builder.add_block(DagBlock::new((*block).into(), parents.iter().map(|&i| i.into()).collect()));
-            }
-        }
-    }
-
     /// This is the main body of the test.
     /// 1. It sets up the necessary stores
     /// 2. Reads the DagPlan
