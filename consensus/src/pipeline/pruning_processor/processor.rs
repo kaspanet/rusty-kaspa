@@ -8,7 +8,7 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            dagknight::DagknightStore,
+            conflict_zone_coloring::ConflictZoneColoringStore,
             ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
@@ -512,7 +512,7 @@ impl PruningProcessor {
                 // is already pruned but a new block (obviously should fail) would try to create a conflict.
                 // TODO[DK][Activation]: This PR makes no activation check here. The idea is that if the data isn't there,
                 // this is just a NOOP
-                let dk_deleted = self.dagknight_store.delete_rooted_range(&mut batch, current).unwrap();
+                let dk_deleted = self.coloring_store.delete_rooted_range(&mut batch, current).unwrap();
                 if dk_deleted > 0 {
                     trace!("[PRUNE::DK] Root: {} | Count: {}", current, dk_deleted);
                 }

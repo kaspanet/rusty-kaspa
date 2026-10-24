@@ -18,7 +18,7 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            dagknight::{DagknightKey, DagknightStore, DagknightStoreReader},
+            conflict_zone_coloring::{ConflictZoneColoringKey, ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
             ghostdag::GhostdagData,
             headers::HeaderStoreReader,
             reachability::ReachabilityStoreReader,
@@ -91,7 +91,7 @@ fn cleanup_k_colouring_locks() {
 // be more in line with what the paper needs
 // Renamed from ghostdag_customized to k_colouring
 pub struct ConflictZoneManager<
-    C: DagknightStore + DagknightStoreReader,
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
     O: HeaderStoreReader,
     D: RelationsStoreReader,
     R: ReachabilityStoreReader + Clone,
@@ -99,82 +99,86 @@ pub struct ConflictZoneManager<
     k: KType,
     root: Hash,
     free_search: bool,
-    dagknight_store: Arc<C>,
+    coloring_store: Arc<C>,
     headers_store: Arc<O>,
     relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
     reachability_service: MTReachabilityService<R>,
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityStoreReader + Clone>
-    ConflictZoneManager<C, O, D, R>
+impl<
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
+    O: HeaderStoreReader,
+    D: RelationsStoreReader,
+    R: ReachabilityStoreReader + Clone,
+> ConflictZoneManager<C, O, D, R>
 {
     pub fn new(
         k: KType,
         root: Hash,
-        dagknight_store: Arc<C>,
+        coloring_store: Arc<C>,
         headers_store: Arc<O>,
         relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
         reachability_service: MTReachabilityService<R>,
     ) -> Self {
-        Self { k, root, free_search: false, dagknight_store, headers_store, reachability_service, relations_store }
+        Self { k, root, free_search: false, coloring_store, headers_store, reachability_service, relations_store }
     }
 
     pub fn with_free_search(
         k: KType,
         root: Hash,
-        dagknight_store: Arc<C>,
+        coloring_store: Arc<C>,
         headers_store: Arc<O>,
         relations_store: FutureIntersectRelations<D, MTReachabilityService<R>>,
         reachability_service: MTReachabilityService<R>,
         free_search: bool,
     ) -> Self {
-        Self { k, root, free_search, dagknight_store, headers_store, reachability_service, relations_store }
+        Self { k, root, free_search, coloring_store, headers_store, reachability_service, relations_store }
     }
 
     pub fn has(&self, pov_hash: Hash) -> bool {
         let key = self.get_key(pov_hash);
 
-        self.dagknight_store.has(key).unwrap()
+        self.coloring_store.has(key).unwrap()
     }
 
     pub fn insert(&self, pov_hash: Hash, gd: Arc<GhostdagData>) -> Result<(), StoreError> {
         let key = self.get_key(pov_hash);
 
-        self.dagknight_store.insert(key, gd)
+        self.coloring_store.insert(key, gd)
     }
 
-    fn get_key(&self, pov_hash: Hash) -> DagknightKey {
-        DagknightKey::new(self.root, pov_hash, self.k, self.free_search)
+    fn get_key(&self, pov_hash: Hash) -> ConflictZoneColoringKey {
+        ConflictZoneColoringKey::new(self.root, pov_hash, self.k, self.free_search)
     }
 
     pub fn get_blue_score(&self, pov_hash: Hash) -> Result<u64, StoreError> {
         let key = self.get_key(pov_hash);
 
-        Ok(self.dagknight_store.get_data(key)?.blue_score)
+        Ok(self.coloring_store.get_data(key)?.blue_score)
     }
 
     pub fn get_blue_work(&self, pov_hash: Hash) -> Result<BlueWorkType, StoreError> {
         let key = self.get_key(pov_hash);
 
-        Ok(self.dagknight_store.get_data(key)?.blue_work)
+        Ok(self.coloring_store.get_data(key)?.blue_work)
     }
 
     pub fn get_selected_parent(&self, pov_hash: Hash) -> Result<Hash, StoreError> {
         let key = self.get_key(pov_hash);
 
-        Ok(self.dagknight_store.get_data(key)?.selected_parent)
+        Ok(self.coloring_store.get_data(key)?.selected_parent)
     }
 
     pub fn get_blues_anticone_sizes(&self, pov_hash: Hash) -> Result<Arc<BlockHashMap<KType>>, StoreError> {
         let key = self.get_key(pov_hash);
 
-        Ok(self.dagknight_store.get_data(key)?.blues_anticone_sizes.clone())
+        Ok(self.coloring_store.get_data(key)?.blues_anticone_sizes.clone())
     }
 
     pub fn get_data(&self, pov_hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
         let key = self.get_key(pov_hash);
 
-        self.dagknight_store.get_data(key)
+        self.coloring_store.get_data(key)
     }
 
     pub fn k_colouring(&self, parents: &[Hash], k: KType, custom_selected_parent: Option<Hash>) -> GhostdagData {
@@ -581,8 +585,12 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
     // END Copied from GD Manager
 }
 
-impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: RelationsStoreReader, R: ReachabilityStoreReader + Clone>
-    ColoringReader for ConflictZoneManager<C, O, D, R>
+impl<
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
+    O: HeaderStoreReader,
+    D: RelationsStoreReader,
+    R: ReachabilityStoreReader + Clone,
+> ColoringReader for ConflictZoneManager<C, O, D, R>
 {
     fn get_coloring_data(&self, hash: Hash) -> Arc<GhostdagData> {
         self.get_data(hash).expect("zone coloring data missing for a chain block that was filled")
@@ -594,7 +602,7 @@ impl<C: DagknightStore + DagknightStoreReader, O: HeaderStoreReader, D: Relation
 mod tests {
     use super::*;
     use crate::model::stores::{
-        dagknight::MemoryDagknightStore, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
+        conflict_zone_coloring::MemoryConflictZoneColoringStore, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
         relations::MemoryRelationsStore,
     };
     use crate::processes::reachability::tests::{DagBlock, DagBuilder};
@@ -740,7 +748,7 @@ mod tests {
         let hash_w: Hash = 10_u64.into();
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map.clone()));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map.clone()));
         let headers_store = Arc::new(MemoryHeaderStore::new());
         let mut reachability = MemoryReachabilityStore::new();
         let mut relations = MemoryRelationsStore::new();
@@ -786,7 +794,7 @@ mod tests {
         let manager_committed = ConflictZoneManager::new(
             0,
             hash_a,
-            dagknight_store.clone(),
+            coloring_store.clone(),
             headers_store.clone(),
             relations_service.clone(),
             reachability_service.clone(),
@@ -795,7 +803,7 @@ mod tests {
         let manager_free = ConflictZoneManager::with_free_search(
             0,
             hash_a,
-            dagknight_store.clone(),
+            coloring_store.clone(),
             headers_store.clone(),
             relations_service,
             reachability_service,
@@ -875,7 +883,7 @@ mod tests {
         let hash_x: Hash = 7_u64.into();
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
 
         let headers_store = Arc::new(MemoryHeaderStore::new());
 
@@ -920,7 +928,7 @@ mod tests {
         let manager_committed = ConflictZoneManager::new(
             0,
             hash_a,
-            dagknight_store.clone(),
+            coloring_store.clone(),
             headers_store.clone(),
             relations_service.clone(),
             reachability_service.clone(),
@@ -930,7 +938,7 @@ mod tests {
         let manager_free = ConflictZoneManager::with_free_search(
             0,
             hash_a,
-            dagknight_store,
+            coloring_store,
             headers_store,
             relations_service,
             reachability_service,
@@ -972,7 +980,7 @@ mod tests {
         let headers_store = Arc::new(MemoryHeaderStore::new());
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map.clone()));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map.clone()));
 
         let mut builder = DagBuilder::new(&mut reachability, &mut relations);
         builder.init();
@@ -1037,7 +1045,7 @@ mod tests {
         let fir_relations = FutureIntersectRelations::new(relations, reachability_service.clone(), conflict_genesis);
 
         let czm =
-            ConflictZoneManager::new(1, conflict_genesis, dagknight_store, headers_store.clone(), fir_relations, reachability_service);
+            ConflictZoneManager::new(1, conflict_genesis, coloring_store, headers_store.clone(), fir_relations, reachability_service);
 
         // let tips = vec![];
         println!("lkt base: {:?}", czm.find_last_known_tips(&tips, Some(nca_2)).0);
@@ -1060,7 +1068,7 @@ mod tests {
         let headers_store = Arc::new(MemoryHeaderStore::new());
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map.clone()));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map.clone()));
 
         let json_filename = "test_captured_k5.json";
         let file = File::open(json_filename).expect("Unable to open JSON file");
@@ -1149,7 +1157,7 @@ mod tests {
         let fir_relations = FutureIntersectRelations::new(relations, reachability_service.clone(), conflict_genesis);
 
         let czm =
-            ConflictZoneManager::new(5, conflict_genesis, dagknight_store, headers_store.clone(), fir_relations, reachability_service);
+            ConflictZoneManager::new(5, conflict_genesis, coloring_store, headers_store.clone(), fir_relations, reachability_service);
 
         // The captured last-known tips; their LCA is the conflict genesis
         let lkt_tips: Vec<Hash> = [
@@ -1199,7 +1207,7 @@ mod tests {
     }
 
     fn lkt_snapshot<
-        C: DagknightStore + DagknightStoreReader,
+        C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
         O: HeaderStoreReader,
         D: RelationsStoreReader,
         R: ReachabilityStoreReader + Clone,

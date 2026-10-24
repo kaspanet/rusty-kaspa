@@ -1,3 +1,6 @@
+//! Conflict zone coloring store: per-block k-coloring data of a
+//! conflict zone, keyed by (conflict genesis, k, pov, free search).
+
 use std::{cell::RefCell, collections::HashMap, fmt, sync::Arc};
 
 use kaspa_consensus_core::KType;
@@ -11,18 +14,18 @@ use crate::model::stores::ghostdag::GhostdagData;
 use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB};
 use rocksdb::WriteBatch;
 
-pub struct MemoryDagknightStore {
-    dk_map: RefCell<HashMap<DagknightKey, Arc<GhostdagData>>>,
+pub struct MemoryConflictZoneColoringStore {
+    dk_map: RefCell<HashMap<ConflictZoneColoringKey, Arc<GhostdagData>>>,
 }
 
-pub trait DagknightStoreReader {
-    fn get_selected_parent(&self, dk_key: DagknightKey) -> Result<Hash, StoreError>;
-    fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError>;
-    fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError>;
+pub trait ConflictZoneColoringStoreReader {
+    fn get_selected_parent(&self, dk_key: ConflictZoneColoringKey) -> Result<Hash, StoreError>;
+    fn get_data(&self, dk_key: ConflictZoneColoringKey) -> Result<Arc<GhostdagData>, StoreError>;
+    fn has(&self, dk_key: ConflictZoneColoringKey) -> Result<bool, StoreError>;
 }
 
 #[derive(Clone)]
-pub struct DagknightKey {
+pub struct ConflictZoneColoringKey {
     pub pov_hash: Hash,
     pub root_hash: Hash,
     pub k: KType,
@@ -31,7 +34,7 @@ pub struct DagknightKey {
     bytes: [u8; kaspa_hashes::HASH_SIZE * 2 + 3],
 }
 
-impl DagknightKey {
+impl ConflictZoneColoringKey {
     pub fn new(root_hash: Hash, pov_hash: Hash, k: KType, free_search: bool) -> Self {
         // Layout must match DB-level expectations where `k` is encoded as a u16
         // (two bytes). Allocate enough space: root_hash + k(2) + pov_hash + free_search(1).
@@ -52,21 +55,21 @@ impl DagknightKey {
     }
 }
 
-impl fmt::Display for DagknightKey {
+impl fmt::Display for ConflictZoneColoringKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.bytes)
     }
 }
 
-impl AsRef<[u8]> for DagknightKey {
+impl AsRef<[u8]> for ConflictZoneColoringKey {
     fn as_ref(&self) -> &[u8] {
         &self.bytes
     }
 }
 
-impl Eq for DagknightKey {}
+impl Eq for ConflictZoneColoringKey {}
 
-impl std::hash::Hash for DagknightKey {
+impl std::hash::Hash for ConflictZoneColoringKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // Hash based on the logical key fields
         self.root_hash.hash(state);
@@ -76,7 +79,7 @@ impl std::hash::Hash for DagknightKey {
     }
 }
 
-impl PartialEq for DagknightKey {
+impl PartialEq for ConflictZoneColoringKey {
     fn eq(&self, other: &Self) -> bool {
         self.pov_hash == other.pov_hash
             && self.k == other.k
@@ -85,24 +88,24 @@ impl PartialEq for DagknightKey {
     }
 }
 
-pub trait DagknightStore {
-    fn insert(&self, key: DagknightKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError>;
-    fn delete(&self, key: DagknightKey) -> Result<(), StoreError>;
+pub trait ConflictZoneColoringStore {
+    fn insert(&self, key: ConflictZoneColoringKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError>;
+    fn delete(&self, key: ConflictZoneColoringKey) -> Result<(), StoreError>;
     fn delete_rooted_range(&self, batch: &mut WriteBatch, hash: Hash) -> Result<u32, StoreError>;
 }
 
-impl MemoryDagknightStore {
-    pub fn new(dk_map: RefCell<HashMap<DagknightKey, Arc<GhostdagData>>>) -> Self {
+impl MemoryConflictZoneColoringStore {
+    pub fn new(dk_map: RefCell<HashMap<ConflictZoneColoringKey, Arc<GhostdagData>>>) -> Self {
         Self { dk_map }
     }
 }
 
-impl DagknightStoreReader for MemoryDagknightStore {
-    fn get_selected_parent(&self, dk_key: DagknightKey) -> Result<Hash, StoreError> {
+impl ConflictZoneColoringStoreReader for MemoryConflictZoneColoringStore {
+    fn get_selected_parent(&self, dk_key: ConflictZoneColoringKey) -> Result<Hash, StoreError> {
         Ok(self.get_data(dk_key)?.selected_parent)
     }
 
-    fn get_data(&self, key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError> {
+    fn get_data(&self, key: ConflictZoneColoringKey) -> Result<Arc<GhostdagData>, StoreError> {
         if let Some(pov_block_dk_data) = self.dk_map.borrow().get(&key) {
             Ok(pov_block_dk_data.clone())
         } else {
@@ -110,19 +113,19 @@ impl DagknightStoreReader for MemoryDagknightStore {
         }
     }
 
-    fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError> {
+    fn has(&self, dk_key: ConflictZoneColoringKey) -> Result<bool, StoreError> {
         Ok(self.dk_map.borrow().contains_key(&dk_key))
     }
 }
 
-impl DagknightStore for MemoryDagknightStore {
-    fn insert(&self, key: DagknightKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
+impl ConflictZoneColoringStore for MemoryConflictZoneColoringStore {
+    fn insert(&self, key: ConflictZoneColoringKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
         self.dk_map.borrow_mut().insert(key, dk_data);
 
         Ok(())
     }
 
-    fn delete(&self, key: DagknightKey) -> Result<(), StoreError> {
+    fn delete(&self, key: ConflictZoneColoringKey) -> Result<(), StoreError> {
         self.dk_map.borrow_mut().remove(&key);
 
         Ok(())
@@ -133,20 +136,20 @@ impl DagknightStore for MemoryDagknightStore {
     }
 }
 
-/// A DB + cache implementation of `DagknightStore` trait, with concurrency support.
+/// A DB + cache implementation of `ConflictZoneColoringStore` trait, with concurrency support.
 #[derive(Clone)]
-pub struct DbDagknightStore {
+pub struct DbConflictZoneColoringStore {
     db: Arc<DB>,
-    access: CachedDbAccess<DagknightKey, Arc<GhostdagData>>,
+    access: CachedDbAccess<ConflictZoneColoringKey, Arc<GhostdagData>>,
 }
 
-impl DbDagknightStore {
+impl DbConflictZoneColoringStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
         let prefix = DatabaseStorePrefixes::DagKnight.as_ref().to_vec();
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, prefix) }
     }
 
-    pub fn insert_batch(&self, batch: &mut WriteBatch, key: DagknightKey, data: Arc<GhostdagData>) -> Result<(), StoreError> {
+    pub fn insert_batch(&self, batch: &mut WriteBatch, key: ConflictZoneColoringKey, data: Arc<GhostdagData>) -> Result<(), StoreError> {
         if self.access.has(key.clone())? {
             return Err(StoreError::KeyAlreadyExists(key.to_string()));
         }
@@ -154,27 +157,27 @@ impl DbDagknightStore {
         Ok(())
     }
 
-    pub fn delete_batch(&self, batch: &mut WriteBatch, key: DagknightKey) -> Result<(), StoreError> {
+    pub fn delete_batch(&self, batch: &mut WriteBatch, key: ConflictZoneColoringKey) -> Result<(), StoreError> {
         self.access.delete(BatchDbWriter::new(batch), key)
     }
 }
 
-impl DagknightStoreReader for DbDagknightStore {
-    fn get_selected_parent(&self, dk_key: DagknightKey) -> Result<Hash, StoreError> {
+impl ConflictZoneColoringStoreReader for DbConflictZoneColoringStore {
+    fn get_selected_parent(&self, dk_key: ConflictZoneColoringKey) -> Result<Hash, StoreError> {
         Ok(self.get_data(dk_key)?.selected_parent)
     }
 
-    fn get_data(&self, dk_key: DagknightKey) -> Result<Arc<GhostdagData>, StoreError> {
+    fn get_data(&self, dk_key: ConflictZoneColoringKey) -> Result<Arc<GhostdagData>, StoreError> {
         self.access.read(dk_key)
     }
 
-    fn has(&self, dk_key: DagknightKey) -> Result<bool, StoreError> {
+    fn has(&self, dk_key: ConflictZoneColoringKey) -> Result<bool, StoreError> {
         self.access.has(dk_key)
     }
 }
 
-impl DagknightStore for DbDagknightStore {
-    fn insert(&self, key: DagknightKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
+impl ConflictZoneColoringStore for DbConflictZoneColoringStore {
+    fn insert(&self, key: ConflictZoneColoringKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
         if self.access.has(key.clone())? {
             return Err(StoreError::KeyAlreadyExists(key.to_string()));
         }
@@ -184,7 +187,7 @@ impl DagknightStore for DbDagknightStore {
         Ok(())
     }
 
-    fn delete(&self, key: DagknightKey) -> Result<(), StoreError> {
+    fn delete(&self, key: ConflictZoneColoringKey) -> Result<(), StoreError> {
         let mut batch = WriteBatch::default();
         self.access.delete(BatchDbWriter::new(&mut batch), key)?;
         self.db.write(batch)?;
@@ -246,8 +249,8 @@ mod tests {
         let pov: Hash = 0xBB_u64.into();
         let k: KType = 5;
 
-        let key_committed = DagknightKey::new(root, pov, k, false);
-        let key_free = DagknightKey::new(root, pov, k, true);
+        let key_committed = ConflictZoneColoringKey::new(root, pov, k, false);
+        let key_free = ConflictZoneColoringKey::new(root, pov, k, true);
 
         // Keys with different free_search values must be distinct
         assert_ne!(key_committed.as_ref(), key_free.as_ref());
@@ -258,23 +261,20 @@ mod tests {
     }
 
     #[test]
-    fn test_dagknight_key_encodes_k() {
-        use crate::model::stores::dagknight::DagknightKey;
-        use kaspa_hashes::Hash;
-
+    fn test_coloring_key_encodes_k() {
         let root: Hash = 0xAA_u64.into();
         let pov: Hash = 0xBB_u64.into();
         let k1: KType = 0x0001;
         let k2: KType = 0x0101; // 2nd byte is the same as above
 
-        let key1 = DagknightKey::new(root, pov, k1, false);
-        let key2 = DagknightKey::new(root, pov, k2, false);
+        let key1 = ConflictZoneColoringKey::new(root, pov, k1, false);
+        let key2 = ConflictZoneColoringKey::new(root, pov, k2, false);
 
         // The DB key bytes must differ when k differs. This captures the previous
         // bug where `k` was encoded incorrectly and keys collided across k values.
         println!("key1 bytes: {:?}", key1.as_ref());
         println!("key2 bytes: {:?}", key2.as_ref());
-        assert_ne!(key1.as_ref(), key2.as_ref(), "DagknightKey DB bytes must encode k uniquely");
+        assert_ne!(key1.as_ref(), key2.as_ref(), "ConflictZoneColoringKey DB bytes must encode k uniquely");
 
         // Also assert that the differing two-byte `k` slot differs (sanity check on layout)
         let hash_size = kaspa_hashes::HASH_SIZE;
@@ -287,18 +287,16 @@ mod tests {
     }
 
     #[test]
-    fn test_db_dagknight_store_isolates_by_k() {
-        use crate::model::stores::dagknight::DbDagknightStore;
+    fn test_db_coloring_store_isolates_by_k() {
         use crate::model::stores::ghostdag::GhostdagData;
         use kaspa_database::prelude::CachePolicy;
         use kaspa_database::prelude::ConnBuilder;
-        use kaspa_hashes::Hash;
         use std::sync::Arc;
 
         // Create a temporary RocksDB
         let (_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
 
-        let store = DbDagknightStore::new(db.clone(), CachePolicy::Count(16));
+        let store = DbConflictZoneColoringStore::new(db.clone(), CachePolicy::Count(16));
 
         let root: Hash = 0xAA_u64.into();
         let pov: Hash = 0xBB_u64.into();
@@ -324,8 +322,8 @@ mod tests {
             Default::default(),
         );
 
-        let key1 = DagknightKey::new(root, pov, k1, false);
-        let key2 = DagknightKey::new(root, pov, k2, false);
+        let key1 = ConflictZoneColoringKey::new(root, pov, k1, false);
+        let key2 = ConflictZoneColoringKey::new(root, pov, k2, false);
 
         // Insert both into the DB-backed store
         store.insert(key1.clone(), Arc::new(gd1)).expect("insert k1");

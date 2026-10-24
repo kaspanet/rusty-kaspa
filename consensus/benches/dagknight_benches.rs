@@ -14,8 +14,8 @@ use kaspa_consensus::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
-            dagknight::MemoryDagknightStore, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
-            relations::MemoryRelationsStore,
+            conflict_zone_coloring::MemoryConflictZoneColoringStore, headers::MemoryHeaderStore,
+            reachability::MemoryReachabilityStore, relations::MemoryRelationsStore,
         },
     },
     processes::{
@@ -88,14 +88,14 @@ fn run_tie_breaking_at_k(k: KType) -> (Hash, usize) {
 
     // Setup stores
     let dk_map = RefCell::new(HashMap::new());
-    let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+    let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
     let mut reachability = MemoryReachabilityStore::new();
     let mut relations = MemoryRelationsStore::new();
     let headers_store = Arc::new(MemoryHeaderStore::new());
 
     let dk_executor = DagknightExecutor {
         genesis_hash: ORIGIN,
-        dagknight_store: dagknight_store.clone(),
+        coloring_store: coloring_store.clone(),
         headers_store: headers_store.clone(),
         reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
         relations_store: Arc::new(RwLock::new(relations.clone())),

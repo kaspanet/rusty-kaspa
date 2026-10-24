@@ -8,7 +8,7 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            dagknight::{DagknightStore, DagknightStoreReader},
+            conflict_zone_coloring::{ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
             ghostdag::GhostdagData,
             headers::HeaderStoreReader,
             reachability::ReachabilityStoreReader,
@@ -58,31 +58,31 @@ pub trait TieBreaker {
 /// Holds only the stores needed for tie-breaking, not the full `DagknightExecutor`,
 /// enabling isolated unit testing of tie-breaking logic.
 pub struct DagknightTieBreaker<
-    C: DagknightStore + DagknightStoreReader,
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
 > {
-    pub dagknight_store: Arc<C>,
+    pub coloring_store: Arc<C>,
     pub headers_store: Arc<O>,
     pub relations_store: Arc<RwLock<D>>,
     pub reachability_service: MTReachabilityService<R>,
 }
 
 impl<
-    C: DagknightStore + DagknightStoreReader,
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
 > DagknightTieBreaker<C, O, D, R>
 {
     pub fn new(
-        dagknight_store: Arc<C>,
+        coloring_store: Arc<C>,
         headers_store: Arc<O>,
         relations_store: Arc<RwLock<D>>,
         reachability_service: MTReachabilityService<R>,
     ) -> Self {
-        Self { dagknight_store, headers_store, relations_store, reachability_service }
+        Self { coloring_store, headers_store, relations_store, reachability_service }
     }
 
     /// Computes the free-search k-colouring reference cluster.
@@ -100,7 +100,7 @@ impl<
         let conflict_zone_manager = ConflictZoneManager::with_free_search(
             k,
             conflict_genesis,
-            self.dagknight_store.clone(),
+            self.coloring_store.clone(),
             self.headers_store.clone(),
             relations_service,
             reachability_service.clone(),
@@ -158,7 +158,7 @@ impl<
         let conflict_zone_manager = ConflictZoneManager::with_free_search(
             k_prime,
             conflict_genesis,
-            self.dagknight_store.clone(),
+            self.coloring_store.clone(),
             self.headers_store.clone(),
             relations_service,
             reachability_service.clone(),
@@ -231,7 +231,7 @@ impl<
 }
 
 impl<
-    C: DagknightStore + DagknightStoreReader,
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
     R: ReachabilityStoreReader + Clone,
@@ -282,8 +282,8 @@ mod tests {
 
     use crate::{
         model::stores::{
-            dagknight::MemoryDagknightStore, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
-            relations::MemoryRelationsStore,
+            conflict_zone_coloring::MemoryConflictZoneColoringStore, headers::MemoryHeaderStore,
+            reachability::MemoryReachabilityStore, relations::MemoryRelationsStore,
         },
         processes::reachability::tests::{DagBlock, DagBuilder},
     };
@@ -314,7 +314,8 @@ mod tests {
         pub hash_z: Hash,
         pub hash_y: Hash,
         pub hash_x: Hash,
-        pub tie_breaker: DagknightTieBreaker<MemoryDagknightStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>,
+        pub tie_breaker:
+            DagknightTieBreaker<MemoryConflictZoneColoringStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>,
     }
 
     impl TestDag {
@@ -328,7 +329,7 @@ mod tests {
             let hash_x: Hash = 7_u64.into();
 
             let dk_map = RefCell::new(HashMap::new());
-            let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+            let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
             let headers_store = Arc::new(MemoryHeaderStore::new());
             let mut reachability = MemoryReachabilityStore::new();
             let mut relations_store = MemoryRelationsStore::new();
@@ -362,7 +363,7 @@ mod tests {
 
             let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
             let tie_breaker =
-                DagknightTieBreaker::new(dagknight_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
+                DagknightTieBreaker::new(coloring_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
 
             Self { hash_a, hash_b, hash_c, hash_d, hash_z, hash_y, hash_x, tie_breaker }
         }
@@ -464,7 +465,7 @@ mod tests {
         let hash_d: Hash = 7_u64.into();
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
         let headers_store = Arc::new(MemoryHeaderStore::new());
         let mut reachability = MemoryReachabilityStore::new();
         let mut relations_store = MemoryRelationsStore::new();
@@ -498,7 +499,7 @@ mod tests {
 
         let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
         let tie_breaker =
-            DagknightTieBreaker::new(dagknight_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
+            DagknightTieBreaker::new(coloring_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
 
         // Chain 2: [X, Y, Z, A] (right side, towards genesis)
         let chain_right = vec![hash_x, hash_y, hash_z, hash_a];

@@ -15,7 +15,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             children::ChildrenStore,
-            dagknight::{DagknightStore, DagknightStoreReader},
+            conflict_zone_coloring::{ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
             ghostdag::GhostdagData,
             headers::HeaderStoreReader,
             reachability::{MemoryReachabilityStore, ReachabilityStore, ReachabilityStoreReader},
@@ -90,14 +90,14 @@ use crate::{
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 #[derive(Clone)]
 pub struct DagknightExecutor<
-    C: DagknightStore + DagknightStoreReader,
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
     E: UmcCascadeStoreReader + Clone + 'static,
     R: ReachabilityStoreReader + Clone,
 > {
     pub genesis_hash: Hash,
-    pub dagknight_store: Arc<C>,
+    pub coloring_store: Arc<C>,
     pub headers_store: Arc<O>,
     pub relations_store: Arc<RwLock<D>>,
     pub umc_persistence_store: Arc<E>,
@@ -112,7 +112,7 @@ pub struct DagknightData {
 }
 
 impl<
-    C: DagknightStore + DagknightStoreReader,
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
     E: UmcCascadeStore + Clone,
@@ -274,7 +274,7 @@ impl<
         let mutual_k = subgroups[0].k;
 
         let winning_index = DagknightTieBreaker::new(
-            self.dagknight_store.clone(),
+            self.coloring_store.clone(),
             self.headers_store.clone(),
             self.relations_store.clone(),
             self.reachability_service.clone(),
@@ -346,7 +346,7 @@ impl<
         let conflict_zone_manager = ConflictZoneManager::new(
             k_to_check,
             conflict_genesis,
-            self.dagknight_store.clone(),
+            self.coloring_store.clone(),
             self.headers_store.clone(),
             relations_service,
             reachability_service.clone(),
@@ -653,8 +653,8 @@ mod tests {
     use crate::processes::reachability::tests::r#gen::generate_complex_dag;
     use crate::{
         model::stores::{
-            dagknight::MemoryDagknightStore, ghostdag::MemoryGhostdagStore, reachability::MemoryReachabilityStore,
-            relations::MemoryRelationsStore,
+            conflict_zone_coloring::MemoryConflictZoneColoringStore, ghostdag::MemoryGhostdagStore,
+            reachability::MemoryReachabilityStore, relations::MemoryRelationsStore,
         },
         processes::reachability::tests::{DagBlock, DagBuilder},
         test_helpers::generate_dot_with_chain,
@@ -746,11 +746,11 @@ mod tests {
 
         coloring_ghostdag_store.insert(genesis_hash, Arc::new(coloring_gd_manager.genesis_ghostdag_data())).unwrap();
 
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
 
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store: dagknight_store.clone(),
+            coloring_store: coloring_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
@@ -951,11 +951,11 @@ mod tests {
 
         topology_ghostdag_store.insert(genesis_hash, Arc::new(topology_gd_manager.genesis_ghostdag_data())).unwrap();
 
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
 
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store: dagknight_store.clone(),
+            coloring_store: coloring_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
@@ -1032,11 +1032,11 @@ mod tests {
 
         let dk_map = RefCell::new(HashMap::new());
 
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
 
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store: dagknight_store.clone(),
+            coloring_store: coloring_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
@@ -1150,10 +1150,10 @@ mod tests {
         headers_store.insert(Arc::new(t1_header));
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store,
+            coloring_store,
             headers_store,
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
             relations_store: Arc::new(RwLock::new(relations)),
@@ -1201,10 +1201,10 @@ mod tests {
         headers_store.insert(Arc::new(t2_header));
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store,
+            coloring_store,
             headers_store,
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
             relations_store: Arc::new(RwLock::new(relations)),
