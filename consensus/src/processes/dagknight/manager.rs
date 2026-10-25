@@ -1,6 +1,7 @@
 use std::{
     cmp::Reverse,
     collections::{BinaryHeap, VecDeque},
+    ops::Deref,
     sync::{Arc, OnceLock},
 };
 
@@ -18,8 +19,9 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            conflict_zone_coloring::{ConflictZoneColoringKey, ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
-            ghostdag::GhostdagData,
+            conflict_zone_coloring::{
+                ColoringData, ConflictZoneColoringKey, ConflictZoneColoringStore, ConflictZoneColoringStoreReader,
+            },
             headers::HeaderStoreReader,
             reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
@@ -31,11 +33,42 @@ use crate::{
         ghostdag::{
             mergeset::unordered_mergeset_without_selected_parent,
             ordering::SortableBlock,
-            protocol::{ChainBlock, ColoringOutput, ColoringState},
+            protocol::{ColoringOutput, ColoringState},
         },
         reachability::relations::FutureIntersectRelations,
     },
 };
+
+/// A view of one link of the SP chain walked by [`ConflictZoneManager::check_blue_candidate`].
+///
+/// The zone store's value type [`ColoringData`] is DK-zone-scoped (no interop
+/// with the ghostdag protocol's `GhostdagData`), so the GD protocol's
+/// `ChainBlock` (a reference wrapper over `GhostdagData`) is replaced by this
+/// wrapper over `ColoringData`. The first link borrows the in-flight block
+/// (no copy); the rest own `Arc`s from the store.
+struct ChainBlock<'a> {
+    /// `None` when this link is the new (being-colored) block itself.
+    hash: Option<Hash>,
+    data: ChainBlockData<'a>,
+}
+
+/// The payload of a [`ChainBlock`] (mirrors `kaspa_utils::refs::Refs`, of which
+/// only the `Ref`/`Arc` variants are needed here).
+enum ChainBlockData<'a> {
+    Ref(&'a ColoringData),
+    Arc(Arc<ColoringData>),
+}
+
+impl Deref for ChainBlockData<'_> {
+    type Target = ColoringData;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ChainBlockData::Ref(r) => r,
+            ChainBlockData::Arc(a) => a,
+        }
+    }
+}
 
 /// Granular lock key for k-colouring operations.
 /// Uniquely identifies a subgroup's processing context by its conflict genesis,
@@ -141,10 +174,10 @@ impl<
         self.coloring_store.has(key).unwrap()
     }
 
-    pub fn insert(&self, pov_hash: Hash, gd: Arc<GhostdagData>) -> Result<(), StoreError> {
+    pub fn insert(&self, pov_hash: Hash, coloring: Arc<ColoringData>) -> Result<(), StoreError> {
         let key = self.get_key(pov_hash);
 
-        self.coloring_store.insert(key, gd)
+        self.coloring_store.insert(key, coloring)
     }
 
     fn get_key(&self, pov_hash: Hash) -> ConflictZoneColoringKey {
@@ -175,13 +208,13 @@ impl<
         Ok(self.coloring_store.get_data(key)?.blues_anticone_sizes.clone())
     }
 
-    pub fn get_data(&self, pov_hash: Hash) -> Result<Arc<GhostdagData>, StoreError> {
+    pub fn get_data(&self, pov_hash: Hash) -> Result<Arc<ColoringData>, StoreError> {
         let key = self.get_key(pov_hash);
 
         self.coloring_store.get_data(key)
     }
 
-    pub fn k_colouring(&self, parents: &[Hash], k: KType, custom_selected_parent: Option<Hash>) -> GhostdagData {
+    pub fn k_colouring(&self, parents: &[Hash], k: KType, custom_selected_parent: Option<Hash>) -> ColoringData {
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
         // Run the GHOSTDAG parent selection algorithm
@@ -189,10 +222,10 @@ impl<
         // Handle the special case of origin children first
         if selected_parent.is_origin() {
             // ORIGIN is always a single parent so both blue score and work should remain zero
-            return GhostdagData::new_with_selected_parent(selected_parent, 1); // k is only a capacity hint here
+            return ColoringData::new_with_selected_parent(selected_parent, 1); // k is only a capacity hint here
         }
         // Initialize new GHOSTDAG block data with the selected parent
-        let mut new_block_data = GhostdagData::new_with_selected_parent(selected_parent, k);
+        let mut new_block_data = ColoringData::new_with_selected_parent(selected_parent, k);
         // Get the mergeset in consensus-agreed topological order (topological here means forward in time from blocks to children)
         let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
@@ -213,14 +246,14 @@ impl<
             new_block_data.mergeset_blues.iter().cloned().map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap())).sum();
         let blue_work: BlueWorkType = self.get_blue_work(selected_parent).unwrap() + added_blue_work;
 
-        new_block_data.finalize_score_and_work(blue_score, blue_work);
+        new_block_data.finalize_coloring_data(blue_score, blue_work);
 
         new_block_data
     }
 
     fn check_blue_candidate_with_chain_block(
         &self,
-        new_block_data: &GhostdagData,
+        new_block_data: &ColoringData,
         chain_block: &ChainBlock,
         blue_candidate: Hash,
         candidate_blues_anticone_sizes: &mut BlockHashMap<KType>,
@@ -282,7 +315,7 @@ impl<
 
     /// Returns the blue anticone size of `block` from the worldview of `context`.
     /// Expects `block` to be in the blue set of `context`
-    fn blue_anticone_size(&self, block: Hash, context: &GhostdagData) -> KType {
+    fn blue_anticone_size(&self, block: Hash, context: &ColoringData) -> KType {
         let mut current_blues_anticone_sizes = HashKTypeMap::clone(&context.blues_anticone_sizes);
         let mut current_selected_parent = context.selected_parent;
         loop {
@@ -299,7 +332,7 @@ impl<
         }
     }
 
-    fn check_blue_candidate(&self, new_block_data: &GhostdagData, blue_candidate: Hash, k: KType) -> ColoringOutput {
+    fn check_blue_candidate(&self, new_block_data: &ColoringData, blue_candidate: Hash, k: KType) -> ColoringOutput {
         // The maximum length of new_block_data.mergeset_blues can be K+1 because
         // it contains the selected parent.
         if new_block_data.mergeset_blues.len() as KType == k + 1 {
@@ -311,7 +344,7 @@ impl<
         // of blue_candidate, and check for each one of them if blue_candidate potentially
         // enlarges their blue anticone to be over K, or that they enlarge the blue anticone
         // of blue_candidate to be over K.
-        let mut chain_block = ChainBlock { hash: None, data: new_block_data.into() };
+        let mut chain_block = ChainBlock { hash: None, data: ChainBlockData::Ref(new_block_data) };
         let mut candidate_blue_anticone_size: KType = 0;
 
         loop {
@@ -332,7 +365,7 @@ impl<
 
             chain_block = ChainBlock {
                 hash: Some(chain_block.data.selected_parent),
-                data: self.get_data(chain_block.data.selected_parent).unwrap().into(),
+                data: ChainBlockData::Arc(self.get_data(chain_block.data.selected_parent).unwrap()),
             }
         }
     }
@@ -382,7 +415,7 @@ impl<
         if !self.has(self.root) {
             self.insert(
                 self.root,
-                Arc::new(GhostdagData::new(
+                Arc::new(ColoringData::new(
                     0,
                     Default::default(),
                     blockhash::ORIGIN,
@@ -592,7 +625,7 @@ impl<
     R: ReachabilityStoreReader + Clone,
 > ColoringReader for ConflictZoneManager<C, O, D, R>
 {
-    fn get_coloring_data(&self, hash: Hash) -> Arc<GhostdagData> {
+    fn get_coloring_data(&self, hash: Hash) -> Arc<ColoringData> {
         self.get_data(hash).expect("zone coloring data missing for a chain block that was filled")
     }
 }
@@ -824,7 +857,7 @@ mod tests {
             (hash_y, hash_z),
             (hash_x, hash_y),
         ] {
-            let gd = GhostdagData::new_with_selected_parent(selected_parent, 0);
+            let gd = ColoringData::new_with_selected_parent(selected_parent, 0);
             manager_committed.insert(hash, Arc::new(gd.clone())).unwrap();
             manager_free.insert(hash, Arc::new(gd)).unwrap();
         }

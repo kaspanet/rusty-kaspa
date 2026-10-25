@@ -15,8 +15,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             children::ChildrenStore,
-            conflict_zone_coloring::{ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
-            ghostdag::GhostdagData,
+            conflict_zone_coloring::{ColoringData, ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
             headers::HeaderStoreReader,
             reachability::{MemoryReachabilityStore, ReachabilityStore, ReachabilityStoreReader},
             relations::{MemoryRelationsStore, RelationsStore, RelationsStoreReader},
@@ -241,7 +240,7 @@ impl<
         &self,
         conflict_genesis: Hash,
         subgroup: &[Hash],
-        virtual_gd: GhostdagData,
+        virtual_gd: ColoringData,
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
@@ -255,7 +254,7 @@ impl<
         &self,
         conflict_genesis: Hash,
         subgroup: &[Hash],
-        virtual_gd: GhostdagData,
+        virtual_gd: ColoringData,
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {

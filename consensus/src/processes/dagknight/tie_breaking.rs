@@ -8,8 +8,7 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            conflict_zone_coloring::{ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
-            ghostdag::GhostdagData,
+            conflict_zone_coloring::{ColoringData, ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
             headers::HeaderStoreReader,
             reachability::ReachabilityStoreReader,
             relations::RelationsStoreReader,
@@ -111,7 +110,7 @@ impl<
 
         // Run k-colouring with free search — no custom selected parent is passed,
         // so the manager freely selects from all parents.
-        let virtual_gd: GhostdagData = conflict_zone_manager.k_colouring(all_tips, k, None);
+        let virtual_gd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k, None);
 
         // Collect the full blue set by traversing the chain from virtual back to conflict_genesis.
         // Each chain block contributes itself AND its mergeset blues.
@@ -171,7 +170,7 @@ impl<
 
         // Condition virtual on the group: force selected parent from group_tips
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips.iter().copied());
-        let virtual_gd: GhostdagData = conflict_zone_manager.k_colouring(all_tips, k_prime, Some(subgroup_virtual_sp));
+        let virtual_gd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k_prime, Some(subgroup_virtual_sp));
 
         // Walk the chain from virtual's selected parent back to conflict_genesis
         let mut chain_blocks: Vec<Hash> = Vec::new();

@@ -4,13 +4,13 @@ use kaspa_consensus_core::{BlueWorkType, KType};
 use kaspa_hashes::Hash;
 use kaspa_math::int::SignedInteger;
 
-use crate::model::stores::ghostdag::GhostdagData;
+use crate::model::stores::conflict_zone_coloring::ColoringData;
 
 /// Signed blue work — `SignedInteger<BlueWorkType>` with sign, used for cascade score
 /// accumulation (Uint192-safe).
 pub type SignedWork = SignedInteger<BlueWorkType>;
 
-/// Read-only access to the k-coloring (`GhostdagData`) of conflict-zone blocks.
+/// Read-only access to the k-coloring (`ColoringData`) of conflict-zone blocks.
 /// Implemented by `ConflictZoneManager`; keeps UMC voters decoupled from the full
 /// manager so they can be unit-tested with synthetic coloring chains.
 pub trait ColoringReader {
@@ -18,7 +18,7 @@ pub trait ColoringReader {
     ///
     /// Zone data for every chain block between the virtual GD and the conflict genesis
     /// is guaranteed present by `fill_zone_data` + `k_colouring`; a missing entry is a bug.
-    fn get_coloring_data(&self, hash: Hash) -> Arc<GhostdagData>;
+    fn get_coloring_data(&self, hash: Hash) -> Arc<ColoringData>;
 }
 
 /// Input to a single UMC voting call, shared by all `UmcVoter` implementations.
@@ -28,7 +28,7 @@ pub struct UmcVotingContext<'a> {
     /// Tips of the subgroup being evaluated (virtual block conditioned on these).
     pub subgroup: &'a [Hash],
     /// The k-coloring data of the virtual GD — head of the virtual GD chain.
-    pub virtual_gd: &'a GhostdagData,
+    pub virtual_gd: &'a ColoringData,
     /// The rank `k` under test.
     pub k: KType,
     /// Read access to the virtual GD chain below `virtual_gd` towards `conflict_genesis`.
@@ -84,33 +84,33 @@ pub mod test_fixtures {
         model::{
             services::reachability::MTReachabilityService,
             stores::{
-                ghostdag::GhostdagData, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
+                conflict_zone_coloring::ColoringData, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
                 relations::MemoryRelationsStore,
             },
         },
         processes::dagknight::umc_voting::ColoringReader,
     };
 
-    /// In-memory `ColoringReader` backed by a map of synthetic `GhostdagData` per chain block.
+    /// In-memory `ColoringReader` backed by a map of synthetic `ColoringData` per chain block.
     #[derive(Default)]
     pub struct MemoryColoringReader {
-        by_block: HashMap<Hash, Arc<GhostdagData>>,
+        by_block: HashMap<Hash, Arc<ColoringData>>,
     }
 
     impl MemoryColoringReader {
-        pub fn add(&mut self, hash: Hash, gd: GhostdagData) {
+        pub fn add(&mut self, hash: Hash, gd: ColoringData) {
             self.by_block.insert(hash, Arc::new(gd));
         }
     }
 
     impl ColoringReader for MemoryColoringReader {
-        fn get_coloring_data(&self, hash: Hash) -> Arc<GhostdagData> {
+        fn get_coloring_data(&self, hash: Hash) -> Arc<ColoringData> {
             self.by_block.get(&hash).cloned().expect("memory coloring reader: block not in zone")
         }
     }
 
-    pub fn make_gd(sp: Hash, blues: Vec<Hash>, reds: Vec<Hash>, blue_score: u64) -> GhostdagData {
-        GhostdagData::new(
+    pub fn make_gd(sp: Hash, blues: Vec<Hash>, reds: Vec<Hash>, blue_score: u64) -> ColoringData {
+        ColoringData::new(
             blue_score,
             Default::default(),
             sp,
@@ -166,7 +166,7 @@ pub mod test_fixtures {
         pub reachability: MTReachabilityService<MemoryReachabilityStore>,
         pub headers: Arc<MemoryHeaderStore>,
         pub reader: MemoryColoringReader,
-        pub virtual_gd: Arc<GhostdagData>,
+        pub virtual_gd: Arc<ColoringData>,
         pub subgroup: Vec<Hash>,
         pub conflict_genesis: Hash,
         pub k: KType,

@@ -3,25 +3,100 @@
 
 use std::{cell::RefCell, collections::HashMap, fmt, sync::Arc};
 
-use kaspa_consensus_core::KType;
+use kaspa_consensus_core::{BlockHashMap, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType, blockhash::BlockHashes};
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB};
 use kaspa_database::{
     prelude::{DbKey, StoreError},
     registry::DatabaseStorePrefixes,
 };
 use kaspa_hashes::Hash;
-
-use crate::model::stores::ghostdag::GhostdagData;
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB};
+use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
+use serde::{Deserialize, Serialize};
+
+/// The per-block POV coloring
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
+pub struct ColoringData {
+    pub blue_score: u64,
+    pub blue_work: BlueWorkType,
+    pub selected_parent: Hash,
+    pub mergeset_blues: BlockHashes,
+    pub mergeset_reds: BlockHashes,
+    pub blues_anticone_sizes: HashKTypeMap,
+}
+
+impl ColoringData {
+    pub fn new(
+        blue_score: u64,
+        blue_work: BlueWorkType,
+        selected_parent: Hash,
+        mergeset_blues: BlockHashes,
+        mergeset_reds: BlockHashes,
+        blues_anticone_sizes: HashKTypeMap,
+    ) -> Self {
+        Self { blue_score, blue_work, selected_parent, mergeset_blues, mergeset_reds, blues_anticone_sizes }
+    }
+
+    pub fn new_with_selected_parent(selected_parent: Hash, k: KType) -> Self {
+        let mut mergeset_blues: Vec<Hash> = Vec::with_capacity((k + 1) as usize);
+        let mut blues_anticone_sizes: BlockHashMap<KType> = BlockHashMap::with_capacity(k as usize);
+        mergeset_blues.push(selected_parent);
+        blues_anticone_sizes.insert(selected_parent, 0);
+
+        Self {
+            blue_score: Default::default(),
+            blue_work: Default::default(),
+            selected_parent,
+            mergeset_blues: BlockHashes::new(mergeset_blues),
+            mergeset_reds: Default::default(),
+            blues_anticone_sizes: HashKTypeMap::new(blues_anticone_sizes),
+        }
+    }
+
+    pub fn add_blue(&mut self, block: Hash, blue_anticone_size: KType, block_blues_anticone_sizes: &BlockHashMap<KType>) {
+        // Add the new blue block to mergeset blues
+        BlockHashes::make_mut(&mut self.mergeset_blues).push(block);
+
+        // Get a mut ref to internal anticone size map
+        let blues_anticone_sizes = HashKTypeMap::make_mut(&mut self.blues_anticone_sizes);
+
+        // Insert the new blue block with its blue anticone size to the map
+        blues_anticone_sizes.insert(block, blue_anticone_size);
+
+        // Insert/update map entries for blocks affected by this insertion
+        for (blue, size) in block_blues_anticone_sizes {
+            blues_anticone_sizes.insert(*blue, size + 1);
+        }
+    }
+
+    pub fn add_red(&mut self, block: Hash) {
+        // Add the new red block to mergeset reds
+        BlockHashes::make_mut(&mut self.mergeset_reds).push(block);
+    }
+
+    pub fn finalize_coloring_data(&mut self, blue_score: u64, blue_work: BlueWorkType) {
+        self.blue_score = blue_score;
+        self.blue_work = blue_work;
+    }
+}
+
+impl MemSizeEstimator for ColoringData {
+    fn estimate_mem_bytes(&self) -> usize {
+        let mut bytes = size_of::<Self>();
+        bytes += (self.mergeset_blues.len() + self.mergeset_reds.len()) * size_of::<Hash>();
+        bytes += self.blues_anticone_sizes.len() * size_of::<(Hash, KType)>();
+        bytes
+    }
+}
 
 pub struct MemoryConflictZoneColoringStore {
-    dk_map: RefCell<HashMap<ConflictZoneColoringKey, Arc<GhostdagData>>>,
+    coloring_map: RefCell<HashMap<ConflictZoneColoringKey, Arc<ColoringData>>>,
 }
 
 pub trait ConflictZoneColoringStoreReader {
-    fn get_selected_parent(&self, dk_key: ConflictZoneColoringKey) -> Result<Hash, StoreError>;
-    fn get_data(&self, dk_key: ConflictZoneColoringKey) -> Result<Arc<GhostdagData>, StoreError>;
-    fn has(&self, dk_key: ConflictZoneColoringKey) -> Result<bool, StoreError>;
+    fn get_selected_parent(&self, key: ConflictZoneColoringKey) -> Result<Hash, StoreError>;
+    fn get_data(&self, key: ConflictZoneColoringKey) -> Result<Arc<ColoringData>, StoreError>;
+    fn has(&self, key: ConflictZoneColoringKey) -> Result<bool, StoreError>;
 }
 
 #[derive(Clone)]
@@ -89,44 +164,44 @@ impl PartialEq for ConflictZoneColoringKey {
 }
 
 pub trait ConflictZoneColoringStore {
-    fn insert(&self, key: ConflictZoneColoringKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError>;
+    fn insert(&self, key: ConflictZoneColoringKey, data: Arc<ColoringData>) -> Result<(), StoreError>;
     fn delete(&self, key: ConflictZoneColoringKey) -> Result<(), StoreError>;
     fn delete_rooted_range(&self, batch: &mut WriteBatch, hash: Hash) -> Result<u32, StoreError>;
 }
 
 impl MemoryConflictZoneColoringStore {
-    pub fn new(dk_map: RefCell<HashMap<ConflictZoneColoringKey, Arc<GhostdagData>>>) -> Self {
-        Self { dk_map }
+    pub fn new(coloring_map: RefCell<HashMap<ConflictZoneColoringKey, Arc<ColoringData>>>) -> Self {
+        Self { coloring_map }
     }
 }
 
 impl ConflictZoneColoringStoreReader for MemoryConflictZoneColoringStore {
-    fn get_selected_parent(&self, dk_key: ConflictZoneColoringKey) -> Result<Hash, StoreError> {
-        Ok(self.get_data(dk_key)?.selected_parent)
+    fn get_selected_parent(&self, key: ConflictZoneColoringKey) -> Result<Hash, StoreError> {
+        Ok(self.get_data(key)?.selected_parent)
     }
 
-    fn get_data(&self, key: ConflictZoneColoringKey) -> Result<Arc<GhostdagData>, StoreError> {
-        if let Some(pov_block_dk_data) = self.dk_map.borrow().get(&key) {
-            Ok(pov_block_dk_data.clone())
+    fn get_data(&self, key: ConflictZoneColoringKey) -> Result<Arc<ColoringData>, StoreError> {
+        if let Some(pov_block_coloring) = self.coloring_map.borrow().get(&key) {
+            Ok(pov_block_coloring.clone())
         } else {
             Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::DagKnight.as_ref(), key)))
         }
     }
 
-    fn has(&self, dk_key: ConflictZoneColoringKey) -> Result<bool, StoreError> {
-        Ok(self.dk_map.borrow().contains_key(&dk_key))
+    fn has(&self, key: ConflictZoneColoringKey) -> Result<bool, StoreError> {
+        Ok(self.coloring_map.borrow().contains_key(&key))
     }
 }
 
 impl ConflictZoneColoringStore for MemoryConflictZoneColoringStore {
-    fn insert(&self, key: ConflictZoneColoringKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
-        self.dk_map.borrow_mut().insert(key, dk_data);
+    fn insert(&self, key: ConflictZoneColoringKey, data: Arc<ColoringData>) -> Result<(), StoreError> {
+        self.coloring_map.borrow_mut().insert(key, data);
 
         Ok(())
     }
 
     fn delete(&self, key: ConflictZoneColoringKey) -> Result<(), StoreError> {
-        self.dk_map.borrow_mut().remove(&key);
+        self.coloring_map.borrow_mut().remove(&key);
 
         Ok(())
     }
@@ -140,16 +215,23 @@ impl ConflictZoneColoringStore for MemoryConflictZoneColoringStore {
 #[derive(Clone)]
 pub struct DbConflictZoneColoringStore {
     db: Arc<DB>,
-    access: CachedDbAccess<ConflictZoneColoringKey, Arc<GhostdagData>>,
+    access: CachedDbAccess<ConflictZoneColoringKey, Arc<ColoringData>>,
 }
 
 impl DbConflictZoneColoringStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+        // The DB prefix (80) and key layout are unchanged; only the value type
+        // (and its layout) changed in place.
         let prefix = DatabaseStorePrefixes::DagKnight.as_ref().to_vec();
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, prefix) }
     }
 
-    pub fn insert_batch(&self, batch: &mut WriteBatch, key: ConflictZoneColoringKey, data: Arc<GhostdagData>) -> Result<(), StoreError> {
+    pub fn insert_batch(
+        &self,
+        batch: &mut WriteBatch,
+        key: ConflictZoneColoringKey,
+        data: Arc<ColoringData>,
+    ) -> Result<(), StoreError> {
         if self.access.has(key.clone())? {
             return Err(StoreError::KeyAlreadyExists(key.to_string()));
         }
@@ -163,26 +245,26 @@ impl DbConflictZoneColoringStore {
 }
 
 impl ConflictZoneColoringStoreReader for DbConflictZoneColoringStore {
-    fn get_selected_parent(&self, dk_key: ConflictZoneColoringKey) -> Result<Hash, StoreError> {
-        Ok(self.get_data(dk_key)?.selected_parent)
+    fn get_selected_parent(&self, key: ConflictZoneColoringKey) -> Result<Hash, StoreError> {
+        Ok(self.get_data(key)?.selected_parent)
     }
 
-    fn get_data(&self, dk_key: ConflictZoneColoringKey) -> Result<Arc<GhostdagData>, StoreError> {
-        self.access.read(dk_key)
+    fn get_data(&self, key: ConflictZoneColoringKey) -> Result<Arc<ColoringData>, StoreError> {
+        self.access.read(key)
     }
 
-    fn has(&self, dk_key: ConflictZoneColoringKey) -> Result<bool, StoreError> {
-        self.access.has(dk_key)
+    fn has(&self, key: ConflictZoneColoringKey) -> Result<bool, StoreError> {
+        self.access.has(key)
     }
 }
 
 impl ConflictZoneColoringStore for DbConflictZoneColoringStore {
-    fn insert(&self, key: ConflictZoneColoringKey, dk_data: Arc<GhostdagData>) -> Result<(), StoreError> {
+    fn insert(&self, key: ConflictZoneColoringKey, data: Arc<ColoringData>) -> Result<(), StoreError> {
         if self.access.has(key.clone())? {
             return Err(StoreError::KeyAlreadyExists(key.to_string()));
         }
         let mut batch = WriteBatch::default();
-        self.access.write(BatchDbWriter::new(&mut batch), key, dk_data)?;
+        self.access.write(BatchDbWriter::new(&mut batch), key, data)?;
         self.db.write(batch)?;
         Ok(())
     }
@@ -195,7 +277,7 @@ impl ConflictZoneColoringStore for DbConflictZoneColoringStore {
     }
 
     fn delete_rooted_range(&self, batch: &mut WriteBatch, hash: Hash) -> Result<u32, StoreError> {
-        // delete records that have a prefix rooted at this DK store key + hash
+        // delete records that have a prefix rooted at this coloring store key + hash
         let root_bytes_prefix = {
             let mut bytes = Vec::with_capacity(kaspa_hashes::HASH_SIZE + 1);
             bytes.extend(DatabaseStorePrefixes::DagKnight.as_ref());
@@ -288,7 +370,6 @@ mod tests {
 
     #[test]
     fn test_db_coloring_store_isolates_by_k() {
-        use crate::model::stores::ghostdag::GhostdagData;
         use kaspa_database::prelude::CachePolicy;
         use kaspa_database::prelude::ConnBuilder;
         use std::sync::Arc;
@@ -304,30 +385,30 @@ mod tests {
         let k1 = 0x0001;
         let k2 = 0x0101; // 2nd byte is the same as above
 
-        // Create two distinct GhostdagData values
-        let gd1 = GhostdagData::new(
-            10,
-            Default::default(),
-            Hash::from_u64_word(1),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-        );
-        let gd2 = GhostdagData::new(
-            20,
-            Default::default(),
-            Hash::from_u64_word(2),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-        );
+        // Two distinct ColoringData values with non-zero cumulative fields
+        let cd1 = ColoringData {
+            blue_score: 10,
+            blue_work: Default::default(),
+            selected_parent: Hash::from_u64_word(1),
+            mergeset_blues: Default::default(),
+            mergeset_reds: Default::default(),
+            blues_anticone_sizes: Default::default(),
+        };
+        let cd2 = ColoringData {
+            blue_score: 20,
+            blue_work: Default::default(),
+            selected_parent: Hash::from_u64_word(2),
+            mergeset_blues: Default::default(),
+            mergeset_reds: Default::default(),
+            blues_anticone_sizes: Default::default(),
+        };
 
         let key1 = ConflictZoneColoringKey::new(root, pov, k1, false);
         let key2 = ConflictZoneColoringKey::new(root, pov, k2, false);
 
         // Insert both into the DB-backed store
-        store.insert(key1.clone(), Arc::new(gd1)).expect("insert k1");
-        store.insert(key2.clone(), Arc::new(gd2)).expect("insert k2");
+        store.insert(key1.clone(), Arc::new(cd1)).expect("insert k1");
+        store.insert(key2.clone(), Arc::new(cd2)).expect("insert k2");
 
         // Read them back and verify isolation
         let read1 = store.get_data(key1).expect("read k1");
