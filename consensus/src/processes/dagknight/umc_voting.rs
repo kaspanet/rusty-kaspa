@@ -28,10 +28,10 @@ pub struct UmcVotingContext<'a> {
     /// Tips of the subgroup being evaluated (virtual block conditioned on these).
     pub subgroup: &'a [Hash],
     /// The k-coloring data of the virtual GD — head of the virtual GD chain.
-    pub virtual_gd: &'a ColoringData,
+    pub virtual_cd: &'a ColoringData,
     /// The rank `k` under test.
     pub k: KType,
-    /// Read access to the virtual GD chain below `virtual_gd` towards `conflict_genesis`.
+    /// Read access to the virtual GD chain below `virtual_cd` towards `conflict_genesis`.
     pub coloring_reader: &'a dyn ColoringReader,
 }
 
@@ -52,11 +52,11 @@ pub struct CascadeResult {
     /// Whether this cascade started from a persisted checkpoint state.
     pub from_checkpoint: bool,
     /// Estimated blue blocks skipped by loading from checkpoint.
-    /// Calculated as virtual_gd.blue_score - checkpoint_block.blue_score,
+    /// Calculated as virtual_cd.blue_score - checkpoint_block.blue_score,
     /// representing the number of blue blocks we didn't need to visit.
     /// Zero if cascade started from scratch.
     pub estimated_effort_saved: u64,
-    /// Total blue blocks in the conflict zone (virtual_gd.blue_score).
+    /// Total blue blocks in the conflict zone (virtual_cd.blue_score).
     /// Used as denominator for effort_saved percentage.
     pub estimated_effort_total: u64,
 }
@@ -98,8 +98,8 @@ pub mod test_fixtures {
     }
 
     impl MemoryColoringReader {
-        pub fn add(&mut self, hash: Hash, gd: ColoringData) {
-            self.by_block.insert(hash, Arc::new(gd));
+        pub fn add(&mut self, hash: Hash, cd: ColoringData) {
+            self.by_block.insert(hash, Arc::new(cd));
         }
     }
 
@@ -109,7 +109,7 @@ pub mod test_fixtures {
         }
     }
 
-    pub fn make_gd(sp: Hash, blues: Vec<Hash>, reds: Vec<Hash>, blue_score: u64) -> ColoringData {
+    pub fn make_cd(sp: Hash, blues: Vec<Hash>, reds: Vec<Hash>, blue_score: u64) -> ColoringData {
         ColoringData::new(
             blue_score,
             Default::default(),
@@ -128,7 +128,7 @@ pub mod test_fixtures {
         subgroup: Vec<u64>,
         blocks: Vec<UmcFixtureBlock>,
         #[serde(rename = "virtual")]
-        virtual_gd: VirtualGd,
+        virtual_cd: VirtualCd,
     }
 
     #[derive(Deserialize)]
@@ -138,19 +138,19 @@ pub mod test_fixtures {
         sp: u64,
         blue_work: u64,
         #[serde(default)]
-        gd: Option<ZoneGd>,
+        cd: Option<ZoneCd>,
     }
 
     /// A zone block's coloring mergeset; its selected parent is the block's own `sp`.
     #[derive(Deserialize)]
-    struct ZoneGd {
+    struct ZoneCd {
         blues: Vec<u64>,
         reds: Vec<u64>,
         blue_score: u64,
     }
 
     #[derive(Deserialize)]
-    struct VirtualGd {
+    struct VirtualCd {
         sp: u64,
         blues: Vec<u64>,
         reds: Vec<u64>,
@@ -166,7 +166,7 @@ pub mod test_fixtures {
         pub reachability: MTReachabilityService<MemoryReachabilityStore>,
         pub headers: Arc<MemoryHeaderStore>,
         pub reader: MemoryColoringReader,
-        pub virtual_gd: Arc<ColoringData>,
+        pub virtual_cd: Arc<ColoringData>,
         pub subgroup: Vec<Hash>,
         pub conflict_genesis: Hash,
         pub k: KType,
@@ -211,25 +211,25 @@ pub mod test_fixtures {
                 headers.insert(Arc::new(header));
 
                 // Zone coloring entry (only blocks the voter reads carry one).
-                if let Some(gd) = &block.gd {
-                    let blues: Vec<Hash> = gd.blues.iter().map(|&b| b.into()).collect();
-                    let reds: Vec<Hash> = gd.reds.iter().map(|&r| r.into()).collect();
-                    reader.add(hash, make_gd(sp, blues, reds, gd.blue_score));
+                if let Some(cd) = &block.cd {
+                    let blues: Vec<Hash> = cd.blues.iter().map(|&b| b.into()).collect();
+                    let reds: Vec<Hash> = cd.reds.iter().map(|&r| r.into()).collect();
+                    reader.add(hash, make_cd(sp, blues, reds, cd.blue_score));
                 }
             }
 
-            let virtual_gd = Arc::new(make_gd(
-                data.virtual_gd.sp.into(),
-                data.virtual_gd.blues.iter().map(|&b| b.into()).collect(),
-                data.virtual_gd.reds.iter().map(|&r| r.into()).collect(),
-                data.virtual_gd.blue_score,
+            let virtual_cd = Arc::new(make_cd(
+                data.virtual_cd.sp.into(),
+                data.virtual_cd.blues.iter().map(|&b| b.into()).collect(),
+                data.virtual_cd.reds.iter().map(|&r| r.into()).collect(),
+                data.virtual_cd.blue_score,
             ));
 
             Self {
                 reachability: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
                 headers,
                 reader,
-                virtual_gd,
+                virtual_cd,
                 subgroup: data.subgroup.iter().map(|&s| s.into()).collect(),
                 conflict_genesis: data.genesis.into(),
                 k: data.k,
@@ -240,7 +240,7 @@ pub mod test_fixtures {
             UmcVotingContext {
                 conflict_genesis: self.conflict_genesis,
                 subgroup: &self.subgroup,
-                virtual_gd: &self.virtual_gd,
+                virtual_cd: &self.virtual_cd,
                 k: self.k,
                 coloring_reader: &self.reader,
             }

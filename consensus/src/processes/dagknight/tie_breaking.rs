@@ -110,7 +110,7 @@ impl<
 
         // Run k-colouring with free search — no custom selected parent is passed,
         // so the manager freely selects from all parents.
-        let virtual_gd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k, None);
+        let virtual_cd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k, None);
 
         // Collect the full blue set by traversing the chain from virtual back to conflict_genesis.
         // Each chain block contributes itself AND its mergeset blues.
@@ -118,20 +118,20 @@ impl<
         let mut chain_blocks: Vec<Hash> = Vec::new();
 
         // Start from virtual's mergeset blues
-        for &blue_block in virtual_gd.mergeset_blues.iter() {
+        for &blue_block in virtual_cd.mergeset_blues.iter() {
             blue_set.insert(blue_block);
         }
 
         // Walk the chain: each link adds itself (chain block) and its mergeset blues
-        let mut curr_sp = virtual_gd.selected_parent;
+        let mut curr_sp = virtual_cd.selected_parent;
         while curr_sp != conflict_genesis {
             chain_blocks.push(curr_sp);
             blue_set.insert(curr_sp);
-            let gd = conflict_zone_manager.get_data(curr_sp).unwrap();
-            for &blue_block in gd.mergeset_blues.iter() {
+            let cd = conflict_zone_manager.get_data(curr_sp).unwrap();
+            for &blue_block in cd.mergeset_blues.iter() {
                 blue_set.insert(blue_block);
             }
-            curr_sp = gd.selected_parent;
+            curr_sp = cd.selected_parent;
         }
         blue_set.insert(conflict_genesis);
         chain_blocks.push(conflict_genesis);
@@ -170,11 +170,11 @@ impl<
 
         // Condition virtual on the group: force selected parent from group_tips
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips.iter().copied());
-        let virtual_gd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k_prime, Some(subgroup_virtual_sp));
+        let virtual_cd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k_prime, Some(subgroup_virtual_sp));
 
         // Walk the chain from virtual's selected parent back to conflict_genesis
         let mut chain_blocks: Vec<Hash> = Vec::new();
-        let mut curr_sp = virtual_gd.selected_parent;
+        let mut curr_sp = virtual_cd.selected_parent;
         while curr_sp != conflict_genesis {
             chain_blocks.push(curr_sp);
             curr_sp = conflict_zone_manager.get_selected_parent(curr_sp).unwrap();

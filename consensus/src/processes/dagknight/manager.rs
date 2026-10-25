@@ -857,9 +857,9 @@ mod tests {
             (hash_y, hash_z),
             (hash_x, hash_y),
         ] {
-            let gd = ColoringData::new_with_selected_parent(selected_parent, 0);
-            manager_committed.insert(hash, Arc::new(gd.clone())).unwrap();
-            manager_free.insert(hash, Arc::new(gd)).unwrap();
+            let cd = ColoringData::new_with_selected_parent(selected_parent, 0);
+            manager_committed.insert(hash, Arc::new(cd.clone())).unwrap();
+            manager_free.insert(hash, Arc::new(cd)).unwrap();
         }
 
         // Tips are F and W (no records yet)

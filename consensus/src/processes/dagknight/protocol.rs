@@ -240,12 +240,12 @@ impl<
         &self,
         conflict_genesis: Hash,
         subgroup: &[Hash],
-        virtual_gd: ColoringData,
+        virtual_cd: ColoringData,
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_cd: &virtual_cd, k, coloring_reader: conflict_zone_manager };
         voter.vote(&ctx)
     }
 
@@ -254,7 +254,7 @@ impl<
         &self,
         conflict_genesis: Hash,
         subgroup: &[Hash],
-        virtual_gd: ColoringData,
+        virtual_cd: ColoringData,
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
@@ -263,7 +263,7 @@ impl<
             self.umc_persistence_store.clone(),
             self.reachability_service.clone(),
         );
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_cd: &virtual_cd, k, coloring_reader: conflict_zone_manager };
         voter.vote(&ctx)
     }
 
@@ -357,10 +357,10 @@ impl<
 
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
-        let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
+        let virtual_cd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
         let cascade_result =
-            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_cd.clone(), k_to_check, &conflict_zone_manager);
 
         #[cfg(feature = "baseline-debugging")]
         {
@@ -368,7 +368,7 @@ impl<
             // These use different acceptance criteria and are not expected to always agree.
             // The baseline is Algorithm 6 from the paper; the cascade is the optimized implementation.
             let baseline_result =
-                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_cd.clone(), k_to_check, &conflict_zone_manager);
 
             if baseline_result.virtual_score != cascade_result.virtual_score {
                 if baseline_result.accepted != cascade_result.accepted {
