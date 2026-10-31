@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use crate::HashMap;
 
 use crate::tx::TransactionId;
 
@@ -24,7 +24,8 @@ impl TransactionValidationBatchArgs {
     const DEFAULT_ARGS: TransactionValidationArgs = TransactionValidationArgs { feerate_threshold: None };
 
     pub fn new() -> Self {
-        Self { tx_args: HashMap::new() }
+        // `HashMap::new` is only defined for hashbrown's own default hasher
+        Self { tx_args: HashMap::default() }
     }
 
     /// Set some fee/mass threshold for transaction `transaction_id`.
@@ -43,5 +44,19 @@ impl TransactionValidationBatchArgs {
 impl Default for TransactionValidationBatchArgs {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(all(test, feature = "std"))]
+mod tests {
+    use super::*;
+    use std::hash::RandomState;
+
+    /// The batch map must keep the crate-wide std hasher policy (RandomState),
+    /// not hashbrown's own default hasher.
+    #[test]
+    fn batch_args_default_hasher_is_random_state() {
+        let args = TransactionValidationBatchArgs::new();
+        let _: &HashMap<TransactionId, TransactionValidationArgs, RandomState> = &args.tx_args;
     }
 }

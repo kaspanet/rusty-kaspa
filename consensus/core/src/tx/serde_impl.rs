@@ -18,16 +18,23 @@
 //! identical field order and the `SigopCount` / `ComputeBudget` newtypes are
 //! `#[serde(transparent)]` over `u8` / `u16`, the two sides share the exact
 //! same wire format by construction.
+//!
+//! Map formats do not guarantee field order, so `inputs`/`outputs` may arrive
+//! before `version`; they decode through version-agnostic shapes
+//! (`TxInputUnionOwned`, and `TxOutputV1Owned`, whose optional `covenant`
+//! covers both output versions) and are narrowed once `version` is known.
+//! `TxInputUnionOwned` is map-only: its extra `Option` fields would change the
+//! positional layout `visit_seq` derives from the version-specific structs.
 
 use super::{ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use crate::mass::{ComputeBudget, SigopCount};
+use alloc::vec::Vec;
 use kaspa_utils::serde_bytes::{self, ByteBuf, Bytes};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
-    de::{self, DeserializeSeed, IntoDeserializer, MapAccess, SeqAccess, Visitor},
+    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
     ser::{SerializeSeq, SerializeStruct},
 };
-use serde_value::Value as BufferedValue;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,6 +138,36 @@ impl From<TxOutputV0Owned> for TransactionOutput {
 impl From<TxOutputV1Owned> for TransactionOutput {
     fn from(value: TxOutputV1Owned) -> Self {
         Self { value: value.value, script_public_key: value.script_public_key, covenant: value.covenant }
+    }
+}
+
+/// Field-set union of the v0/v1 input shapes, decodable before `version` is
+/// known and narrowed afterwards via [`TxInputUnionOwned::into_input`]. Fields
+/// of the other version are ignored, matching how the version-specific
+/// helpers treat unknown fields; a missing own field is reported as such.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TxInputUnionOwned {
+    previous_outpoint: TransactionOutpoint,
+    #[serde(with = "serde_bytes")]
+    signature_script: Vec<u8>,
+    sequence: u64,
+    sig_op_count: Option<SigopCount>,
+    compute_budget: Option<ComputeBudget>,
+}
+
+impl TxInputUnionOwned {
+    fn into_input<E: de::Error>(self, version: u16) -> Result<TransactionInput, E> {
+        let compute_commit = match version {
+            0 => ComputeCommit::SigopCount(self.sig_op_count.ok_or_else(|| E::missing_field("sigOpCount"))?),
+            _ => ComputeCommit::ComputeBudget(self.compute_budget.ok_or_else(|| E::missing_field("computeBudget"))?),
+        };
+        Ok(TransactionInput {
+            previous_outpoint: self.previous_outpoint,
+            signature_script: self.signature_script,
+            sequence: self.sequence,
+            compute_commit,
+        })
     }
 }
 
@@ -273,7 +310,7 @@ struct TransactionVisitor;
 impl<'de> Visitor<'de> for TransactionVisitor {
     type Value = Transaction;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter.write_str("struct Transaction")
     }
 
@@ -295,21 +332,12 @@ impl<'de> Visitor<'de> for TransactionVisitor {
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
         // `inputs` / `outputs` depend on `version` to pick the right V0/V1 shape, but
-        // human-readable formats do not promise field order. When those fields arrive
-        // before `version`, buffer them as [`BufferedValue`] and decode after the loop
-        // once the version is known.
-        enum LazyInputs {
-            Decoded(Vec<TransactionInput>),
-            Buffered(Box<BufferedValue>),
-        }
-        enum LazyOutputs {
-            Decoded(Vec<TransactionOutput>),
-            Buffered(Box<BufferedValue>),
-        }
-
+        // human-readable formats do not promise field order. Both are therefore decoded
+        // through version-agnostic shapes and narrowed after the loop once the version
+        // is known, so acceptance is identical whichever order the fields arrive in.
         let mut version = None;
-        let mut inputs: Option<LazyInputs> = None;
-        let mut outputs: Option<LazyOutputs> = None;
+        let mut inputs: Option<Vec<TxInputUnionOwned>> = None;
+        let mut outputs: Option<Vec<TxOutputV1Owned>> = None;
         let mut lock_time = None;
         let mut subnetwork_id = None;
         let mut gas = None;
@@ -329,19 +357,13 @@ impl<'de> Visitor<'de> for TransactionVisitor {
                     if inputs.is_some() {
                         return Err(de::Error::duplicate_field("inputs"));
                     }
-                    inputs = Some(match version {
-                        Some(v) => LazyInputs::Decoded(map.next_value_seed(InputsSeed(v))?),
-                        None => LazyInputs::Buffered(map.next_value()?),
-                    });
+                    inputs = Some(map.next_value()?);
                 }
                 Field::Outputs => {
                     if outputs.is_some() {
                         return Err(de::Error::duplicate_field("outputs"));
                     }
-                    outputs = Some(match version {
-                        Some(v) => LazyOutputs::Decoded(map.next_value_seed(OutputsSeed(v))?),
-                        None => LazyOutputs::Buffered(map.next_value()?),
-                    });
+                    outputs = Some(map.next_value()?);
                 }
                 Field::LockTime => {
                     if lock_time.is_some() {
@@ -383,14 +405,23 @@ impl<'de> Visitor<'de> for TransactionVisitor {
         }
 
         let version = version.ok_or_else(|| de::Error::missing_field("version"))?;
-        let inputs = match inputs.ok_or_else(|| de::Error::missing_field("inputs"))? {
-            LazyInputs::Decoded(v) => v,
-            LazyInputs::Buffered(buf) => InputsSeed(version).deserialize(buf.into_deserializer()).map_err(de::Error::custom)?,
-        };
-        let outputs = match outputs.ok_or_else(|| de::Error::missing_field("outputs"))? {
-            LazyOutputs::Decoded(v) => v,
-            LazyOutputs::Buffered(buf) => OutputsSeed(version).deserialize(buf.into_deserializer()).map_err(de::Error::custom)?,
-        };
+        let inputs = inputs
+            .ok_or_else(|| de::Error::missing_field("inputs"))?
+            .into_iter()
+            .map(|input| input.into_input(version))
+            .collect::<Result<Vec<_>, A::Error>>()?;
+        let outputs = outputs
+            .ok_or_else(|| de::Error::missing_field("outputs"))?
+            .into_iter()
+            .map(|output| {
+                let mut output = TransactionOutput::from(output);
+                if version == 0 {
+                    // v0 outputs carry no covenant
+                    output.covenant = None;
+                }
+                output
+            })
+            .collect();
         let lock_time = lock_time.ok_or_else(|| de::Error::missing_field("lockTime"))?;
         let subnetwork_id = subnetwork_id.ok_or_else(|| de::Error::missing_field("subnetworkId"))?;
         let gas = gas.ok_or_else(|| de::Error::missing_field("gas"))?;

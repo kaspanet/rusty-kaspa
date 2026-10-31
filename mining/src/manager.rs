@@ -206,7 +206,7 @@ impl MiningManager {
                 }
                 Err(err) => {
                     warn!("Building a new block template failed: {}", err);
-                    return Err(err)?;
+                    Err(err)?;
                 }
             }
         }
@@ -644,8 +644,12 @@ impl MiningManager {
         }
         match expired_low_priority_transactions.len() {
             0 => {}
-            1 => debug!("Removed transaction ({}) {}", TxRemovalReason::Expired, expired_low_priority_transactions[0]),
-            n => debug!("Removed {} transactions ({}): {}...", n, TxRemovalReason::Expired, expired_low_priority_transactions[0]),
+            1 => {
+                debug!("Removed transaction ({}) {}", TxRemovalReason::Expired, expired_low_priority_transactions[0]);
+            }
+            n => {
+                debug!("Removed {} transactions ({}): {}...", n, TxRemovalReason::Expired, expired_low_priority_transactions[0]);
+            }
         }
     }
 
@@ -807,7 +811,9 @@ impl MiningManager {
                                 TxRemovalReason::RevalidationWithMissingOutpoints,
                                 extra_info.as_str(),
                             )
-                            .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
+                            .inspect_err(|err| {
+                                warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
+                            });
                         #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
                         {
                             missing_outpoint += 1;
@@ -822,9 +828,9 @@ impl MiningManager {
                             transaction_id, err
                         );
                         // This call cleanly removes the invalid transaction and its redeemers.
-                        _ = mempool
-                            .remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "")
-                            .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
+                        _ = mempool.remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "").inspect_err(|err| {
+                            warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
+                        });
                         #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
                         {
                             invalid += 1;
@@ -853,7 +859,7 @@ impl MiningManager {
                     debug!(
                         "During revalidation of high priority transactions {} txs were removed from the mempool by concurrent flows",
                         other
-                    )
+                    );
                 }
             }
         }

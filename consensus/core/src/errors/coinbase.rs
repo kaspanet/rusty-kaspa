@@ -17,4 +17,4 @@ pub enum CoinbaseError {
     PayloadCantContainScriptPublicKey(usize, usize),
 }
 
-pub type CoinbaseResult<T> = std::result::Result<T, CoinbaseError>;
+pub type CoinbaseResult<T> = core::result::Result<T, CoinbaseError>;

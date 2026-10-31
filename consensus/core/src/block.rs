@@ -4,9 +4,12 @@ use crate::{
     header::Header,
     tx::{Transaction, TransactionId},
 };
+use alloc::sync::Arc;
+use alloc::vec;
+use alloc::vec::Vec;
 use kaspa_hashes::Hash;
+#[cfg(feature = "mem_size")]
 use kaspa_utils::mem_size::MemSizeEstimator;
-use std::sync::Arc;
 
 /// A mutable block structure where header and transactions within can still be mutated.
 #[derive(Debug, Clone)]
@@ -70,11 +73,13 @@ impl Block {
 
     /// Check if the block in-memory size is too large to be cached as a pending-validation orphan block.
     /// Returns None if the block is too large
+    #[cfg(feature = "mem_size")]
     pub fn asses_for_cache(&self) -> Option<()> {
         (self.estimate_mem_bytes() < 1_000_000).then_some(())
     }
 }
 
+#[cfg(feature = "mem_size")]
 impl MemSizeEstimator for Block {
     fn estimate_mem_bytes(&self) -> usize {
         // Calculates mem bytes of the block (for cache tracking purposes)

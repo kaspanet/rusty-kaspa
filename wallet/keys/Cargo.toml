@@ -25,13 +25,13 @@ js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-txscript-errors.workspace = true
+kaspa-txscript-errors = { workspace = true, features = ["std"] }
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
 rand.workspace = true
 ripemd.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["std", "global-context", "rand-std", "serde"] }
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true

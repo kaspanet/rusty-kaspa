@@ -439,7 +439,8 @@ a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance
                 .env("KASPAD_ROCKSDB_PRESET")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(String))
-                .help("RocksDB configuration preset: 'default' (SSD/NVMe) or 'hdd' (optimized for hard disk drives with BlobDB, compression, rate limiting). \
+                .help("RocksDB configuration preset: 'default' (SSD/NVMe), 'hdd' (optimized for hard disk drives with BlobDB, compression, rate limiting) \
+                       or 'lowio' (far fewer disk writes for a bit more RAM). \
                        HDD preset recommended for archival nodes on HDD storage (see docs/archival.md).")
         )
         .arg(

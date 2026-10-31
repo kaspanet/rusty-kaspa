@@ -1,4 +1,5 @@
 use crate::tx::{ScriptPublicKey, Transaction};
+use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Eq, Debug, Clone)]

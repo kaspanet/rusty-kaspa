@@ -10,7 +10,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::tx::{MutableTransaction, TransactionId};
-use std::collections::{HashMap, HashSet, VecDeque, hash_set::Iter};
+use std::collections::{HashMap, VecDeque};
 
 pub(crate) type TransactionsEdges = HashMap<TransactionId, TransactionIdSet>;
 
@@ -51,7 +51,7 @@ pub(crate) trait Pool {
 
     /// Returns the ids of all transactions being parents of `transaction` and existing in the pool.
     fn get_parent_transaction_ids_in_pool(&self, transaction: &MutableTransaction) -> TransactionIdSet {
-        let mut parents = HashSet::with_capacity(transaction.tx.inputs.len());
+        let mut parents = TransactionIdSet::with_capacity_and_hasher(transaction.tx.inputs.len(), Default::default());
         for input in transaction.tx.inputs.iter() {
             if self.has(&input.previous_outpoint.transaction_id) {
                 parents.insert(input.previous_outpoint.transaction_id);
@@ -71,7 +71,7 @@ pub(crate) trait Pool {
     fn get_redeemer_ids_in_pool(&self, transaction_id: &TransactionId) -> Vec<TransactionId> {
         // TODO: study if removals based on the results of this function should occur in reversed
         // topological order to prevent missing outpoints in concurrent processes.
-        let mut visited = TransactionIdSet::new();
+        let mut visited = TransactionIdSet::default();
         let mut descendants = vec![];
         if let Some(transaction) = self.get(transaction_id) {
             let mut queue = VecDeque::new();
@@ -140,7 +140,7 @@ impl PoolIndex {
     }
 }
 
-type IterTxId<'a> = Iter<'a, TransactionId>;
+type IterTxId<'a> = <&'a TransactionIdSet as IntoIterator>::IntoIter;
 
 impl<'a> TopologicalIndex<'a, IterTxId<'a>, IterTxId<'a>, TransactionId> for PoolIndex {
     fn topology_nodes(&'a self) -> IterTxId<'a> {

@@ -36,7 +36,7 @@ impl ConsensusMock {
         Self {
             transactions: RwLock::new(HashMap::default()),
             statuses: RwLock::new(HashMap::default()),
-            utxos: RwLock::new(HashMap::default()),
+            utxos: RwLock::new(UtxoCollection::default()),
         }
     }
 

@@ -68,7 +68,11 @@ impl AddressManager {
     ) -> Result<Self> {
         let length = pubkey_managers.len();
         if length < minimum_signatures {
-            return Err(format!{"The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})", minimum_signatures}.into());
+            return Err(format!(
+                "The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})",
+                minimum_signatures
+            )
+            .into());
         }
 
         for m in pubkey_managers.iter() {
@@ -494,7 +498,11 @@ pub fn create_address(
 ) -> Result<Address> {
     let length = keys.len();
     if length < minimum_signatures {
-        return Err(format!{"The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})", minimum_signatures}.into());
+        return Err(format!(
+            "The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})",
+            minimum_signatures
+        )
+        .into());
     }
 
     if length > 1 {

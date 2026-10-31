@@ -78,8 +78,9 @@ const { networkId, encoding } = require("../utils").parseArgs();
         // outputs: IPaymentOutput[], 
         // priority_fee: bigint, 
         // payload: HexString | Uint8Array, 
-        // sig_op_count?: number
-        const tx = createTransaction(utxos, outputs, 0n, "", 1);
+        // compute_commit?: IComputeCommit | ComputeCommit
+        // version?: number
+        const tx = createTransaction(utxos, outputs, 0n, "", { type: "sigOpCount", value: 1 });
 
 
         console.info("Transaction before signing:", tx);

@@ -1,3 +1,4 @@
+use alloc::string::String;
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
@@ -59,4 +60,4 @@ pub enum ConsensusError {
     BlockIsGenesis(Hash),
 }
 
-pub type ConsensusResult<T> = std::result::Result<T, ConsensusError>;
+pub type ConsensusResult<T> = core::result::Result<T, ConsensusError>;

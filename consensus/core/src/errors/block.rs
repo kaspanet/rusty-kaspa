@@ -1,7 +1,9 @@
-use std::{collections::HashMap, fmt::Display};
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::fmt::Display;
 
 use crate::{
-    BlueWorkType,
+    BlueWorkType, HashMap,
     errors::{coinbase::CoinbaseError, tx::TxRuleError},
     subnets::SubnetworkId,
     tx::{TransactionId, TransactionOutpoint},
@@ -13,7 +15,7 @@ use thiserror::Error;
 #[derive(Clone, Debug)]
 pub struct VecDisplay<T: Display>(pub Vec<T>);
 impl<T: Display> Display for VecDisplay<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "[{}]", self.0.iter().map(|item| item.to_string()).join(", "))
     }
 }
@@ -21,7 +23,7 @@ impl<T: Display> Display for VecDisplay<T> {
 #[derive(Clone, Debug)]
 pub struct TwoDimVecDisplay<T: Display + Clone>(pub Vec<Vec<T>>);
 impl<T: Display + Clone> Display for TwoDimVecDisplay<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "[\n\t{}\n]", self.0.iter().cloned().map(|item| VecDisplay(item).to_string()).join(", \n\t"))
     }
 }
@@ -165,4 +167,4 @@ pub enum RuleError {
     PrunedBlock,
 }
 
-pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;
+pub type BlockProcessResult<T> = core::result::Result<T, RuleError>;

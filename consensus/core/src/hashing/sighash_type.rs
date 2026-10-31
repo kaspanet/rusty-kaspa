@@ -1,6 +1,7 @@
-use std::ops::BitOr;
+use core::{fmt, ops::BitOr};
 
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::prelude::*;
 
 pub const SIG_HASH_ALL: SigHashType = SigHashType(0b00000001);
@@ -21,8 +22,8 @@ const ALLOWED_SIG_HASH_TYPES_VALUES: [u8; 6] = [
     SIG_HASH_SINGLE.0 | SIG_HASH_ANY_ONE_CAN_PAY.0,
 ];
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-#[wasm_bindgen]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 pub struct SigHashType(pub(crate) u8);
 
 impl SigHashType {
@@ -55,10 +56,39 @@ impl SigHashType {
     }
 }
 
+impl fmt::Display for SigHashType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self.0 {
+            0b00000001 => "SIG_HASH_ALL",
+            0b00000010 => "SIG_HASH_NONE",
+            0b00000100 => "SIG_HASH_SINGLE",
+            0b10000001 => "SIG_HASH_ALL | SIG_HASH_ANY_ONE_CAN_PAY",
+            0b10000010 => "SIG_HASH_NONE | SIG_HASH_ANY_ONE_CAN_PAY",
+            0b10000100 => "SIG_HASH_SINGLE | SIG_HASH_ANY_ONE_CAN_PAY",
+            value => return write!(f, "UNKNOWN_SIG_HASH_TYPE (0x{value:02x})"),
+        };
+
+        f.write_str(name)
+    }
+}
+
 impl BitOr for SigHashType {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
         SigHashType(self.0 | rhs.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display() {
+        assert_eq!(SIG_HASH_ALL.to_string(), "SIG_HASH_ALL");
+        assert_eq!(SIG_HASH_NONE.to_string(), "SIG_HASH_NONE");
+        assert_eq!(SIG_HASH_SINGLE.to_string(), "SIG_HASH_SINGLE");
+        assert_eq!((SIG_HASH_NONE | SIG_HASH_ANY_ONE_CAN_PAY).to_string(), "SIG_HASH_NONE | SIG_HASH_ANY_ONE_CAN_PAY");
     }
 }

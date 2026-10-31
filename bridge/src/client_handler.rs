@@ -108,7 +108,7 @@ impl ClientHandler {
 
             #[allow(clippy::arithmetic_side_effects, reason = "val + 1 is evaluated only for val < max_extranonce = 65535.")]
             let next = GLOBAL_NEXT_EXTRANONCE
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
+                .try_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
 
             if next.is_err() || next.unwrap() >= max_extranonce {
                 warn!("wrapped extranonce! new clients may be duplicating work...");
