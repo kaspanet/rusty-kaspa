@@ -92,6 +92,7 @@ cfg_if::cfg_if! {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RpcGetUtxosByCovenantIdsCursor {
     pub start_covenant_id: RpcHash,
     pub start_daa_score: u64,
@@ -151,5 +152,25 @@ impl From<RpcGetUtxosByCovenantIdsCursor> for CovenantUtxoPageCursor {
             script_public_key: cursor.start_script_public_key,
             transaction_outpoint: cursor.start_outpoint.into(),
         }
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_RPC_GET_UTXOS_BY_COVENANT_IDS_CURSOR: &'static str = r#"
+            /**
+             * Complete continuation cursor returned by a covenant UTXO query.
+             * Pass it unchanged to the next request with the same filters.
+             *
+             * @category Node RPC
+             */
+            export interface IRpcGetUtxosByCovenantIdsCursor {
+                startCovenantId: HexString;
+                startDaaScore: bigint;
+                startScriptPublicKey: HexString;
+                startOutpoint: ITransactionOutpoint;
+            }
+        "#;
     }
 }
