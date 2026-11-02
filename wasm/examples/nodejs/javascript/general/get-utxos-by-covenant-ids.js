@@ -12,7 +12,10 @@ const covenantIds = process.argv[2]?.split(",");
 const url = process.argv[3] ?? "127.0.0.1";
 const networkId = process.argv[4] ?? "mainnet";
 
-if (!covenantIds?.length || covenantIds.some((id) => !/^[0-9a-fA-F]{64}$/.test(id))) {
+if (
+  !covenantIds?.length ||
+  covenantIds.some((id) => !/^[0-9a-fA-F]{64}$/.test(id))
+) {
   throw new Error(
     "Usage: node get-utxos-by-covenant-ids.js <covenant-id[,covenant-id...]> [rpc-url] [network-id]",
   );
@@ -23,13 +26,12 @@ if (!covenantIds?.length || covenantIds.some((id) => !/^[0-9a-fA-F]{64}$/.test(i
   try {
     await rpc.connect();
 
-    // Keep the same IDs and filters for every page; the node sorts the IDs.
+    // Keep the same IDs and filters for every page
     const query = {
       covenantIds,
-      scriptPublicKeys: [], // Empty includes all scripts; accepts script objects or hex strings.
+      scriptPublicKeys: [], // Empty includes all scripts.
       // fromDaaScore: 0n,
       // toDaaScore: 1000000n,
-      budget: 1000n, // Weighted database operations, not an entry count.
     };
     let cursor;
     let page = 0;
@@ -47,8 +49,6 @@ if (!covenantIds?.length || covenantIds.some((id) => !/^[0-9a-fA-F]{64}$/.test(i
       totalEntries += response.entries.length;
       console.log(`Page ${++page}: ${response.entries.length} entries`);
 
-      // A budget can be exhausted before a match is found. Empty pages can
-      // still have a cursor: only stop when the node returns no nextCursor.
       cursor = response.nextCursor;
     } while (cursor);
 
