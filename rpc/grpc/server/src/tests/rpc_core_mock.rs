@@ -322,6 +322,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_utxos_by_covenant_ids_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetUtxosByCovenantIdsRequest,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_sink_blue_score_call(
         &self,
         _connection: Option<&DynRpcConnection>,

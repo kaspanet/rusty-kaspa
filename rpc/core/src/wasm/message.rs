@@ -1346,6 +1346,72 @@ try_from! ( args: GetUtxosByAddressesV2Response, IGetUtxosByAddressesV2Response,
     Ok(response)
 });
 
+declare! {
+    IGetUtxosByCovenantIdsRequest,
+    r#"
+    /**
+     * Requests UTXOs matching current covenant IDs, traversed in ascending ID order.
+     * Requires a node started with `--utxoindex --covenant-index`.
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxosByCovenantIdsRequest {
+        covenantIds : HexString[];
+        /** Omitted or empty includes every script public key. */
+        scriptPublicKeys? : (ScriptPublicKey | IScriptPublicKey | HexString)[];
+        /** Inclusive lower DAA-score bound. */
+        fromDaaScore? : bigint;
+        /** Inclusive upper DAA-score bound. */
+        toDaaScore? : bigint;
+        /** Echo the previous response's cursor with the same filters. */
+        cursor? : IRpcGetUtxosByCovenantIdsCursor;
+        /** Weighted database-operation budget, defaults to 1000, above 5000 requires `--unsaferpc`. */
+        budget? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: IGetUtxosByCovenantIdsRequest, GetUtxosByCovenantIdsRequest, {
+    let object = Object::from(JsValue::from(args));
+    let script_public_keys = if let Some(value) = object.try_get_value("scriptPublicKeys")? {
+        value.dyn_into::<Array>()
+            .map_err(|_| Error::InvalidGetUtxosByCovenantIdsRequest("scriptPublicKeys must be an array".to_string()))?
+            .iter()
+            .map(RpcScriptPublicKey::try_owned_from)
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    } else {
+        vec![]
+    };
+    let normalized = Object::assign(&Object::new(), &object);
+    normalized.set("scriptPublicKeys", &to_value(&script_public_keys)?)?;
+    Ok(from_value(normalized.into())?)
+});
+
+declare! {
+    IGetUtxosByCovenantIdsResponse,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetUtxosByCovenantIdsResponse {
+        entries : UtxoEntryReference[];
+        /** Continue while present, even when entries is empty. Absent means the query is complete. */
+        nextCursor? : IRpcGetUtxosByCovenantIdsCursor;
+    }
+    "#,
+}
+
+try_from! ( args: GetUtxosByCovenantIdsResponse, IGetUtxosByCovenantIdsResponse, {
+    let GetUtxosByCovenantIdsResponse { entries, next_cursor } = args;
+    let entries = js_sys::Array::from_iter(entries.into_iter().map(UtxoEntryReference::from).map(JsValue::from));
+    let response = IGetUtxosByCovenantIdsResponse::default();
+    response.set("entries", entries.as_ref())?;
+    if let Some(cursor) = next_cursor {
+        response.set("nextCursor", &to_value(&cursor)?)?;
+    }
+    Ok(response)
+});
+
 // ---
 
 declare! {

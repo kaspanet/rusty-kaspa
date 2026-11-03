@@ -1044,6 +1044,12 @@ build_wrpc_wasm_bindgen_interface!(
         /// with optional inclusive DAA-score range bounds.
         /// Returned information: A list of UTXOs.
         GetUtxosByAddressesV2,
+        /// Retrieves UTXOs matching current covenant IDs with optional inclusive
+        /// DAA-score bounds and script public key filters.
+        /// Requires `--utxoindex --covenant-index` on the node.
+        /// Returned information: UTXOs and a continuation cursor, which can be
+        /// present even when the page contains no entries.
+        GetUtxosByCovenantIds,
         /// Retrieves the virtual chain corresponding to a specified block hash.
         /// Returned information: Virtual chain information.
         GetVirtualChainFromBlock,

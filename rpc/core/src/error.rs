@@ -63,11 +63,17 @@ pub enum RpcError {
     #[error("Invalid GetUtxosByAddressesV2 request: {0}")]
     InvalidGetUtxosByAddressesV2Request(String),
 
+    #[error("Invalid GetUtxosByCovenantIds request: {0}")]
+    InvalidGetUtxosByCovenantIdsRequest(String),
+
     #[error("Transaction {0} not found")]
     TransactionNotFound(TransactionId),
 
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
+
+    #[error("Method unavailable. Run the node with the --covenant-index argument.")]
+    NoCovenantIndex,
 
     #[error("Method unavailable. No connection manager is currently available.")]
     NoConnectionManager,
