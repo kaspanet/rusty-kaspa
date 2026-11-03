@@ -175,6 +175,9 @@ impl NonContextualMasses {
 
     /// Returns the normalized maximum mass for non-contextual dimensions only.
     /// The result is in units of `cofactors.reference` (= compute limit).
+    ///
+    /// Relies on floating-point ceiling math from the standard library.
+    #[cfg(feature = "std")]
     pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
         // Compute mass is already in the reference scale (compute limit).
         let c = self.compute_mass;
@@ -183,27 +186,14 @@ impl NonContextualMasses {
     }
 
     /// Returns transient mass normalized to the compute-mass scale.
+    #[cfg(feature = "std")]
     pub fn normalized_transient(&self, cofactors: &MassCofactors) -> u64 {
         (self.transient_mass as f64 * cofactors.transient).ceil() as u64
     }
 }
 
-impl std::ops::Add for NonContextualMasses {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::new(self.compute_mass + rhs.compute_mass, self.transient_mass + rhs.transient_mass)
-    }
-}
-
-impl std::ops::AddAssign for NonContextualMasses {
-    fn add_assign(&mut self, rhs: Self) {
-        *self = *self + rhs;
-    }
-}
-
-impl std::fmt::Display for NonContextualMasses {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for NonContextualMasses {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "compute: {}, transient: {}", self.compute_mass, self.transient_mass)
     }
 }
@@ -285,13 +275,27 @@ impl ContextualMasses {
     }
 }
 
-impl std::fmt::Display for ContextualMasses {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for ContextualMasses {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "storage: {}", self.storage_mass)
     }
 }
 
-impl std::cmp::PartialEq<u64> for ContextualMasses {
+impl core::ops::Add for NonContextualMasses {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::new(self.compute_mass + rhs.compute_mass, self.transient_mass + rhs.transient_mass)
+    }
+}
+
+impl core::ops::AddAssign for NonContextualMasses {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs;
+    }
+}
+
+impl core::cmp::PartialEq<u64> for ContextualMasses {
     fn eq(&self, other: &u64) -> bool {
         self.storage_mass.eq(other)
     }
@@ -313,6 +317,9 @@ impl Mass {
     /// (with ceiling) to compute-mass scale.
     /// The result is in units of `cofactors.reference` (= compute limit).
     /// When all limits are equal, all cofactors are 1.0 and this reduces to `max(storage, compute, transient)`.
+    ///
+    /// Relies on floating-point ceiling math from the standard library.
+    #[cfg(feature = "std")]
     pub fn normalized_max(&self, cofactors: &MassCofactors) -> u64 {
         let s = (self.contextual.storage_mass as f64 * cofactors.storage).ceil() as u64;
         let nc = self.non_contextual.normalized_max(cofactors);
@@ -535,7 +542,7 @@ mod tests {
         subnets::SubnetworkId,
         tx::*,
     };
-    use std::str::FromStr;
+    use core::str::FromStr;
 
     const UTXO_CONST_STORAGE: u64 = 63;
     const UTXO_COVENANT_STORAGE: u64 = HASH_SIZE as u64;

@@ -298,6 +298,7 @@ impl KaspaRpcClient {
         network_id: Option<NetworkId>,
         subscription_context: Option<SubscriptionContext>,
     ) -> Result<KaspaRpcClient> {
+        crate::ensure_crypto_provider();
         let inner = Arc::new(Inner::new(encoding, url, resolver, network_id)?);
         inner.build_notifier(subscription_context)?;
         let client = KaspaRpcClient { inner };

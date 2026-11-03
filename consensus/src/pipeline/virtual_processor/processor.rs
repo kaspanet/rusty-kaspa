@@ -96,7 +96,7 @@ use rayon::{
 use rocksdb::WriteBatch;
 use std::{
     cmp::min,
-    collections::{BinaryHeap, HashMap, VecDeque},
+    collections::{BinaryHeap, VecDeque},
     ops::Deref,
     sync::{Arc, atomic::Ordering},
 };
@@ -1020,7 +1020,7 @@ impl VirtualStateProcessor {
                         heap.into_sorted_iter().take_while(|s| s.blue_work >= filtering_blue_work).map(|s| s.hash).collect(),
                     );
                 } else {
-                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
+                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate);
                 }
             } else if finality_point != pruning_point {
                 // `finality_point == pruning_point` indicates we are at IBD start hence no warning required
@@ -1336,7 +1336,7 @@ impl VirtualStateProcessor {
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
 
-        let mut invalid_transactions = HashMap::new();
+        let mut invalid_transactions = hashbrown::HashMap::default();
         let results = self.validate_block_template_transactions_in_parallel(&txs, &virtual_state, &virtual_utxo_view);
         for (tx, res) in txs.iter().zip(results) {
             match res {
@@ -1397,7 +1397,7 @@ impl VirtualStateProcessor {
         utxo_view: &impl UtxoView,
     ) -> Result<(), RuleError> {
         // Search for invalid transactions
-        let mut invalid_transactions = HashMap::new();
+        let mut invalid_transactions = hashbrown::HashMap::default();
         for tx in txs.iter() {
             if let Err(e) = self.validate_block_template_transaction(tx, virtual_state, utxo_view) {
                 invalid_transactions.insert(tx.id(), e);

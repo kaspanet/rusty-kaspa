@@ -127,7 +127,7 @@ impl PruningPointAndItsAnticoneRequestsFlow {
             self.router
                 .enqueue(make_response!(Payload::DoneBlocksWithTrustedData, DoneBlocksWithTrustedDataMessage {}, request_id))
                 .await?;
-            debug!("Finished sending pruning point anticone")
+            debug!("Finished sending pruning point anticone");
         }
     }
 }

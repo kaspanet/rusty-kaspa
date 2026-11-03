@@ -216,9 +216,15 @@ impl Router {
                                 Ok(()) => {},
                                 Err(e) => {
                                     match e {
-                                        ProtocolError::IgnorableReject(reason) => debug!("P2P, got reject message: {} from peer: {}", reason, router),
-                                        ProtocolError::Rejected(reason) => warn!("P2P, got reject message: {} from peer: {}", reason, router),
-                                        e => warn!("P2P, route error: {} for peer: {}", e, router),
+                                        ProtocolError::IgnorableReject(reason) => {
+                                            debug!("P2P, got reject message: {} from peer: {}", reason, router);
+                                        }
+                                        ProtocolError::Rejected(reason) => {
+                                            warn!("P2P, got reject message: {} from peer: {}", reason, router);
+                                        }
+                                        e => {
+                                            warn!("P2P, route error: {} for peer: {}", e, router);
+                                        }
                                     }
                                     break;
                                 },
@@ -309,7 +315,7 @@ impl Router {
         if let Some(signal) = op {
             let _ = signal.send(());
         } else {
-            debug!("P2P, Router start was called more than once, router-id: {}", self.identity())
+            debug!("P2P, Router start was called more than once, router-id: {}", self.identity());
         }
     }
 

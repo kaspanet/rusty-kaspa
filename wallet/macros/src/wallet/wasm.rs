@@ -129,7 +129,7 @@ impl ToTokens for ApiHandlers {
         for handler in self.handlers.elems.iter() {
             let Handler { fn_call, fn_camel, fn_no_suffix, request_type, ts_request_type, ts_response_type, docs, .. } =
                 Handler::new(handler);
-            let links = format! {"@see {{@link {ts_request_type}}} {{@link {ts_response_type}}}"};
+            let links = format!("@see {{@link {ts_request_type}}} {{@link {ts_response_type}}}");
             let throws = "@throws `string` in case of an error.";
             targets.push(quote! {
                 #(#docs)*

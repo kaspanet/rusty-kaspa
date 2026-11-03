@@ -1,4 +1,5 @@
 use crate::{hashing, tx::Transaction};
+use alloc::vec::Vec;
 use kaspa_hashes::Hash;
 use kaspa_merkle::calc_merkle_root;
 

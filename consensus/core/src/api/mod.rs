@@ -1,6 +1,8 @@
+use alloc::boxed::Box;
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use futures_util::future::BoxFuture;
 use kaspa_muhash::MuHash;
-use std::sync::Arc;
 
 use crate::{
     BlockHashSet, BlueWorkType, ChainPath,
@@ -31,6 +33,7 @@ use kaspa_hashes::Hash;
 pub use self::stats::{BlockCount, ConsensusStats};
 
 pub mod args;
+#[cfg(feature = "metrics")]
 pub mod counters;
 pub mod stats;
 
@@ -568,4 +571,5 @@ pub trait ConsensusApi: Send + Sync {
     }
 }
 
+#[cfg(feature = "std")]
 pub type DynConsensus = Arc<dyn ConsensusApi>;

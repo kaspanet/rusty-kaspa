@@ -560,7 +560,7 @@ impl RpcClient {
         let mut callbacks = self.inner.callbacks.lock().unwrap();
         if let Ok(sink) = Sink::try_from(&event) {
             // remove callback from all events
-            for (_, handlers) in callbacks.iter_mut() {
+            for handlers in callbacks.values_mut() {
                 handlers.retain(|handler| handler != &sink);
             }
         } else if let Some(Ok(sink)) = callback.map(Sink::try_from) {
@@ -590,7 +590,7 @@ impl RpcClient {
     pub fn clear_event_listener(&self, callback: RpcEventCallback) -> Result<()> {
         let sink = Sink::new(callback);
         let mut notification_callbacks = self.inner.callbacks.lock().unwrap();
-        for (_, handlers) in notification_callbacks.iter_mut() {
+        for handlers in notification_callbacks.values_mut() {
             handlers.retain(|handler| handler != &sink);
         }
         Ok(())
