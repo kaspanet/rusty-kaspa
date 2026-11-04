@@ -891,6 +891,7 @@ async fn transactions_by_accepting_block_test() {
         },
     };
     use kaspa_consensusmanager::ConsensusManager;
+    use kaspa_rpc_core::api::rpc::MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS;
     use kaspa_txscript::{
         extract_script_pub_key_address, opcodes::codes::OpTrue, pay_to_script_hash_script, script_builder::ScriptBuilder,
     };
@@ -1004,6 +1005,8 @@ async fn transactions_by_accepting_block_test() {
             for (query_ids, message) in [
                 (vec![], "not allowed to be empty"),
                 (vec![ids[0], ids[0]], "duplicate transaction id"),
+                (vec![ids[0]; MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS], "duplicate transaction id"),
+                (vec![ids[0]; MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS + 1], "accepts at most 8192 transaction IDs (got 8193)"),
                 (vec![ids[0], Hash::from_bytes([0xfe; 32])], "Did not find queried transactions"),
             ] {
                 let error = client.get_transactions_by_accepting_block(selector, query_ids).await.unwrap_err();

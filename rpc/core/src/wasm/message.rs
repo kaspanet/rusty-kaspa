@@ -2045,7 +2045,11 @@ declare! {
      */
     export interface IGetTransactionsByAcceptingBlockRequest {
         acceptingBlock: AcceptingBlock;
-        /** Nonempty, unique transaction IDs. Results follow this order. */
+        /**
+         * Between 1 and 8192 unique transaction IDs. Results follow this order.
+         * Typical mergesets contain far fewer transactions; split larger batches across calls
+         * using the same accepting-block selector.
+         */
         transactionIds: HexString[];
     }
     "#,

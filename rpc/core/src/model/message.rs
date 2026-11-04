@@ -2991,7 +2991,9 @@ impl Deserializer for GetBlockRewardInfoResponse {
 }
 
 /// Requests fully populated transactions accepted by the specified block.
-/// Transaction IDs must be nonempty and unique. Results follow the requested order.
+/// The request must contain 1-8192 unique transaction IDs. Results follow the requested order.
+/// Typical mergesets contain far fewer transactions; larger batches can be split into multiple
+/// calls using the same accepting-block selector.
 ///
 /// A DAA-score selector must identify the accepting block in the node's current virtual selected-parent
 /// chain at query time. A reorg can change the accepting block and its DAA score, causing a lookup

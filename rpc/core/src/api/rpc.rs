@@ -15,6 +15,10 @@ use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
 
+/// Maximum transaction IDs per get_transactions_by_accepting_block request.
+/// Typical mergesets contain far fewer transactions; larger batches can be split across calls.
+pub const MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS: usize = 8_192;
+
 // constants pertaining to the get_utxos_by_addresses_v2 RPC method
 pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE: usize = 5_000;
 // same as [`MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE`], setting this higher has little practical effect,
@@ -515,7 +519,8 @@ pub trait RpcApi: Sync + Send + AnySync {
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
 
     /// Returns full transactions and their input UTXOs in the requested order.
-    /// The transaction IDs must be nonempty, unique, and accepted by the specified block.
+    /// The request must contain 1-8192 unique transaction IDs accepted by the specified block.
+    /// Larger batches can be split into multiple calls using the same accepting-block selector.
     ///
     /// A DAA-score selector resolves against the node's current virtual selected-parent chain;
     /// reorgs can invalidate previously observed accepting scores. When querying a newly observed

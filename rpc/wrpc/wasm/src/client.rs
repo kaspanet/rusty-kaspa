@@ -1076,6 +1076,7 @@ build_wrpc_wasm_bindgen_interface!(
         /// May be used to get fully populated transactions
         GetVirtualChainFromBlockV2,
         /// Returns fully populated transactions accepted by a block identified by hash or DAA score.
+        /// Accepts 1-8192 unique transaction IDs; split larger batches across calls using the same selector.
         /// Use a UTXO's outpoint transaction ID and entry blockDaaScore while its transaction is retained.
         /// The score must identify the accepting block in the current virtual selected-parent chain.
         /// For newly observed UTXOs, consider waiting 1-2 seconds or refreshing their data before

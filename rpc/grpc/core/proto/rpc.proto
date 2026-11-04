@@ -1064,7 +1064,9 @@ message GetFeeEstimateExperimentalResponseMessage {
 }
 
 // Requests full transactions and their input UTXOs in request order.
-// The transaction IDs must be nonempty, unique, and accepted by the specified block.
+// The request must contain 1-8192 unique IDs accepted by the specified block.
+// Typical mergesets contain far fewer transactions; split larger batches across
+// calls using the same accepting-block selector.
 // For a UTXO obtained from notifications or a UTXO/covenant index query, use its
 // outpoint transaction ID and entry blockDaaScore, while the transaction is retained.
 // A daaScore selector must identify the accepting block in the current virtual

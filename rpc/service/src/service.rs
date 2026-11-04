@@ -57,7 +57,7 @@ use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
 use kaspa_rpc_core::api::rpc::{
-    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS,
+    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS, MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS,
     MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT, MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE,
     MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_DB_OPS, MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT,
 };
@@ -1188,6 +1188,14 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         request: GetTransactionsByAcceptingBlockRequest,
     ) -> RpcResult<GetTransactionsByAcceptingBlockResponse> {
+        if request.transaction_ids.len() > MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS {
+            return Err(RpcError::General(format!(
+                "GetTransactionsByAcceptingBlock accepts at most {} transaction IDs (got {})",
+                MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS,
+                request.transaction_ids.len(),
+            )));
+        }
+
         let session = self.consensus_manager.consensus().session().await;
         if session.async_is_consensus_in_transitional_ibd_state().await {
             return Err(RpcError::ConsensusInTransitionalIbdState);
