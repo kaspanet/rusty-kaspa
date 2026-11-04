@@ -59,6 +59,7 @@ fn accepting_block_response_preserves_populated_input() {
     let entry = Reflect::get(&verbose, &"utxoEntry".into()).unwrap();
     assert_eq!(Reflect::get(&entry, &"amount".into()).unwrap(), JsValue::from(js_sys::BigInt::from(42u64)));
     assert_eq!(Reflect::get(&entry, &"blockDaaScore".into()).unwrap(), JsValue::from(js_sys::BigInt::from(u64::MAX)));
+    assert_eq!(Reflect::get(&entry, &"scriptPublicKey".into()).unwrap().as_string().as_deref(), Some("000051"));
     assert_eq!(Reflect::get(&entry, &"covenantId".into()).unwrap().as_string(), Some(hash.to_string()));
     assert_eq!(Reflect::get(&input, &"computeBudget".into()).unwrap().as_f64(), Some(123.0));
 }

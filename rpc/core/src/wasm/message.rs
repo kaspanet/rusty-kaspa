@@ -1999,7 +1999,8 @@ const TS_ACCEPTING_BLOCK: &'static str = r#"
     export interface IPopulatedRpcTransaction extends Omit<ITransaction, "inputs" | "outputs" | "verboseData"> {
         inputs: (Omit<ITransactionInput, "verboseData"> & {
             verboseData: {
-                utxoEntry: Omit<IUtxoEntry, "outpoint" | "address" | "covenantId"> & {
+                utxoEntry: Omit<IUtxoEntry, "outpoint" | "address" | "covenantId" | "scriptPublicKey"> & {
+                    scriptPublicKey: HexString;
                     covenantId?: HexString | null;
                     verboseData?: null;
                 };
