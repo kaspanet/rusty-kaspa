@@ -516,6 +516,11 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     /// Returns full transactions and their input UTXOs in the requested order.
     /// The transaction IDs must be nonempty, unique, and accepted by the specified block.
+    ///
+    /// A DAA-score selector resolves against the node's current virtual selected-parent chain;
+    /// reorgs can invalidate previously observed accepting scores. When querying a newly observed
+    /// UTXO, consider waiting 1-2 seconds or refreshing its UTXO data before retrying a failed
+    /// lookup. See [`GetTransactionsByAcceptingBlockRequest`] for the recommended usage pattern.
     async fn get_transactions_by_accepting_block(
         &self,
         accepting_block: RpcAcceptingBlock,

@@ -1065,6 +1065,13 @@ message GetFeeEstimateExperimentalResponseMessage {
 
 // Requests full transactions and their input UTXOs in request order.
 // The transaction IDs must be nonempty, unique, and accepted by the specified block.
+// For a UTXO obtained from notifications or a UTXO/covenant index query, use its
+// outpoint transaction ID and entry blockDaaScore, while the transaction is retained.
+// A daaScore selector must identify the accepting block in the current virtual
+// selected-parent chain. Reorgs can invalidate a previously observed score.
+// For a newly observed UTXO, consider waiting 1-2 seconds for its accepting block
+// to stabilize, or refresh the UTXO data and retry a failed lookup with its current score.
+// This delay reduces small-reorg races and does not guarantee finality.
 message GetTransactionsByAcceptingBlockRequestMessage {
   oneof acceptingBlock {
     string hash = 1;

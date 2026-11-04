@@ -2992,6 +2992,17 @@ impl Deserializer for GetBlockRewardInfoResponse {
 
 /// Requests fully populated transactions accepted by the specified block.
 /// Transaction IDs must be nonempty and unique. Results follow the requested order.
+///
+/// A DAA-score selector must identify the accepting block in the node's current virtual selected-parent
+/// chain at query time. A reorg can change the accepting block and its DAA score, causing a lookup
+/// using a previously observed score to fail.
+///
+/// To retrieve a UTXO's creating transaction, obtain the UTXO from a UTXO-change notification or a
+/// UTXO/covenant index query, then use its outpoint's transaction ID and its entry's `block_daa_score`.
+/// The transaction must still be within the node's retained history. For newly observed UTXOs,
+/// consider waiting 1-2 seconds for the accepting block to stabilize, or handle lookup failures by
+/// refreshing the UTXO data and retrying with its current score if it is still present. This delay
+/// reduces small-reorg races; it does not guarantee finality.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetTransactionsByAcceptingBlockRequest {

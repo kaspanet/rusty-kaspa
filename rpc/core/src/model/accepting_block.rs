@@ -6,7 +6,10 @@ use workflow_serializer::prelude::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RpcAcceptingBlock {
+    /// Identifies the particular accepting block to query.
     Hash(#[serde(with = "kaspa_utils::serde_bytes_fixed_ref")] RpcHash),
+    /// The exact DAA score of the accepting block in the node's current virtual selected-parent chain.
+    /// A reorg can change a transaction's accepting block and invalidate a previously observed score.
     DaaScore(u64),
 }
 
