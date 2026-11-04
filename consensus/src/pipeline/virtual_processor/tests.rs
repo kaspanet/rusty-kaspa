@@ -154,6 +154,127 @@ impl TestContext {
 }
 
 #[tokio::test]
+async fn populated_transactions_by_acceptance_multi_id_test() {
+    use kaspa_consensus_core::{
+        api::args::TransactionValidationArgs,
+        config::params::DEVNET_PARAMS,
+        constants::SOMPI_PER_KASPA,
+        errors::consensus::ConsensusError,
+        header::Header,
+        muhash::MuHashExtensions,
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::{
+            MutableTransaction, TransactionInput, TransactionOutpoint, TransactionOutput, TransactionQueryResult, TransactionType,
+            UtxoEntry,
+        },
+        utxo::utxo_inquirer::{UtxoInquirerError, UtxoInquirerFindTxsFromAcceptanceDataError},
+    };
+    use kaspa_muhash::MuHash;
+    use kaspa_txscript::opcodes::codes::OpTrue;
+
+    let script = ScriptPublicKey::from_vec(0, vec![OpTrue]);
+    let funding = (0..5)
+        .map(|i| (TransactionOutpoint::new((100 + i).into(), 0), UtxoEntry::new(SOMPI_PER_KASPA + i, script.clone(), 0, false, None)))
+        .collect::<Vec<_>>();
+    let mut genesis_multiset = MuHash::new();
+    for (outpoint, entry) in &funding {
+        genesis_multiset.add_utxo(outpoint, entry);
+    }
+    let genesis_utxo_commitment = genesis_multiset.finalize();
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.genesis.utxo_commitment = genesis_utxo_commitment;
+            p.genesis.hash = Header::from(&p.genesis).hash;
+        })
+        .build();
+    let consensus = TestConsensus::new(&config);
+    let mut imported_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&funding, &mut imported_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, imported_multiset).unwrap();
+    let ctx = TestContext::new(consensus);
+    let consensus = &ctx.consensus;
+
+    let transactions = funding
+        .iter()
+        .map(|(outpoint, entry)| {
+            let tx = Transaction::new(
+                0,
+                vec![TransactionInput::new(*outpoint, vec![], 0, 0)],
+                vec![TransactionOutput::new(entry.amount - 5000, script.clone())],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            let mut tx = MutableTransaction::from_tx(tx);
+            consensus.validate_mempool_transaction(&mut tx, &TransactionValidationArgs::default()).unwrap();
+            tx.tx.as_ref().clone()
+        })
+        .collect::<Vec<_>>();
+
+    // One accepting block merges transactions from two parallel blocks.
+    let left: Hash = 1.into();
+    let right: Hash = 2.into();
+    let accepting: Hash = 3.into();
+    for (hash, parents, txs) in [
+        (left, vec![config.genesis.hash], transactions[..3].to_vec()),
+        (right, vec![config.genesis.hash], vec![transactions[3].clone()]),
+        (accepting, vec![left, right], vec![transactions[4].clone()]),
+    ] {
+        assert_eq!(consensus.add_utxo_valid_block_with_parents(hash, parents, txs).await.unwrap(), BlockStatus::StatusUTXOValid);
+    }
+    let accepting_daa_score = consensus.get_header(accepting).unwrap().daa_score;
+
+    // Exercise cross-block queries, gaps within a block, and the singleton path.
+    for indices in [vec![3, 2, 0], vec![2, 0], vec![0]] {
+        let ids = indices.iter().map(|&i| transactions[i].id()).collect::<Vec<_>>();
+        for result in [
+            consensus.get_transactions_by_accepting_block(accepting, Some(ids.clone()), TransactionType::SignableTransaction),
+            consensus.get_transactions_by_accepting_daa_score(accepting_daa_score, Some(ids), TransactionType::SignableTransaction),
+        ] {
+            let TransactionQueryResult::SignableTransaction(txs) = result.unwrap() else {
+                panic!("expected populated transactions");
+            };
+            assert_eq!(txs.len(), indices.len());
+            for (tx, &i) in txs.iter().zip(&indices) {
+                assert_eq!(tx.tx, transactions[i]);
+                assert_eq!(tx.entries, vec![Some(funding[i].1.clone())]);
+            }
+        }
+    }
+
+    for indices in [vec![3, 3], vec![3, 2, 3]] {
+        let ids = indices.iter().map(|&i| transactions[i].id()).collect::<Vec<_>>();
+        for result in [
+            consensus.get_transactions_by_accepting_block(accepting, Some(ids.clone()), TransactionType::SignableTransaction),
+            consensus.get_transactions_by_accepting_daa_score(accepting_daa_score, Some(ids), TransactionType::SignableTransaction),
+        ] {
+            assert!(matches!(
+                result,
+                Err(ConsensusError::UtxoInquirerError(UtxoInquirerError::UtxoInquirerFindTxsFromAcceptanceDataError(
+                    UtxoInquirerFindTxsFromAcceptanceDataError::DuplicateTransactionId(id)
+                ))) if id == transactions[3].id()
+            ));
+        }
+    }
+
+    // A transaction included in the accepting block itself is not accepted by that block.
+    let missing_ids = vec![transactions[4].id(), 999.into()];
+    let query_ids = vec![transactions[0].id(), missing_ids[0], transactions[3].id(), missing_ids[1]];
+    match consensus.get_transactions_by_accepting_block(accepting, Some(query_ids), TransactionType::SignableTransaction) {
+        Err(ConsensusError::UtxoInquirerError(UtxoInquirerError::MissingQueriedTransactions(ids))) => assert_eq!(ids, missing_ids),
+        result => panic!("expected missing transaction IDs, got {result:?}"),
+    }
+    assert!(matches!(
+        consensus.get_transactions_by_accepting_block(accepting, Some(vec![]), TransactionType::SignableTransaction),
+        Err(ConsensusError::UtxoInquirerError(UtxoInquirerError::UtxoInquirerFindTxsFromAcceptanceDataError(
+            UtxoInquirerFindTxsFromAcceptanceDataError::TxIdsFilterIsEmptyError
+        )))
+    ));
+}
+
+#[tokio::test]
 async fn template_mining_sanity_test() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let mut ctx = TestContext::new(TestConsensus::new(&config));

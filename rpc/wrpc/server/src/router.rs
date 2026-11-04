@@ -73,6 +73,7 @@ impl Router {
                 GetUtxosByCovenantIds,
                 GetVirtualChainFromBlock,
                 GetVirtualChainFromBlockV2,
+                GetTransactionsByAcceptingBlock,
                 GetSeqCommitLaneProof,
                 ResolveFinalityConflict,
                 Shutdown,

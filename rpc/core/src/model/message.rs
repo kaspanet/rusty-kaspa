@@ -2990,6 +2990,75 @@ impl Deserializer for GetBlockRewardInfoResponse {
     }
 }
 
+/// Requests fully populated transactions accepted by the specified block.
+/// The request must contain 1-8192 unique transaction IDs. Results follow the requested order.
+/// Typical mergesets contain far fewer transactions; larger batches can be split into multiple
+/// calls using the same accepting-block selector.
+///
+/// A DAA-score selector must identify the accepting block in the node's current virtual selected-parent
+/// chain at query time. A reorg can change the accepting block and its DAA score, causing a lookup
+/// using a previously observed score to fail.
+///
+/// To retrieve a UTXO's creating transaction, obtain the UTXO from a UTXO-change notification or a
+/// UTXO/covenant index query, then use its outpoint's transaction ID and its entry's `block_daa_score`.
+/// The transaction must still be within the node's retained history. For newly observed UTXOs,
+/// consider waiting 1-2 seconds for the accepting block to stabilize, or handle lookup failures by
+/// refreshing the UTXO data and retrying with its current score if it is still present. This delay
+/// reduces small-reorg races; it does not guarantee finality.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionsByAcceptingBlockRequest {
+    pub accepting_block: RpcAcceptingBlock,
+    pub transaction_ids: Vec<RpcTransactionId>,
+}
+
+impl GetTransactionsByAcceptingBlockRequest {
+    pub fn new(accepting_block: RpcAcceptingBlock, transaction_ids: Vec<RpcTransactionId>) -> Self {
+        Self { accepting_block, transaction_ids }
+    }
+}
+
+impl Serializer for GetTransactionsByAcceptingBlockRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcAcceptingBlock, &self.accepting_block, writer)?;
+        store!(Vec<RpcTransactionId>, &self.transaction_ids, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionsByAcceptingBlockRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let accepting_block = deserialize!(RpcAcceptingBlock, reader)?;
+        let transaction_ids = load!(Vec<RpcTransactionId>, reader)?;
+        Ok(Self { accepting_block, transaction_ids })
+    }
+}
+
+/// Full transactions with populated input UTXOs. Containing-block metadata is not supplied.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionsByAcceptingBlockResponse {
+    pub transactions: Vec<RpcOptionalTransaction>,
+}
+
+impl Serializer for GetTransactionsByAcceptingBlockResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcOptionalTransaction>, &self.transactions, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionsByAcceptingBlockResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
+        Ok(Self { transactions })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxoReturnAddressRequest {

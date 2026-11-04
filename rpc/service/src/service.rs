@@ -57,7 +57,7 @@ use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
 use kaspa_rpc_core::api::rpc::{
-    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS,
+    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS, MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS,
     MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT, MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE,
     MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_DB_OPS, MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT,
 };
@@ -1181,6 +1181,39 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             let estimate = self.get_fee_estimate_call(connection, GetFeeEstimateRequest {}).await?.estimate;
             Ok(GetFeeEstimateExperimentalResponse { estimate, verbose: None })
         }
+    }
+
+    async fn get_transactions_by_accepting_block_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByAcceptingBlockRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlockResponse> {
+        if request.transaction_ids.len() > MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS {
+            return Err(RpcError::General(format!(
+                "GetTransactionsByAcceptingBlock accepts at most {} transaction IDs (got {})",
+                MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS,
+                request.transaction_ids.len(),
+            )));
+        }
+
+        let session = self.consensus_manager.consensus().session().await;
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let tx_ids = Some(request.transaction_ids);
+        let result = match request.accepting_block {
+            RpcAcceptingBlock::Hash(hash) => {
+                session.async_get_transactions_by_accepting_block(hash, tx_ids, TransactionType::SignableTransaction).await?
+            }
+            RpcAcceptingBlock::DaaScore(score) => {
+                session.async_get_transactions_by_accepting_daa_score(score, tx_ids, TransactionType::SignableTransaction).await?
+            }
+        };
+        let TransactionQueryResult::SignableTransaction(transactions) = result else {
+            return Err(RpcError::General("expected populated transactions from consensus".to_string()));
+        };
+        Ok(GetTransactionsByAcceptingBlockResponse { transactions: transactions.iter().map(Into::into).collect() })
     }
 
     async fn get_utxo_return_address_call(

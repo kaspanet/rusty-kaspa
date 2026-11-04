@@ -1986,6 +1986,94 @@ try_from!( args: GetFeeEstimateExperimentalResponse, IGetFeeEstimateExperimental
     Ok(response)
 });
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ACCEPTING_BLOCK: &'static str = r#"
+    /**
+     * An accepting block hash or the exact accepting DAA score in the node's current virtual
+     * selected-parent chain. Reorgs can invalidate a previously observed accepting score.
+     * @category Node RPC
+     */
+    export type AcceptingBlock = { hash: HexString } | { daaScore: bigint };
+
+    /** Full transaction returned by getTransactionsByAcceptingBlock. @category Node RPC */
+    export interface IPopulatedRpcTransaction extends Omit<ITransaction, "inputs" | "outputs" | "verboseData"> {
+        inputs: (Omit<ITransactionInput, "verboseData"> & {
+            verboseData: {
+                utxoEntry: Omit<IUtxoEntry, "outpoint" | "address" | "covenantId" | "scriptPublicKey"> & {
+                    scriptPublicKey: HexString;
+                    covenantId?: HexString | null;
+                    verboseData?: null;
+                };
+            };
+        })[];
+        outputs: (Omit<ITransactionOutput, "verboseData"> & {
+            covenant?: ICovenantBinding | null;
+            verboseData?: null;
+        })[];
+        verboseData: {
+            transactionId: HexString;
+            hash: HexString;
+            computeMass?: bigint | null;
+            blockHash?: null;
+            blockTime?: null;
+        };
+    }
+"#;
+
+declare! {
+    IGetTransactionsByAcceptingBlockRequest,
+    r#"
+    /**
+     * Retrieves full transactions and populated input UTXOs using their accepting block.
+     *
+     * For a UTXO received through UTXO-change notifications or a UTXO/covenant index query,
+     * use its outpoint's transaction ID and its entry's blockDaaScore. The transaction must
+     * still be within the node's retained history.
+     *
+     * The DAA score must belong to the accepting block in the current virtual selected-parent
+     * chain at query time. Small reorgs can change that block and invalidate the observed score.
+     * Consider waiting 1-2 seconds after observing a new UTXO, or refresh its data and retry a
+     * failed lookup with the current score if the UTXO is still present. The delay reduces
+     * reorg races and does not guarantee finality.
+     *
+     * @example
+     * const { transactions } = await rpc.getTransactionsByAcceptingBlock({
+     *     acceptingBlock: { daaScore: utxo.blockDaaScore },
+     *     transactionIds: [utxo.outpoint.transactionId],
+     * });
+     *
+     * @category Node RPC
+     */
+    export interface IGetTransactionsByAcceptingBlockRequest {
+        acceptingBlock: AcceptingBlock;
+        /**
+         * Between 1 and 8192 unique transaction IDs. Results follow this order.
+         * Typical mergesets contain far fewer transactions; split larger batches across calls
+         * using the same accepting-block selector.
+         */
+        transactionIds: HexString[];
+    }
+    "#,
+}
+
+try_from!(args: IGetTransactionsByAcceptingBlockRequest, GetTransactionsByAcceptingBlockRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetTransactionsByAcceptingBlockResponse,
+    r#"
+    /** @category Node RPC */
+    export interface IGetTransactionsByAcceptingBlockResponse {
+        transactions: IPopulatedRpcTransaction[];
+    }
+    "#,
+}
+
+try_from!(args: GetTransactionsByAcceptingBlockResponse, IGetTransactionsByAcceptingBlockResponse, {
+    Ok(to_value(&args)?.into())
+});
+
 declare! {
     IGetUtxoReturnAddressRequest,
     r#"

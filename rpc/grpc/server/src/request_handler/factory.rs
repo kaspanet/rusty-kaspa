@@ -86,6 +86,7 @@ impl Factory {
                 GetBlockRewardInfo,
                 GetUtxoReturnAddress,
                 GetVirtualChainFromBlockV2,
+                GetTransactionsByAcceptingBlock,
                 GetSeqCommitLaneProof,
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,

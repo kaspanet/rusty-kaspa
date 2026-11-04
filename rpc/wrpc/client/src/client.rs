@@ -661,6 +661,7 @@ impl RpcApi for KaspaRpcClient {
             GetUtxosByCovenantIds,
             GetVirtualChainFromBlock,
             GetVirtualChainFromBlockV2,
+            GetTransactionsByAcceptingBlock,
             ResolveFinalityConflict,
             Shutdown,
             SubmitBlock,
