@@ -1993,7 +1993,7 @@ const TS_ACCEPTING_BLOCK: &'static str = r#"
      * selected-parent chain. Reorgs can invalidate a previously observed accepting score.
      * @category Node RPC
      */
-    export type AcceptingBlock = { hash: HexString; daaScore?: never } | { daaScore: bigint; hash?: never };
+    export type AcceptingBlock = { hash: HexString } | { daaScore: bigint };
 
     /** Full transaction returned by getTransactionsByAcceptingBlock. @category Node RPC */
     export interface IPopulatedRpcTransaction extends Omit<ITransaction, "inputs" | "outputs" | "verboseData"> {
