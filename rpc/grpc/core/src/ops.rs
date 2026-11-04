@@ -89,6 +89,7 @@ pub enum KaspadPayloadOps {
     GetCurrentBlockColor,
     GetUtxoReturnAddress,
     GetVirtualChainFromBlockV2,
+    GetTransactionsByAcceptingBlock,
     GetBlockRewardInfo,
     GetSeqCommitLaneProof,
     GetUtxosByAddressesV2,

@@ -569,6 +569,23 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyn
     }
 });
 
+from!(item: &kaspa_rpc_core::GetTransactionsByAcceptingBlockRequest, protowire::GetTransactionsByAcceptingBlockRequestMessage, {
+    Self {
+        accepting_block: Some(match item.accepting_block {
+            kaspa_rpc_core::RpcAcceptingBlock::Hash(hash) => protowire::get_transactions_by_accepting_block_request_message::AcceptingBlock::Hash(hash.to_string()),
+            kaspa_rpc_core::RpcAcceptingBlock::DaaScore(score) => protowire::get_transactions_by_accepting_block_request_message::AcceptingBlock::DaaScore(score),
+        }),
+        transaction_ids: item.transaction_ids.iter().map(ToString::to_string).collect(),
+    }
+});
+
+from!(item: RpcResult<&kaspa_rpc_core::GetTransactionsByAcceptingBlockResponse>, protowire::GetTransactionsByAcceptingBlockResponseMessage, {
+    Self {
+        transactions: item.transactions.iter().map(Into::into).collect(),
+        error: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockV2Request, protowire::GetVirtualChainFromBlockV2RequestMessage, {
     Self {
         start_hash: item.start_hash.to_string(),
@@ -851,6 +868,24 @@ try_from!(item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<k
             .collect::<Result<Vec<_>, _>>()?,
         added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
         accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?,
+    }
+});
+
+try_from!(item: &protowire::GetTransactionsByAcceptingBlockRequestMessage, kaspa_rpc_core::GetTransactionsByAcceptingBlockRequest, {
+    Self {
+        accepting_block: match item.accepting_block.as_ref().ok_or_else(|| RpcError::MissingRpcFieldError(
+            "GetTransactionsByAcceptingBlockRequest".to_string(), "accepting_block".to_string()
+        ))? {
+            protowire::get_transactions_by_accepting_block_request_message::AcceptingBlock::Hash(hash) => kaspa_rpc_core::RpcAcceptingBlock::Hash(RpcHash::from_str(hash)?),
+            protowire::get_transactions_by_accepting_block_request_message::AcceptingBlock::DaaScore(score) => kaspa_rpc_core::RpcAcceptingBlock::DaaScore(*score),
+        },
+        transaction_ids: item.transaction_ids.iter().map(|id| RpcHash::from_str(id)).collect::<Result<_, _>>()?,
+    }
+});
+
+try_from!(item: &protowire::GetTransactionsByAcceptingBlockResponseMessage, RpcResult<kaspa_rpc_core::GetTransactionsByAcceptingBlockResponse>, {
+    Self {
+        transactions: item.transactions.iter().map(TryInto::try_into).collect::<RpcResult<_>>()?,
     }
 });
 
@@ -1244,6 +1279,67 @@ mod tests {
     use kaspa_rpc_core::{RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
 
     use crate::protowire::{self, SubmitBlockResponseMessage, submit_block_response_message::RejectReason};
+
+    #[test]
+    fn transactions_by_accepting_block_selector_roundtrip() {
+        use kaspa_rpc_core::{GetTransactionsByAcceptingBlockRequest, RpcAcceptingBlock, RpcHash};
+        use prost::Message;
+        let hash = RpcHash::from_bytes([0xab; 32]);
+        for accepting_block in [RpcAcceptingBlock::Hash(hash), RpcAcceptingBlock::DaaScore(0), RpcAcceptingBlock::DaaScore(u64::MAX)] {
+            let request = GetTransactionsByAcceptingBlockRequest::new(accepting_block, vec![hash]);
+            let wire = protowire::GetTransactionsByAcceptingBlockRequestMessage::from(&request);
+            let wire = protowire::GetTransactionsByAcceptingBlockRequestMessage::decode(wire.encode_to_vec().as_slice()).unwrap();
+            assert_eq!(GetTransactionsByAcceptingBlockRequest::try_from(&wire).unwrap(), request);
+        }
+        assert!(matches!(
+            GetTransactionsByAcceptingBlockRequest::try_from(&protowire::GetTransactionsByAcceptingBlockRequestMessage::default()),
+            Err(RpcError::MissingRpcFieldError(..))
+        ));
+    }
+
+    #[test]
+    fn transactions_by_accepting_block_response_roundtrip() {
+        use kaspa_consensus_core::{
+            subnets::SUBNETWORK_ID_NATIVE,
+            tx::{
+                CovenantBinding, ScriptPublicKey, SignableTransaction, Transaction, TransactionInput, TransactionOutpoint,
+                TransactionOutput, UtxoEntry,
+            },
+        };
+        use kaspa_rpc_core::{GetTransactionsByAcceptingBlockResponse, RpcHash, RpcOptionalTransaction};
+        use prost::Message;
+        let covenant_id = RpcHash::from_bytes([0xcd; 32]);
+        let script = ScriptPublicKey::from_vec(0, vec![0x51]);
+        let entry = UtxoEntry::new(12345, script.clone(), 100, false, Some(covenant_id));
+        let tx = Transaction::new(
+            1,
+            vec![TransactionInput::new_with_compute_budget(TransactionOutpoint::new(covenant_id, 2), vec![1, 2], 9, 456)],
+            vec![TransactionOutput::with_covenant(12300, script, Some(CovenantBinding { authorizing_input: 0, covenant_id }))],
+            7,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![3, 4],
+        );
+        tx.set_storage_mass(789);
+        let populated = SignableTransaction::with_entries(tx, vec![entry.clone()]);
+        let response = GetTransactionsByAcceptingBlockResponse { transactions: vec![RpcOptionalTransaction::from(&populated)] };
+        let wire = protowire::GetTransactionsByAcceptingBlockResponseMessage::from(Ok(&response));
+        let wire = protowire::GetTransactionsByAcceptingBlockResponseMessage::decode(wire.encode_to_vec().as_slice()).unwrap();
+        let decoded = GetTransactionsByAcceptingBlockResponse::try_from(&wire).unwrap();
+        let transaction = decoded.transactions.into_iter().next().unwrap();
+        assert_eq!(transaction.verbose_data.as_ref().unwrap().transaction_id, Some(populated.id()));
+        assert!(transaction.verbose_data.as_ref().unwrap().block_hash.is_none());
+        let restored_entry: UtxoEntry =
+            transaction.inputs[0].verbose_data.as_ref().unwrap().utxo_entry.clone().unwrap().try_into().unwrap();
+        assert_eq!(restored_entry, entry);
+        let restored: Transaction = transaction.try_into().unwrap();
+        assert_eq!(restored, populated.tx);
+
+        let wire = protowire::GetTransactionsByAcceptingBlockResponseMessage::from(
+            Err::<&GetTransactionsByAcceptingBlockResponse, _>(RpcError::ConsensusInTransitionalIbdState),
+        );
+        assert!(GetTransactionsByAcceptingBlockResponse::try_from(&wire).unwrap_err().to_string().contains("transitional ibd"));
+    }
 
     #[test]
     fn test_submit_block_response() {

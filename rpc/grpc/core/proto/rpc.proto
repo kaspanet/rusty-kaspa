@@ -1063,6 +1063,21 @@ message GetFeeEstimateExperimentalResponseMessage {
   RPCError error = 1000;
 }
 
+// Requests full transactions and their input UTXOs in request order.
+// The transaction IDs must be nonempty, unique, and accepted by the specified block.
+message GetTransactionsByAcceptingBlockRequestMessage {
+  oneof acceptingBlock {
+    string hash = 1;
+    uint64 daaScore = 2;
+  }
+  repeated string transactionIds = 3;
+}
+
+message GetTransactionsByAcceptingBlockResponseMessage {
+  repeated RpcOptionalTransaction transactions = 1;
+  RPCError error = 1000;
+}
+
 message GetUtxoReturnAddressRequestMessage {
   string txid = 1;
   uint64 accepting_block_daa_score = 2;

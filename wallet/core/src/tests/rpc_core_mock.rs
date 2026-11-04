@@ -419,6 +419,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_transactions_by_accepting_block_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetTransactionsByAcceptingBlockRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlockResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_virtual_chain_from_block_v2_call(
         &self,
         _connection: Option<&DynRpcConnection>,

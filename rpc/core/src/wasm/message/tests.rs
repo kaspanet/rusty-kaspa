@@ -4,6 +4,66 @@ use kaspa_addresses::{Prefix, Version};
 use wasm_bindgen_test::wasm_bindgen_test;
 
 #[wasm_bindgen_test]
+fn accepting_block_selector_accepts_hash_or_bigint() {
+    let hash = RpcHash::from_bytes([0xab; 32]);
+    for selector in [RpcAcceptingBlock::Hash(hash), RpcAcceptingBlock::DaaScore(u64::MAX)] {
+        let args = Object::new();
+        args.set("acceptingBlock", &to_value(&selector).unwrap()).unwrap();
+        args.set("transactionIds", &to_value(&vec![hash]).unwrap()).unwrap();
+        let request =
+            GetTransactionsByAcceptingBlockRequest::try_from(IGetTransactionsByAcceptingBlockRequest::from(JsValue::from(args)))
+                .unwrap();
+        assert_eq!(request.accepting_block, selector);
+        assert_eq!(request.transaction_ids, vec![hash]);
+    }
+    let selector = Object::new();
+    selector.set("hash", &JsValue::from_str(&hash.to_string())).unwrap();
+    selector.set("daaScore", &js_sys::BigInt::from(1u64)).unwrap();
+    let args = Object::new();
+    args.set("acceptingBlock", &selector).unwrap();
+    args.set("transactionIds", &to_value(&vec![hash]).unwrap()).unwrap();
+    assert!(
+        GetTransactionsByAcceptingBlockRequest::try_from(IGetTransactionsByAcceptingBlockRequest::from(JsValue::from(args)),).is_err()
+    );
+}
+
+#[wasm_bindgen_test]
+fn accepting_block_response_preserves_populated_input() {
+    use kaspa_consensus_core::{
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::{SignableTransaction, Transaction, TransactionInput, TransactionOutpoint, UtxoEntry},
+    };
+    let hash = RpcHash::from_bytes([0xab; 32]);
+    let script = RpcScriptPublicKey::from_vec(0, vec![0x51]);
+    let entry = UtxoEntry::new(42, script, u64::MAX, false, Some(hash));
+    let transaction = SignableTransaction::with_entries(
+        Transaction::new(
+            1,
+            vec![TransactionInput::new_with_compute_budget(TransactionOutpoint::new(hash, 0), vec![1, 2], 0, 123)],
+            vec![],
+            0,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        ),
+        vec![entry],
+    );
+    let response = IGetTransactionsByAcceptingBlockResponse::try_from(GetTransactionsByAcceptingBlockResponse {
+        transactions: vec![RpcOptionalTransaction::from(&transaction)],
+    })
+    .unwrap();
+    let response = JsValue::from(response);
+    let transactions = Array::from(&Reflect::get(&response, &"transactions".into()).unwrap());
+    let input = Array::from(&Reflect::get(&transactions.get(0), &"inputs".into()).unwrap()).get(0);
+    let verbose = Reflect::get(&input, &"verboseData".into()).unwrap();
+    let entry = Reflect::get(&verbose, &"utxoEntry".into()).unwrap();
+    assert_eq!(Reflect::get(&entry, &"amount".into()).unwrap(), JsValue::from(js_sys::BigInt::from(42u64)));
+    assert_eq!(Reflect::get(&entry, &"blockDaaScore".into()).unwrap(), JsValue::from(js_sys::BigInt::from(u64::MAX)));
+    assert_eq!(Reflect::get(&entry, &"covenantId".into()).unwrap().as_string(), Some(hash.to_string()));
+    assert_eq!(Reflect::get(&input, &"computeBudget".into()).unwrap().as_f64(), Some(123.0));
+}
+
+#[wasm_bindgen_test]
 fn get_utxos_by_addresses_v2_request_accepts_address_array() {
     let address = Address::new(Prefix::Testnet, Version::PubKey, &[0; 32]);
     let args = Array::of1(&JsValue::from_str(&address.to_string()));

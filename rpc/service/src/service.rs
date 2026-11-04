@@ -1183,6 +1183,31 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
     }
 
+    async fn get_transactions_by_accepting_block_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByAcceptingBlockRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlockResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let tx_ids = Some(request.transaction_ids);
+        let result = match request.accepting_block {
+            RpcAcceptingBlock::Hash(hash) => {
+                session.async_get_transactions_by_accepting_block(hash, tx_ids, TransactionType::SignableTransaction).await?
+            }
+            RpcAcceptingBlock::DaaScore(score) => {
+                session.async_get_transactions_by_accepting_daa_score(score, tx_ids, TransactionType::SignableTransaction).await?
+            }
+        };
+        let TransactionQueryResult::SignableTransaction(transactions) = result else {
+            return Err(RpcError::General("expected populated transactions from consensus".to_string()));
+        };
+        Ok(GetTransactionsByAcceptingBlockResponse { transactions: transactions.iter().map(Into::into).collect() })
+    }
+
     async fn get_utxo_return_address_call(
         &self,
         _connection: Option<&DynRpcConnection>,

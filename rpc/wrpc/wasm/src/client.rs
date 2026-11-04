@@ -1074,6 +1074,8 @@ build_wrpc_wasm_bindgen_interface!(
         /// Retrieves the virtual chain corresponding to a specified block hash.
         /// Returned information: Virtual chain information. (Version 2)
         /// May be used to get fully populated transactions
-        GetVirtualChainFromBlockV2
+        GetVirtualChainFromBlockV2,
+        /// Returns fully populated transactions accepted by a block identified by hash or DAA score.
+        GetTransactionsByAcceptingBlock
     ]
 );

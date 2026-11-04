@@ -514,6 +514,28 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
 
+    /// Returns full transactions and their input UTXOs in the requested order.
+    /// The transaction IDs must be nonempty, unique, and accepted by the specified block.
+    async fn get_transactions_by_accepting_block(
+        &self,
+        accepting_block: RpcAcceptingBlock,
+        transaction_ids: Vec<RpcTransactionId>,
+    ) -> RpcResult<Vec<RpcOptionalTransaction>> {
+        Ok(self
+            .get_transactions_by_accepting_block_call(
+                None,
+                GetTransactionsByAcceptingBlockRequest::new(accepting_block, transaction_ids),
+            )
+            .await?
+            .transactions)
+    }
+
+    async fn get_transactions_by_accepting_block_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByAcceptingBlockRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlockResponse>;
+
     async fn get_utxo_return_address(&self, txid: RpcHash, accepting_block_daa_score: u64) -> RpcResult<RpcAddress> {
         Ok(self
             .get_utxo_return_address_call(None, GetUtxoReturnAddressRequest { txid, accepting_block_daa_score })

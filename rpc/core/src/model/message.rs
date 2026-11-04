@@ -2990,6 +2990,62 @@ impl Deserializer for GetBlockRewardInfoResponse {
     }
 }
 
+/// Requests fully populated transactions accepted by the specified block.
+/// Transaction IDs must be nonempty and unique. Results follow the requested order.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionsByAcceptingBlockRequest {
+    pub accepting_block: RpcAcceptingBlock,
+    pub transaction_ids: Vec<RpcTransactionId>,
+}
+
+impl GetTransactionsByAcceptingBlockRequest {
+    pub fn new(accepting_block: RpcAcceptingBlock, transaction_ids: Vec<RpcTransactionId>) -> Self {
+        Self { accepting_block, transaction_ids }
+    }
+}
+
+impl Serializer for GetTransactionsByAcceptingBlockRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcAcceptingBlock, &self.accepting_block, writer)?;
+        store!(Vec<RpcTransactionId>, &self.transaction_ids, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionsByAcceptingBlockRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let accepting_block = deserialize!(RpcAcceptingBlock, reader)?;
+        let transaction_ids = load!(Vec<RpcTransactionId>, reader)?;
+        Ok(Self { accepting_block, transaction_ids })
+    }
+}
+
+/// Full transactions with populated input UTXOs. Containing-block metadata is not supplied.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionsByAcceptingBlockResponse {
+    pub transactions: Vec<RpcOptionalTransaction>,
+}
+
+impl Serializer for GetTransactionsByAcceptingBlockResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcOptionalTransaction>, &self.transactions, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionsByAcceptingBlockResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
+        Ok(Self { transactions })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxoReturnAddressRequest {

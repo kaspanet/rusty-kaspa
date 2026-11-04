@@ -1986,6 +1986,65 @@ try_from!( args: GetFeeEstimateExperimentalResponse, IGetFeeEstimateExperimental
     Ok(response)
 });
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ACCEPTING_BLOCK: &'static str = r#"
+    /** An accepting block hash or an exact selected-chain DAA score. @category Node RPC */
+    export type AcceptingBlock = { hash: HexString; daaScore?: never } | { daaScore: bigint; hash?: never };
+
+    /** Full transaction returned by getTransactionsByAcceptingBlock. @category Node RPC */
+    export interface IPopulatedRpcTransaction extends Omit<ITransaction, "inputs" | "outputs" | "verboseData"> {
+        inputs: (Omit<ITransactionInput, "verboseData"> & {
+            verboseData: {
+                utxoEntry: Omit<IUtxoEntry, "outpoint" | "address" | "covenantId"> & {
+                    covenantId?: HexString | null;
+                    verboseData?: null;
+                };
+            };
+        })[];
+        outputs: (Omit<ITransactionOutput, "verboseData"> & {
+            covenant?: ICovenantBinding | null;
+            verboseData?: null;
+        })[];
+        verboseData: {
+            transactionId: HexString;
+            hash: HexString;
+            computeMass?: bigint | null;
+            blockHash?: null;
+            blockTime?: null;
+        };
+    }
+"#;
+
+declare! {
+    IGetTransactionsByAcceptingBlockRequest,
+    r#"
+    /** @category Node RPC */
+    export interface IGetTransactionsByAcceptingBlockRequest {
+        acceptingBlock: AcceptingBlock;
+        /** Nonempty, unique transaction IDs. Results follow this order. */
+        transactionIds: HexString[];
+    }
+    "#,
+}
+
+try_from!(args: IGetTransactionsByAcceptingBlockRequest, GetTransactionsByAcceptingBlockRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetTransactionsByAcceptingBlockResponse,
+    r#"
+    /** @category Node RPC */
+    export interface IGetTransactionsByAcceptingBlockResponse {
+        transactions: IPopulatedRpcTransaction[];
+    }
+    "#,
+}
+
+try_from!(args: GetTransactionsByAcceptingBlockResponse, IGetTransactionsByAcceptingBlockResponse, {
+    Ok(to_value(&args)?.into())
+});
+
 declare! {
     IGetUtxoReturnAddressRequest,
     r#"
