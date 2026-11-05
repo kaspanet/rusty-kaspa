@@ -26,6 +26,13 @@ impl From<&RpcUtxosByAddressesEntry> for UtxoEntryReference {
     }
 }
 
+impl From<RpcUtxosByCovenantIdsEntry> for UtxoEntryReference {
+    fn from(entry: RpcUtxosByCovenantIdsEntry) -> Self {
+        let RpcUtxosByCovenantIdsEntry { address, outpoint, utxo_entry } = entry;
+        RpcUtxosByAddressesEntry { address, outpoint, utxo_entry }.into()
+    }
+}
+
 cfg_if::cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
 

@@ -91,6 +91,7 @@ impl DaemonArgs {
         }
         if self.utxoindex {
             args.push("--utxoindex".to_owned());
+            args.push("--covenant-index".to_owned());
         }
         args
     }
@@ -113,6 +114,7 @@ impl DaemonArgs {
         args.prealloc_address = Some(self.prealloc_address().to_string());
         args.max_tracked_addresses = self.max_tracked_addresses;
         args.utxoindex = self.utxoindex;
+        args.covenant_index = self.utxoindex;
     }
 
     #[cfg(not(feature = "devnet-prealloc"))]
@@ -121,6 +123,7 @@ impl DaemonArgs {
         args.listen = Some(format!("0.0.0.0:{}", self.p2p).try_into().unwrap());
         args.max_tracked_addresses = self.max_tracked_addresses;
         args.utxoindex = self.utxoindex;
+        args.covenant_index = self.utxoindex;
     }
 }
 
