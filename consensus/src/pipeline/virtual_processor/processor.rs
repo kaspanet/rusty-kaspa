@@ -1546,7 +1546,7 @@ impl VirtualStateProcessor {
 
             virtual_write.utxo_set.clear().unwrap();
             for chunk in &pruning_meta_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
-                virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
+                virtual_write.utxo_set.copy_imported_from_iterator(chunk).unwrap();
             }
         }
 
