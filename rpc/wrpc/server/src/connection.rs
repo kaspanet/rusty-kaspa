@@ -145,6 +145,15 @@ impl Display for Connection {
     }
 }
 
+impl kaspa_rpc_core::api::connection::RpcConnection for Connection {
+    fn id(&self) -> u64 {
+        self.inner.id
+    }
+    fn is_authenticated(&self) -> bool {
+        false // v1: wRPC has no auth mechanism
+    }
+}
+
 #[async_trait::async_trait]
 impl ConnectionT for Connection {
     type Notification = Notification;

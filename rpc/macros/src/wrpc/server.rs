@@ -53,8 +53,13 @@ impl ToTokens for RpcTable {
                     interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: Serializable<#request_type>| async move {
                         let verbose = server_ctx.verbose();
                         if verbose { workflow_log::log_info!("request: {:?}",request); }
-                        // TODO: RPC-CONNECT
-                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(None, request.into_inner()).await
+                        let dyn_conn: kaspa_rpc_core::api::connection::DynRpcConnection = std::sync::Arc::new(connection_ctx.clone());
+                        let conn_ref = Some(&dyn_conn);
+                        if let Some(core_svc) = server_ctx.core_service() {
+                            core_svc.require_any_auth(conn_ref)
+                                .map_err(|e|ServerError::Text(e.to_string()))?;
+                        }
+                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(conn_ref, request.into_inner()).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
                         if verbose { workflow_log::log_info!("response: {:?}",response); }
                         Ok(Serializable(response))
