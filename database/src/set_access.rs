@@ -2,7 +2,7 @@ use crate::{cache::CachePolicy, db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use parking_lot::{RwLock, RwLockReadGuard};
-use rocksdb::{IterateBounds, IteratorMode, ReadOptions};
+use rocksdb::{IteratorMode, ReadOptions};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{collections::hash_map::RandomState, fmt::Debug, hash::BuildHasher, marker::PhantomData, sync::Arc};
 
@@ -135,10 +135,11 @@ where
         Ok(DbKey::new_with_bucket(&self.prefix, key, bin_data))
     }
 
+    /// Members written earlier to the same batch are not deleted.
     pub fn delete_bucket(&self, mut writer: impl DbWriter, key: TKey) -> Result<(), StoreError> {
-        let db_key = DbKey::new_with_bucket(&self.prefix, &key, []);
-        let (from, to) = rocksdb::PrefixRange(db_key.as_ref()).into_bounds();
-        writer.delete_range(from.unwrap(), to.unwrap())?;
+        for data in self.seek_iterator(key.clone(), usize::MAX, false) {
+            writer.delete(DbKey::new_with_bucket(&self.prefix, &key, data?))?;
+        }
         Ok(())
     }
 
