@@ -89,11 +89,17 @@ impl RpcCommand for Call {
                 call!(client, params, GetMempoolEntriesByAddressesRequest, get_mempool_entries_by_addresses_call)
             }
             "get-utxos-by-addresses" => call!(client, params, GetUtxosByAddressesRequest, get_utxos_by_addresses_call),
+            "get-utxos-by-covenant-ids" => {
+                call!(client, params, GetUtxosByCovenantIdsRequest, get_utxos_by_covenant_ids_call)
+            }
             "get-balance-by-address" => call!(client, params, GetBalanceByAddressRequest, get_balance_by_address_call),
             "get-balances-by-addresses" => {
                 call!(client, params, GetBalancesByAddressesRequest, get_balances_by_addresses_call)
             }
             "get-utxo-return-address" => call!(client, params, GetUtxoReturnAddressRequest, get_utxo_return_address_call),
+            "get-transactions-by-accepting-block" => {
+                call!(client, params, GetTransactionsByAcceptingBlockRequest, get_transactions_by_accepting_block_call)
+            }
             "get-block-reward-info" => call!(client, params, GetBlockRewardInfoRequest, get_block_reward_info_call),
             other => return Err(CliError::Usage(format!("unknown method '{other}'"))),
         };

@@ -34,8 +34,10 @@ use crate::commands::get_sink_blue_score::GetSinkBlueScore;
 use crate::commands::get_subnetwork::GetSubnetwork;
 use crate::commands::get_sync_status::GetSyncStatus;
 use crate::commands::get_system_info::GetSystemInfo;
+use crate::commands::get_transactions_by_accepting_block::GetTransactionsByAcceptingBlock;
 use crate::commands::get_utxo_return_address::GetUtxoReturnAddress;
 use crate::commands::get_utxos_by_addresses::GetUtxosByAddresses;
+use crate::commands::get_utxos_by_covenant_ids::GetUtxosByCovenantIds;
 use crate::commands::get_virtual_chain_from_block::GetVirtualChainFromBlock;
 use crate::commands::get_virtual_chain_from_block_v2::GetVirtualChainFromBlockV2;
 use crate::commands::ping::Ping;
@@ -199,12 +201,16 @@ pub enum Commands {
     GetMempoolEntriesByAddresses(GetMempoolEntriesByAddresses),
     /// Get UTXOs for given addresses.
     GetUtxosByAddresses(GetUtxosByAddresses),
+    /// Get paginated UTXOs for covenant IDs.
+    GetUtxosByCovenantIds(GetUtxosByCovenantIds),
     /// Get the balance of an address.
     GetBalanceByAddress(GetBalanceByAddress),
     /// Get balances for given addresses.
     GetBalancesByAddresses(GetBalancesByAddresses),
     /// Get the return address for a spent UTXO.
     GetUtxoReturnAddress(GetUtxoReturnAddress),
+    /// Get fully populated transactions by accepting block hash or DAA score.
+    GetTransactionsByAcceptingBlock(GetTransactionsByAcceptingBlock),
 
     /// Get a block template for mining.
     GetBlockTemplate(GetBlockTemplate),
@@ -294,5 +300,50 @@ impl ConfigKey {
             ConfigKey::Output => "output",
             ConfigKey::Timeout => "timeout",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepting_block_transaction_command_accepts_score_and_multiple_ids() {
+        let cli = Cli::try_parse_from([
+            "kaspa-rpc",
+            "get-transactions-by-accepting-block",
+            "--accepting-block-daa-score",
+            "42",
+            "--transaction-id",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--transaction-id",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ]);
+
+        assert!(cli.is_ok(), "accepting-block transaction command should parse: {cli:?}");
+    }
+
+    #[test]
+    fn covenant_utxo_command_accepts_filters_cursor_and_budget() {
+        let cli = Cli::try_parse_from([
+            "kaspa-rpc",
+            "get-utxos-by-covenant-ids",
+            "--covenant-id",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "--covenant-id",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "--script-public-key",
+            "000051",
+            "--from-daa-score",
+            "10",
+            "--to-daa-score",
+            "20",
+            "--cursor",
+            r#"{"startCovenantId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","startDaaScore":9,"startScriptPublicKey":"000051","startOutpoint":{"transactionId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","index":2}}"#,
+            "--budget",
+            "100",
+        ]);
+
+        assert!(cli.is_ok(), "covenant UTXO command should parse every request field: {cli:?}");
     }
 }

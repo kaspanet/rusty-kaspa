@@ -3920,12 +3920,12 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-cli"
-version = "2.0.1"
+version = "2.1.0"
 dependencies = [
- "async-channel 2.3.1",
+ "async-channel",
  "clap",
  "clap_complete",
- "dirs",
+ "dirs 5.0.1",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-grpc-client",
