@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 use criterion::{Criterion, SamplingMode, black_box, criterion_group, criterion_main};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::processes::transaction_validator::tx_validation_in_utxo_context::{

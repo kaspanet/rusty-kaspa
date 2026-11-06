@@ -3,14 +3,16 @@ pub mod constants;
 pub mod genesis;
 pub mod params;
 
+use alloc::string::String;
+use alloc::vec::Vec;
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 
 #[cfg(feature = "devnet-prealloc")]
 use crate::utxo::utxo_collection::UtxoCollection;
 #[cfg(feature = "devnet-prealloc")]
-use std::sync::Arc;
+use alloc::sync::Arc;
 
-use std::ops::Deref;
+use core::ops::Deref;
 
 use {
     constants::perf::{PERF_PARAMS, PerfParams},
@@ -41,6 +43,9 @@ pub struct Config {
     // TODO: move non-consensus parameters like utxoindex to a higher scoped Config
     /// Enable the UTXO index
     pub utxoindex: bool,
+
+    /// Enable the covenant UTXO index (requires the UTXO index)
+    pub covenant_index: bool,
 
     /// Enable RPC commands which affect the state of the node
     pub unsafe_rpc: bool,
@@ -89,6 +94,7 @@ impl Config {
             is_archival: false,
             enable_sanity_checks: false,
             utxoindex: false,
+            covenant_index: false,
             unsafe_rpc: false,
             enable_unsynced_mining: false,
             enable_mainnet_mining: false,

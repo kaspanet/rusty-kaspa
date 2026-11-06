@@ -264,6 +264,8 @@ impl RpcApi for GrpcClient {
     route!(shutdown_call, Shutdown);
     route!(get_headers_call, GetHeaders);
     route!(get_utxos_by_addresses_call, GetUtxosByAddresses);
+    route!(get_utxos_by_addresses_v2_call, GetUtxosByAddressesV2);
+    route!(get_utxos_by_covenant_ids_call, GetUtxosByCovenantIds);
     route!(get_balance_by_address_call, GetBalanceByAddress);
     route!(get_balances_by_addresses_call, GetBalancesByAddresses);
     route!(get_sink_blue_score_call, GetSinkBlueScore);
@@ -279,6 +281,7 @@ impl RpcApi for GrpcClient {
     route!(get_block_reward_info_call, GetBlockRewardInfo);
     route!(get_utxo_return_address_call, GetUtxoReturnAddress);
     route!(get_virtual_chain_from_block_v2_call, GetVirtualChainFromBlockV2);
+    route!(get_transactions_by_accepting_block_call, GetTransactionsByAcceptingBlock);
     route!(get_seq_commit_lane_proof_call, GetSeqCommitLaneProof);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

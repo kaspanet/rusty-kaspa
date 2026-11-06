@@ -1,6 +1,7 @@
 use crate::BlockLevel;
 
 use super::{block::RuleError, tx::TxRuleError};
+use alloc::string::String;
 use kaspa_hashes::Hash;
 use thiserror::Error;
 
@@ -14,6 +15,9 @@ pub enum PruningImportError {
 
     #[error("the proof header {0} is missing known parents at level {1}")]
     PruningProofHeaderWithNoKnownParents(Hash, BlockLevel),
+
+    #[error("the proof header {0} has no parents and isn't genesis")]
+    NonGenesisParentlessHeader(Hash),
 
     #[error("the proof header {0} at level {1} has blue work inconsistent with its parents")]
     PruningProofInconsistentBlueWork(Hash, BlockLevel),
@@ -115,4 +119,4 @@ pub enum ProofWeakness {
     NotEnoughHeaders,
 }
 
-pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;
+pub type PruningImportResult<T> = core::result::Result<T, PruningImportError>;

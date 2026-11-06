@@ -34,12 +34,11 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
   "mass_per_tx_byte": 1,
   "mass_per_script_pub_key_byte": 10,
   "mass_per_sig_op": 1000,
-  "prior_block_mass_limits": {
+  "block_mass_limits": {
     "storage": 500000,
     "compute": 500000,
-    "transient": 500000
+    "transient": 1000000
   },
-  "new_transient_mass_limit": 1000000,
   "storage_mass_parameter": 10000,
   "deflationary_phase_daa_score": 15519600,
   "pre_deflationary_phase_base_subsidy": 50000000000,
@@ -62,8 +61,7 @@ If the file cannot be read or parsed, `kaspad` prints the error and exits.
     "lanes_per_block": 16,
     "gas_per_lane": 500000
   },
-  "crescendo_activation": 0,
-  "toccata_activation": 0
+  "crescendo_activation": 0
 }
 ```
 
@@ -83,14 +81,12 @@ The `blockrate` field must either be absent or provided in full with all subfiel
 | max_coinbase_payload_len                    | Maximum coinbase payload length |
 | max_tx_inputs                               | Max transaction inputs |
 | max_tx_outputs                              | Max transaction outputs |
-| prior_max_signature_script_len              | Pre-Toccata max signature script length |
-| new_max_signature_script_len                | Post-Toccata max signature script length |
+| max_signature_script_len                    | Max signature script length |
 | max_script_public_key_len                   | Max script public key length |
 | mass_per_tx_byte                            | Mass per transaction byte     |
 | mass_per_script_pub_key_byte                | Mass per script public key byte |
 | mass_per_sig_op                             | Mass per signature operation  |
-| prior_block_mass_limits                     | Pre-Toccata block mass limits |
-| new_transient_mass_limit                    | Post-Toccata transient mass limit |
+| block_mass_limits                           | Per-dimension block mass limits |
 | block_lane_limits                           | Block lane limits |
 | storage_mass_parameter                      | Storage mass parameter        |
 | deflationary_phase_daa_score                | Deflationary phase DAA score  |
@@ -100,7 +96,6 @@ The `blockrate` field must either be absent or provided in full with all subfiel
 | pruning_proof_m                             | Pruning proof M parameter                        |
 | blockrate                                   | Blockrate-related parameters            |
 | crescendo_activation                        | Crescendo DAA score                        |
-| toccata_activation                          | Toccata DAA score                        |
 
 **blockrate sub-fields:**
 
@@ -116,6 +111,14 @@ The `blockrate` field must either be absent or provided in full with all subfiel
 | finality_depth                      | Finality depth                      |
 | pruning_depth                       | Pruning depth                       |
 | coinbase_maturity                   | Coinbase maturity                   |
+
+**block_mass_limits sub-fields:**
+
+| Field                              | Description                |
+|-------------------------------------|----------------------------|
+| storage                             | Storage mass limit         |
+| compute                             | Compute mass limit         |
+| transient                           | Transient mass limit       |
 
 **block_lane_limits sub-fields:**
 

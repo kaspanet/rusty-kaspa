@@ -54,6 +54,7 @@ async fn sanity_test() {
         enable_unsynced_mining: true,
         block_template_cache_lifetime: Some(0),
         utxoindex: true,
+        covenant_index: true,
         unsafe_rpc: true,
         ..Default::default()
     };
@@ -445,6 +446,34 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetUtxosByAddressesV2 => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32])];
+                    let response = rpc_client
+                        .get_utxos_by_addresses_v2_call(None, GetUtxosByAddressesV2Request::new(addresses, None, None, None, None))
+                        .await
+                        .unwrap();
+                    assert!(response.entries.is_empty());
+                })
+            }
+
+            KaspadPayloadOps::GetUtxosByCovenantIds => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let covenant_ids = vec![Hash::from_bytes([1u8; 32])];
+                    let response = rpc_client
+                        .get_utxos_by_covenant_ids_call(
+                            None,
+                            GetUtxosByCovenantIdsRequest::new(covenant_ids, vec![], None, None, None, None),
+                        )
+                        .await
+                        .unwrap();
+                    assert!(response.entries.is_empty());
+                    assert!(response.next_cursor.is_none());
+                })
+            }
+
             KaspadPayloadOps::GetBalanceByAddress => {
                 let rpc_client = client.clone();
                 tst!(op, {
@@ -707,6 +736,19 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetTransactionsByAcceptingBlock => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_transactions_by_accepting_block(
+                            RpcAcceptingBlock::Hash(SIMNET_GENESIS.hash),
+                            vec![Hash::from_bytes([0; 32])],
+                        )
+                        .await;
+                    assert!(response.is_err());
+                })
+            }
+
             KaspadPayloadOps::GetVirtualChainFromBlockV2 => {
                 let rpc_client = client.clone();
                 tst!(op, {
@@ -833,6 +875,148 @@ async fn sanity_test() {
     //
     client.disconnect().await.unwrap();
     drop(client);
+    daemon.shutdown();
+}
+
+/// Full populated transactions through gRPC, wRPC Borsh, and wRPC JSON.
+#[tokio::test]
+async fn transactions_by_accepting_block_test() {
+    use kaspa_consensus_core::{
+        config::params::SIMNET_PARAMS,
+        merkle::calc_hash_merkle_root,
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::{
+            MutableTransaction, ScriptPublicKey, TransactionInput, TransactionOutpoint, TransactionOutput, TransactionQueryResult,
+            TransactionType, UtxoEntry,
+        },
+    };
+    use kaspa_consensusmanager::ConsensusManager;
+    use kaspa_rpc_core::api::rpc::MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS;
+    use kaspa_txscript::{
+        extract_script_pub_key_address, opcodes::codes::OpTrue, pay_to_script_hash_script, script_builder::ScriptBuilder,
+    };
+    use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding, prelude::ConnectOptions};
+    use kaspa_wrpc_server::address::WrpcNetAddress;
+
+    async fn mine(client: &dyn RpcApi, address: &Address, txs: &[Transaction]) -> (Header, Transaction) {
+        let mut block = client.get_block_template(address.clone(), vec![]).await.unwrap().block;
+        block.transactions.extend(txs.iter().map(RpcTransaction::from));
+        let transactions = block.transactions.iter().cloned().map(Transaction::try_from).collect::<Result<Vec<_>, _>>().unwrap();
+        block.header.hash_merkle_root = calc_hash_merkle_root(transactions.iter());
+        let header = Header::try_from(&block.header).unwrap();
+        assert_eq!(client.submit_block(block, false).await.unwrap().report, kaspa_rpc_core::SubmitBlockReport::Success);
+        crate::common::utils::wait_for(
+            10,
+            500,
+            || async { client.get_sink().await.unwrap().sink == header.hash },
+            "submitted block did not become sink",
+        )
+        .await;
+        (header, transactions[0].clone())
+    }
+
+    // Keep this test small by making its coinbase rewards immediately spendable.
+    let mut blockrate = SIMNET_PARAMS.blockrate.clone();
+    blockrate.coinbase_maturity = 0;
+    let overrides = tempfile::NamedTempFile::new().unwrap();
+    serde_json::to_writer(&overrides, &serde_json::json!({ "blockrate": blockrate })).unwrap();
+    let args = Args {
+        simnet: true,
+        disable_upnp: true,
+        enable_unsynced_mining: true,
+        block_template_cache_lifetime: Some(0),
+        override_params_file: Some(overrides.path().to_str().unwrap().to_string()),
+        ..Default::default()
+    };
+    let mut daemon = Daemon::new_random_with_args(args, fd_budget::test_limit());
+    let grpc = daemon.start().await;
+    let manager = Arc::downcast::<ConsensusManager>(daemon.core.find(ConsensusManager::IDENT).unwrap().into_any_arc()).unwrap();
+    let redeem_script = vec![OpTrue];
+    let funding_script = pay_to_script_hash_script(&redeem_script);
+    let address = extract_script_pub_key_address(&funding_script, Prefix::Simnet).unwrap();
+    let mut blocks = Vec::new();
+    for _ in 0..4 {
+        blocks.push(mine(&grpc, &address, &[]).await);
+    }
+
+    let session = manager.consensus().unguarded_session();
+    let transactions = (1..3)
+        .map(|i| {
+            let coinbase = &blocks[i].1;
+            let output = &coinbase.outputs[0];
+            let entry = UtxoEntry::new(output.value, output.script_public_key.clone(), blocks[i + 1].0.daa_score, true, None);
+            let tx = Transaction::new(
+                1,
+                vec![TransactionInput::new_with_compute_budget(
+                    TransactionOutpoint::new(coinbase.id(), 0),
+                    ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(),
+                    0,
+                    10,
+                )],
+                vec![TransactionOutput::new(output.value - 100_000, ScriptPublicKey::from_vec(0, vec![OpTrue]))],
+                0,
+                SUBNETWORK_ID_NATIVE,
+                0,
+                vec![],
+            );
+            let populated = MutableTransaction::with_entries(Arc::new(tx), vec![entry]);
+            let mass = session.calculate_transaction_contextual_masses(&populated).unwrap();
+            populated.tx.set_storage_mass(mass.storage_mass);
+            populated.tx.as_ref().clone()
+        })
+        .collect::<Vec<_>>();
+    mine(&grpc, &address, &transactions).await;
+    let (accepting, _) = mine(&grpc, &address, &[]).await;
+    // Query after the chain advances, when the input UTXOs have already been spent.
+    for _ in 0..3 {
+        mine(&grpc, &address, &[]).await;
+    }
+    let ids = transactions.iter().rev().map(Transaction::id).collect::<Vec<_>>();
+    let TransactionQueryResult::SignableTransaction(expected) = session
+        .async_get_transactions_by_accepting_block(accepting.hash, Some(ids.clone()), TransactionType::SignableTransaction)
+        .await
+        .unwrap()
+    else {
+        panic!("expected populated consensus transactions")
+    };
+    let expected = serde_json::to_value(GetTransactionsByAcceptingBlockResponse {
+        transactions: expected.iter().map(RpcOptionalTransaction::from).collect(),
+    })
+    .unwrap();
+
+    let borsh = daemon.client_manager().new_wrpc_client();
+    let json_port = match daemon.args.read().rpclisten_json.clone().unwrap() {
+        WrpcNetAddress::Custom(address) => address.normalize(0).port,
+        _ => unreachable!(),
+    };
+    let json =
+        KaspaRpcClient::new(WrpcEncoding::SerdeJson, Some(&format!("ws://localhost:{json_port}")), None, Some(daemon.network), None)
+            .unwrap();
+    for client in [&borsh, &json] {
+        client.connect(Some(ConnectOptions { block_async_connect: true, ..Default::default() })).await.unwrap();
+    }
+    for client in [&grpc as &dyn RpcApi, &borsh, &json] {
+        for selector in [RpcAcceptingBlock::Hash(accepting.hash), RpcAcceptingBlock::DaaScore(accepting.daa_score)] {
+            let response = client
+                .get_transactions_by_accepting_block_call(None, GetTransactionsByAcceptingBlockRequest::new(selector, ids.clone()))
+                .await
+                .unwrap();
+            assert_eq!(serde_json::to_value(response).unwrap(), expected);
+            for (query_ids, message) in [
+                (vec![], "not allowed to be empty"),
+                (vec![ids[0], ids[0]], "duplicate transaction id"),
+                (vec![ids[0]; MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS], "duplicate transaction id"),
+                (vec![ids[0]; MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS + 1], "accepts at most 8192 transaction IDs (got 8193)"),
+                (vec![ids[0], Hash::from_bytes([0xfe; 32])], "Did not find queried transactions"),
+            ] {
+                let error = client.get_transactions_by_accepting_block(selector, query_ids).await.unwrap_err();
+                assert!(error.to_string().contains(message), "unexpected error: {error}");
+            }
+        }
+    }
+    borsh.disconnect().await.unwrap();
+    json.disconnect().await.unwrap();
+    grpc.disconnect().await.unwrap();
     daemon.shutdown();
 }
 

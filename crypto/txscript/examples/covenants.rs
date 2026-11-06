@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::hashing::tx::transaction_v0_id_preimage;
 use kaspa_consensus_core::subnets::SubnetworkId;
@@ -30,7 +31,7 @@ fn counter_example() -> ScriptBuilderResult<()> {
     // Shared engine state
     let sig_cache = Cache::new(10_000);
     let reused_values = SigHashReusedValuesUnsync::new();
-    let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
+    let flags = Default::default();
 
     // Create the initial UTXO with counter = 0
     let mut state = CovenantState::new(0, &spk);

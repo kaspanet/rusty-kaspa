@@ -126,8 +126,12 @@ impl<'a, T> Iterator for EventArrayIterator<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.index < EVENT_TYPE_ARRAY.len() {
             true => {
-                self.index += 1;
-                Some(&self.array[EVENT_TYPE_ARRAY[self.index - 1]])
+                let prev = self.index;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    self.index += 1;
+                }
+                Some(&self.array[EVENT_TYPE_ARRAY[prev]])
             }
             false => None,
         }

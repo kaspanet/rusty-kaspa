@@ -1,3 +1,6 @@
+// Wallet code is exempt from the arithmetic-side-effects lint.
+#![allow(clippy::arithmetic_side_effects)]
+
 //!
 //! # Kaspa Wallet Core
 //!

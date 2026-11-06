@@ -1,14 +1,16 @@
 use kaspa_consensus_core::{
     BlockHashSet,
-    tx::{ScriptPublicKeys, TransactionOutpoint},
+    tx::{ScriptPublicKey, ScriptPublicKeys, TransactionOutpoint},
     utxo::utxo_diff::UtxoDiff,
 };
 use kaspa_consensusmanager::spawn_blocking;
 use kaspa_database::prelude::StoreResult;
 use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::indexed_utxos::{
+    BalanceByScriptPublicKey, CovenantUtxoPageCursor, OrderedCovenantUtxoEntriesPage, OrderedUtxoEntriesPage, UtxoPageCursor,
+};
 use parking_lot::RwLock;
-use std::{collections::HashSet, fmt::Debug, sync::Arc};
+use std::{collections::HashSet, fmt::Debug, ops::RangeInclusive, sync::Arc};
 
 use crate::{
     errors::UtxoIndexResult,
@@ -27,6 +29,28 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     /// Note: Use a read lock when accessing this method
     fn get_utxos_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey>;
 
+    /// Retrieve ordered UTXOs for multiple script public keys with cursor pagination.
+    fn get_utxos_from_script_public_keys_by_daa_score_page(
+        &self,
+        script_public_keys: Vec<ScriptPublicKey>,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: Option<UtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> UtxoIndexResult<OrderedUtxoEntriesPage>;
+
+    /// Retrieve ordered UTXOs for multiple covenant ids with cursor pagination. Ids are traversed
+    /// in ascending covenant id order regardless of request order; an empty script public key list
+    /// includes rows of every script public key; amount and is_coinbase are resolved from the
+    /// script public key store. A cursor resumes at its covenant id, skipping ids that sort before it.
+    fn get_utxos_by_covenant_ids_page(
+        &self,
+        covenant_ids: Vec<Hash>,
+        daa_score_range: RangeInclusive<u64>,
+        script_public_keys: &[ScriptPublicKey],
+        cursor: Option<CovenantUtxoPageCursor>,
+        budget: Option<usize>,
+    ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage>;
+
     fn get_balance_by_script_public_keys(&self, script_public_keys: ScriptPublicKeys) -> StoreResult<BalanceByScriptPublicKey>;
 
     // This can have a big memory footprint, so it should be used only for tests.
@@ -41,7 +65,7 @@ pub trait UtxoIndexApi: Send + Sync + Debug {
     ///
     /// Note:
     /// 1) Use a read lock when accessing this method
-    /// 2) due to potential sync-gaps is_synced is unreliable while consensus is actively resolving virtual states.  
+    /// 2) due to potential sync-gaps is_synced is unreliable while consensus is actively resolving virtual states.
     fn is_synced(&self) -> UtxoIndexResult<bool>;
 
     /// Update the utxoindex with the given utxo_diff, and tips.
@@ -72,6 +96,35 @@ impl UtxoIndexProxy {
 
     pub async fn get_utxos_by_script_public_keys(self, script_public_keys: ScriptPublicKeys) -> StoreResult<UtxoSetByScriptPublicKey> {
         spawn_blocking(move || self.inner.read().get_utxos_by_script_public_keys(script_public_keys)).await.unwrap()
+    }
+
+    pub async fn get_utxos_from_script_public_keys_by_daa_score_page(
+        self,
+        script_public_keys: Vec<ScriptPublicKey>,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: Option<UtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> UtxoIndexResult<OrderedUtxoEntriesPage> {
+        spawn_blocking(move || {
+            self.inner.read().get_utxos_from_script_public_keys_by_daa_score_page(script_public_keys, daa_score_range, cursor, limit)
+        })
+        .await
+        .unwrap()
+    }
+
+    pub async fn get_utxos_by_covenant_ids_page(
+        self,
+        covenant_ids: Vec<Hash>,
+        daa_score_range: RangeInclusive<u64>,
+        script_public_keys: Vec<ScriptPublicKey>,
+        cursor: Option<CovenantUtxoPageCursor>,
+        budget: Option<usize>,
+    ) -> UtxoIndexResult<OrderedCovenantUtxoEntriesPage> {
+        spawn_blocking(move || {
+            self.inner.read().get_utxos_by_covenant_ids_page(covenant_ids, daa_score_range, &script_public_keys, cursor, budget)
+        })
+        .await
+        .unwrap()
     }
 
     pub async fn get_balance_by_script_public_keys(

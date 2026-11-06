@@ -540,15 +540,17 @@ impl TryFrom<GetMetricsResponse> for MetricsData {
             node_grpc_user_bytes_tx: bandwidth_metrics.grpc_bytes_tx,
             node_grpc_user_bytes_rx: bandwidth_metrics.grpc_bytes_rx,
 
-            node_total_bytes_tx: bandwidth_metrics.borsh_bytes_tx
-                + bandwidth_metrics.json_bytes_tx
-                + bandwidth_metrics.p2p_bytes_tx
-                + bandwidth_metrics.grpc_bytes_tx,
+            node_total_bytes_tx: bandwidth_metrics
+                .borsh_bytes_tx
+                .saturating_add(bandwidth_metrics.json_bytes_tx)
+                .saturating_add(bandwidth_metrics.p2p_bytes_tx)
+                .saturating_add(bandwidth_metrics.grpc_bytes_tx),
 
-            node_total_bytes_rx: bandwidth_metrics.borsh_bytes_rx
-                + bandwidth_metrics.json_bytes_rx
-                + bandwidth_metrics.p2p_bytes_rx
-                + bandwidth_metrics.grpc_bytes_rx,
+            node_total_bytes_rx: bandwidth_metrics
+                .borsh_bytes_rx
+                .saturating_add(bandwidth_metrics.json_bytes_rx)
+                .saturating_add(bandwidth_metrics.p2p_bytes_rx)
+                .saturating_add(bandwidth_metrics.grpc_bytes_rx),
 
             node_resident_set_size_bytes: process_metrics.resident_set_size,
             node_virtual_memory_size_bytes: process_metrics.virtual_memory_size,

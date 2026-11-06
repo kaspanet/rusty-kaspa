@@ -1,3 +1,6 @@
+// Test code is exempt from the arithmetic-side-effects lint.
+#![allow(clippy::arithmetic_side_effects)]
+
 #[cfg(feature = "heap")]
 #[global_allocator]
 #[cfg(not(feature = "heap"))]

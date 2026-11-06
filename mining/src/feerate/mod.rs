@@ -70,6 +70,7 @@ impl FeerateEstimatorArgs {
         Self { network_blocks_per_second, maximum_mass_per_block }
     }
 
+    #[allow(clippy::arithmetic_side_effects, reason = "Both values are relatively small.")]
     pub fn network_mass_per_second(&self) -> u64 {
         self.network_blocks_per_second * self.maximum_mass_per_block
     }

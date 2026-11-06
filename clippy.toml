@@ -1,2 +1,8 @@
 too-many-arguments-threshold = 10
 large-error-threshold = 256
+arithmetic-side-effects-allowed = [
+    "kaspa_consensus_core::api::counters::ProcessingCountersSnapshot",
+    "MempoolCountersSnapshot",
+    "kaspa_mining::P2pTxCountSample",
+    "kaspa_txscript::caches::TxScriptCacheCountersSnapshot",
+]

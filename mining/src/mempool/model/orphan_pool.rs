@@ -71,10 +71,10 @@ impl OrphanPool {
             return Ok(());
         }
         self.check_orphan_duplicate(&transaction)?;
-        self.check_orphan_mass(virtual_daa_score, &transaction)?;
+        self.check_orphan_mass(&transaction)?;
         self.check_orphan_double_spend(&transaction)?;
         // Make sure there is room in the pool for the new transaction
-        self.limit_orphan_pool_size(1)?;
+        self.limit_orphan_pool_size()?;
         self.add_orphan(virtual_daa_score, transaction, priority)?;
         Ok(())
     }
@@ -82,8 +82,11 @@ impl OrphanPool {
     /// Make room in the pool for at least `free_slots` new transactions.
     ///
     /// An error is returned if the pool is filled with high priority transactions.
-    fn limit_orphan_pool_size(&mut self, free_slots: usize) -> RuleResult<()> {
-        while self.all_orphans.len() + free_slots > self.config.maximum_orphan_transaction_count as usize {
+    fn limit_orphan_pool_size(&mut self) -> RuleResult<()> {
+        const FREE_SLOTS: usize = 1;
+
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+        while self.all_orphans.len() + FREE_SLOTS > self.config.maximum_orphan_transaction_count as usize {
             let orphan_to_remove = self.get_random_low_priority_orphan();
             if orphan_to_remove.is_none() {
                 // this means all orphans are high priority so return an error
@@ -98,8 +101,8 @@ impl OrphanPool {
         Ok(())
     }
 
-    fn check_orphan_mass(&self, virtual_daa_score: u64, transaction: &MutableTransaction) -> RuleResult<()> {
-        let cofactors = self.config.mempool_mass_cofactors.get(virtual_daa_score);
+    fn check_orphan_mass(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+        let cofactors = self.config.mempool_mass_cofactors;
         let normalized_mass = transaction.calculated_non_contextual_masses.unwrap().normalized_max(&cofactors);
         if normalized_mass > self.config.maximum_orphan_transaction_normalized_mass {
             return Err(RuleError::RejectBadOrphanMass(normalized_mass, self.config.maximum_orphan_transaction_normalized_mass));
@@ -264,7 +267,7 @@ impl OrphanPool {
     }
 
     pub(crate) fn expire_low_priority_transactions(&mut self, virtual_daa_score: u64) -> RuleResult<()> {
-        if virtual_daa_score < self.last_expire_scan + self.config.orphan_expire_scan_interval_daa_score {
+        if virtual_daa_score < self.last_expire_scan.saturating_add(self.config.orphan_expire_scan_interval_daa_score) {
             return Ok(());
         }
 
@@ -275,7 +278,7 @@ impl OrphanPool {
             .values()
             .filter_map(|x| {
                 if (x.priority == Priority::Low)
-                    && virtual_daa_score > x.added_at_daa_score + self.config.orphan_expire_interval_daa_score
+                    && virtual_daa_score > x.added_at_daa_score.saturating_add(self.config.orphan_expire_interval_daa_score)
                 {
                     Some(x.id())
                 } else {

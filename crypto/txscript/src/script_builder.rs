@@ -1,9 +1,8 @@
 use std::iter::once;
 
 use crate::{
-    EngineFlags,
+    EngineFlags, MAX_SCRIPT_ELEMENT_SIZE, MAX_SCRIPTS_SIZE,
     data_stack::OpcodeData,
-    max_script_element_size, max_scripts_size,
     opcodes::{OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL, OP_SMALL_INT_MIN_VAL, codes::*},
 };
 use hexplay::{HexView, HexViewBuilder};
@@ -33,9 +32,6 @@ pub enum ScriptBuilderError {
 
     #[error("adding integer {0} would exceed the maximum allowed canonical script length of {1}")]
     IntegerRejected(i64, usize),
-
-    #[error("explicit data push opcodes require covenant-enabled script builder flags")]
-    ExplicitDataPushRejected,
 
     #[error(transparent)]
     Serialization(#[from] SerializationError),
@@ -105,7 +101,7 @@ impl ScriptBuilder {
     pub fn add_op(&mut self, opcode: u8) -> ScriptBuilderResult<&mut Self> {
         // Pushes that would cause the script to exceed the largest allowed
         // script size would result in a non-canonical script.
-        let max_scripts_size = max_scripts_size(self.flags.covenants_enabled);
+        let max_scripts_size = MAX_SCRIPTS_SIZE;
         if self.script.len() >= max_scripts_size {
             return Err(ScriptBuilderError::OpCodeRejected(opcode, max_scripts_size));
         }
@@ -117,7 +113,7 @@ impl ScriptBuilder {
     pub fn add_ops(&mut self, opcodes: &[u8]) -> ScriptBuilderResult<&mut Self> {
         // Pushes that would cause the script to exceed the largest allowed
         // script size would result in a non-canonical script.
-        let max_scripts_size = max_scripts_size(self.flags.covenants_enabled);
+        let max_scripts_size = MAX_SCRIPTS_SIZE;
         if self.script.len() + opcodes.len() > max_scripts_size {
             return Err(ScriptBuilderError::OpCodesRejected(opcodes.len(), max_scripts_size));
         }
@@ -184,7 +180,7 @@ impl ScriptBuilder {
     fn validate_data_push(&self, data: &[u8], data_size: usize) -> ScriptBuilderResult<()> {
         // Pushes that would cause the script to exceed the largest allowed
         // script size would result in a non-canonical script.
-        let max_scripts_size = max_scripts_size(self.flags.covenants_enabled);
+        let max_scripts_size = MAX_SCRIPTS_SIZE;
         if self.script.len() + data_size > max_scripts_size {
             return Err(ScriptBuilderError::DataRejected(data_size, max_scripts_size));
         }
@@ -192,7 +188,7 @@ impl ScriptBuilder {
         // Pushes larger than the max script element size would result in a
         // script that is not canonical.
         let data_len = data.len();
-        let max_script_element_size = max_script_element_size(self.flags.covenants_enabled);
+        let max_script_element_size = MAX_SCRIPT_ELEMENT_SIZE;
         if data_len > max_script_element_size {
             return Err(ScriptBuilderError::ElementExceedsMaxSize(data_len, max_script_element_size));
         }
@@ -224,10 +220,6 @@ impl ScriptBuilder {
     /// one of the push-data forms (`OpDataN`, `OpPushData1`, `OpPushData2`, or
     /// `OpPushData4`) according to the length of `data`.
     pub fn add_data_with_push_opcode(&mut self, data: &[u8]) -> ScriptBuilderResult<&mut Self> {
-        if !self.flags.covenants_enabled {
-            return Err(ScriptBuilderError::ExplicitDataPushRejected);
-        }
-
         self.validate_data_push(data, Self::explicit_push_encoded_size(data.len()))?;
         Ok(self.add_raw_data_with_data_opcode(data))
     }
@@ -282,7 +274,7 @@ impl ScriptBuilder {
     pub fn add_i64(&mut self, val: i64) -> ScriptBuilderResult<&mut Self> {
         // Pushes that would cause the script to exceed the largest allowed
         // script size would result in a non-canonical script.
-        let max_scripts_size = max_scripts_size(self.flags.covenants_enabled);
+        let max_scripts_size = MAX_SCRIPTS_SIZE;
         if self.script.len() + 1 > max_scripts_size {
             return Err(ScriptBuilderError::IntegerRejected(val, max_scripts_size));
         }
@@ -533,19 +525,10 @@ mod tests {
                 expected: Ok(once(OpPushData2).chain([8, 2]).chain(repeat_n(0x49, 520)).collect()),
                 unchecked: false,
             },
-            // BIP0062: OP_PUSHDATA4 can never be used, as pushes over 520
-            // bytes are not allowed, and those below can be done using
-            // other operators.
-            Test {
-                name: "push data len 521",
-                data: vec![0x49; 521],
-                expected: Err(ScriptBuilderError::ElementExceedsMaxSize(521, max_script_element_size(false))),
-                unchecked: false,
-            },
             Test {
                 name: "push data len 300001 (canonical)",
                 data: vec![0x1; 3000001],
-                expected: Err(ScriptBuilderError::DataRejected(3000006, max_scripts_size(false))),
+                expected: Err(ScriptBuilderError::DataRejected(3000006, MAX_SCRIPTS_SIZE)),
                 unchecked: false,
             },
             // // Additional tests for the add_data_unchecked function that
@@ -583,12 +566,6 @@ mod tests {
 
     #[test]
     fn test_add_data_with_push_opcode() {
-        assert_eq!(
-            ScriptBuilder::new().add_data_with_push_opcode(&[0x11]).map(|_| ()),
-            Err(ScriptBuilderError::ExplicitDataPushRejected)
-        );
-
-        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
         let tests = [
             ("empty", vec![], vec![Op0]),
             ("small int", vec![0x01], vec![OpData1, 0x01]),
@@ -598,7 +575,7 @@ mod tests {
         ];
 
         for (name, data, expected) in tests {
-            let result = ScriptBuilder::with_flags(flags).add_data_with_push_opcode(&data).expect("explicit push is allowed").drain();
+            let result = ScriptBuilder::new().add_data_with_push_opcode(&data).expect("explicit push is allowed").drain();
             assert_eq!(result, expected, "{name} wrong result");
         }
     }
@@ -634,8 +611,8 @@ mod tests {
 
     #[test]
     fn test_add_data_with_push_opcode_validates_explicit_size() {
-        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
-        let max_scripts_size = max_scripts_size(flags.covenants_enabled);
+        let flags = Default::default();
+        let max_scripts_size = MAX_SCRIPTS_SIZE;
 
         let mut canonical_builder = ScriptBuilder::with_flags(flags);
         canonical_builder.script_mut().resize(max_scripts_size - 1, OpTrue);
@@ -653,8 +630,8 @@ mod tests {
 
     #[test]
     fn test_add_data_validates_zero_byte_canonical_size() {
-        let flags = EngineFlags { covenants_enabled: true, ..Default::default() };
-        let max_scripts_size = max_scripts_size(flags.covenants_enabled);
+        let flags = Default::default();
+        let max_scripts_size = MAX_SCRIPTS_SIZE;
 
         let mut valid_builder = ScriptBuilder::with_flags(flags);
         valid_builder.script_mut().resize(max_scripts_size - 2, OpTrue);
@@ -717,7 +694,7 @@ mod tests {
     fn test_exceed_max_script_size() {
         fn full_builder() -> ScriptBuilder {
             let mut builder = ScriptBuilder::new();
-            builder.add_data_unchecked(&vec![0u8; max_scripts_size(false) - 3]);
+            builder.add_data_unchecked(&vec![0u8; MAX_SCRIPTS_SIZE - 3]);
             builder
         }
         // Start off by constructing a max size script.
@@ -729,7 +706,7 @@ mod tests {
         let result = builder.add_data(&[0u8]).map(|_| ());
         assert_eq!(
             result,
-            Err(ScriptBuilderError::DataRejected(2, max_scripts_size(false))),
+            Err(ScriptBuilderError::DataRejected(2, MAX_SCRIPTS_SIZE)),
             "adding data that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.script(), &original_result, "unexpected modified script");
@@ -739,7 +716,7 @@ mod tests {
         let result = builder.add_op(Op0).map(|_| ());
         assert_eq!(
             result,
-            Err(ScriptBuilderError::OpCodeRejected(Op0, max_scripts_size(false))),
+            Err(ScriptBuilderError::OpCodeRejected(Op0, MAX_SCRIPTS_SIZE)),
             "adding an opcode that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.script(), &original_result, "unexpected modified script");
@@ -749,7 +726,7 @@ mod tests {
         let result = builder.add_ops(&[OpCheckSig]).map(|_| ());
         assert_eq!(
             result,
-            Err(ScriptBuilderError::OpCodesRejected(1, max_scripts_size(false))),
+            Err(ScriptBuilderError::OpCodesRejected(1, MAX_SCRIPTS_SIZE)),
             "adding an opcode array that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.script(), &original_result, "unexpected modified script");
@@ -759,7 +736,7 @@ mod tests {
         let result = builder.add_i64(0).map(|_| ());
         assert_eq!(
             result,
-            Err(ScriptBuilderError::IntegerRejected(0, max_scripts_size(false))),
+            Err(ScriptBuilderError::IntegerRejected(0, MAX_SCRIPTS_SIZE)),
             "adding an integer that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.script(), &original_result, "unexpected modified script");
@@ -769,7 +746,7 @@ mod tests {
         let result = builder.add_lock_time(0).map(|_| ());
         assert_eq!(
             result,
-            Err(ScriptBuilderError::DataRejected(1, max_scripts_size(false))),
+            Err(ScriptBuilderError::DataRejected(1, MAX_SCRIPTS_SIZE)),
             "adding a lock time that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.script(), &original_result, "unexpected modified script");
@@ -779,7 +756,7 @@ mod tests {
         let result = builder.add_sequence(0).map(|_| ());
         assert_eq!(
             result,
-            Err(ScriptBuilderError::DataRejected(1, max_scripts_size(false))),
+            Err(ScriptBuilderError::DataRejected(1, MAX_SCRIPTS_SIZE)),
             "adding a sequence that would exceed the maximum size of the script must fail"
         );
         assert_eq!(builder.script(), &original_result, "unexpected modified script");

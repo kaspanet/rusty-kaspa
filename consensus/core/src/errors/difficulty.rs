@@ -12,4 +12,4 @@ pub enum DifficultyError {
     EmptyTimestampRange,
 }
 
-pub type DifficultyResult<T> = std::result::Result<T, DifficultyError>;
+pub type DifficultyResult<T> = core::result::Result<T, DifficultyError>;

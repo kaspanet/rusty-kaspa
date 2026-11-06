@@ -322,6 +322,158 @@ impl Rpc {
 
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetUtxosByAddressesV2 => {
+                let mut args = argv;
+
+                if args.len() < 8 {
+                    return Err(Error::custom(
+                        "Usage: rpc get-utxos-by-addresses-v2 <addr...> <from_daa_score|None> <to_daa_score|None> <start_address|None(defaults-to-first-address)> <start_daa_score|None> <start_outpoint_transaction_id|None> <start_outpoint_index|None> <limit|None>",
+                    ));
+                }
+
+                let parse_optional_usize = |value: String| -> Result<Option<usize>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(value.parse::<usize>()?)) }
+                };
+
+                let parse_optional_u32 = |value: String| -> Result<Option<u32>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(value.parse::<u32>()?)) }
+                };
+
+                let parse_optional_u64 = |value: String| -> Result<Option<u64>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(value.parse::<u64>()?)) }
+                };
+
+                let parse_optional_rpc_hash = |value: String| -> Result<Option<RpcHash>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(RpcHash::from_hex(value.as_str())?)) }
+                };
+
+                let parse_optional_address = |value: String| -> Result<Option<Address>> {
+                    if value.eq_ignore_ascii_case("none") { Ok(None) } else { Ok(Some(Address::try_from(value.as_str())?)) }
+                };
+
+                let limit = parse_optional_usize(args.pop().unwrap())?;
+                let start_outpoint_index = parse_optional_u32(args.pop().unwrap())?;
+                let start_outpoint_transaction_id = parse_optional_rpc_hash(args.pop().unwrap())?;
+                let start_daa_score = parse_optional_u64(args.pop().unwrap())?;
+                let start_address = parse_optional_address(args.pop().unwrap())?;
+                let to_daa_score = parse_optional_u64(args.pop().unwrap())?;
+                let from_daa_score = parse_optional_u64(args.pop().unwrap())?;
+
+                let cursor = if start_outpoint_index.is_none()
+                    && start_outpoint_transaction_id.is_none()
+                    && start_address.is_none()
+                    && start_daa_score.is_none()
+                {
+                    None
+                } else if start_outpoint_index.is_some() && start_outpoint_transaction_id.is_some() && start_daa_score.is_some() {
+                    Some(RpcGetUtxosByAddressesCursor::new(
+                        start_address,
+                        start_daa_score.ok_or(RpcError::General("no start_daa_score specified for cursor".to_string()))?,
+                        Some(RpcTransactionOutpoint {
+                            transaction_id: start_outpoint_transaction_id
+                                .ok_or(RpcError::General("no start_outpoint_transaction_id specified for cursor".to_string()))?,
+                            index: start_outpoint_index
+                                .ok_or(RpcError::General("no start_outpoint_index specified for cursor".to_string()))?,
+                        }),
+                    ))
+                } else {
+                    return Err(Error::custom(
+                        "incomplete cursor parameters; start_address may be None, but start_daa_score and start_outpoint must be provided together".to_string(),
+                    ));
+                };
+
+                let addresses = args.iter().map(|s| Address::try_from(s.as_str())).collect::<std::result::Result<Vec<_>, _>>()?;
+                let result = rpc
+                    .get_utxos_by_addresses_v2_call(
+                        None,
+                        GetUtxosByAddressesV2Request::new(addresses, from_daa_score, to_daa_score, cursor, limit),
+                    )
+                    .await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetUtxosByCovenantIds => {
+                use std::str::FromStr as _;
+
+                let args = argv;
+
+                const USAGE: &str = "Usage: rpc get-utxos-by-covenant-ids <covenant_id>... [--from-daa=<from_daa_score>] [--to-daa=<to_daa_score>] [--spks=<script_public_key_csv>] [--start-covenant-id=<covenant_id>] [--start-daa-score=<daa_score>] [--start-spk=<script_public_key>] [--start-tx-id=<transaction_id>] [--start-outpoint-index=<index>] [--budget=<budget>]";
+
+                let mut covenant_ids = Vec::new();
+                let mut from_daa_score = None;
+                let mut to_daa_score = None;
+                let mut script_public_keys = Vec::new();
+                let mut start_covenant_id = None;
+                let mut start_daa_score = None;
+                let mut start_script_public_key = None;
+                let mut start_outpoint_transaction_id = None;
+                let mut start_outpoint_index = None;
+                let mut budget = None;
+
+                for arg in args {
+                    let Some((flag, value)) = arg.strip_prefix("--").and_then(|flag| flag.split_once('=')) else {
+                        covenant_ids.push(RpcHash::from_hex(arg.as_str())?);
+                        continue;
+                    };
+                    match flag {
+                        "from-daa" => from_daa_score = Some(value.parse::<u64>()?),
+                        "to-daa" => to_daa_score = Some(value.parse::<u64>()?),
+                        "spks" => {
+                            script_public_keys = value
+                                .split(',')
+                                .map(|s| RpcScriptPublicKey::from_str(s.trim()))
+                                .collect::<std::result::Result<Vec<_>, _>>()?
+                        }
+                        "start-covenant-id" => start_covenant_id = Some(RpcHash::from_hex(value)?),
+                        "start-daa-score" => start_daa_score = Some(value.parse::<u64>()?),
+                        "start-spk" => start_script_public_key = Some(RpcScriptPublicKey::from_str(value)?),
+                        "start-tx-id" => start_outpoint_transaction_id = Some(RpcHash::from_hex(value)?),
+                        "start-outpoint-index" => start_outpoint_index = Some(value.parse::<u32>()?),
+                        "budget" => budget = Some(value.parse::<usize>()?),
+                        _ => return Err(Error::custom(USAGE)),
+                    }
+                }
+                if covenant_ids.is_empty() {
+                    return Err(Error::custom(USAGE));
+                }
+
+                let start_outpoint = match (start_outpoint_transaction_id, start_outpoint_index) {
+                    (Some(transaction_id), Some(index)) => Some(RpcTransactionOutpoint { transaction_id, index }),
+                    (None, None) => None,
+                    _ => {
+                        return Err(Error::custom(
+                            "incomplete cursor parameters; start-tx-id and start-outpoint-index must be provided together".to_string(),
+                        ));
+                    }
+                };
+                // a request carries either a full cursor or none at all
+                let cursor = match (start_covenant_id, start_daa_score, start_script_public_key, start_outpoint) {
+                    (None, None, None, None) => None,
+                    (Some(start_covenant_id), Some(start_daa_score), Some(start_script_public_key), Some(start_outpoint)) => {
+                        Some(RpcGetUtxosByCovenantIdsCursor::new(
+                            start_covenant_id,
+                            start_daa_score,
+                            start_script_public_key,
+                            start_outpoint,
+                        ))
+                    }
+                    _ => return Err(Error::custom("incomplete cursor parameters; provide all cursor fields or none".to_string())),
+                };
+
+                let result = rpc
+                    .get_utxos_by_covenant_ids_call(
+                        None,
+                        GetUtxosByCovenantIdsRequest::new(
+                            covenant_ids,
+                            script_public_keys,
+                            from_daa_score,
+                            to_daa_score,
+                            cursor,
+                            budget,
+                        ),
+                    )
+                    .await?;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

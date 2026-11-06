@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 use async_channel::unbounded;
 use clap::Parser;
 use futures::{Future, future::try_join_all};
@@ -12,12 +13,19 @@ use kaspa_consensus::{
         ghostdag::{GhostdagStoreReader, KType},
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
+        selected_chain::SelectedChainStoreReader,
     },
     params::{DEVNET_PARAMS, ForkActivation, NETWORK_DELAY_BOUND, OverrideParams, Params, SIMNET_PARAMS, TenBps},
 };
 use kaspa_consensus_core::{
-    BlockHashSet, BlockLevel, HashMapCustomHasher, api::ConsensusApi, block::Block, blockstatus::BlockStatus,
-    config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult, mining_rules::MiningRules, tx::TransactionType,
+    BlockHashSet, BlockLevel, HashMapCustomHasher,
+    api::ConsensusApi,
+    block::Block,
+    blockstatus::BlockStatus,
+    config::bps::calculate_ghostdag_k,
+    errors::block::BlockProcessResult,
+    mining_rules::MiningRules,
+    tx::{TransactionQueryResult, TransactionType},
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use kaspa_core::{
@@ -290,6 +298,7 @@ fn main_impl(mut args: Args) {
         }
 
         consensus.validate_pruning_points(consensus.get_sink()).unwrap();
+        assert_retained_transaction_queries(&consensus);
 
         // Test whether we can still retrieve a populated transaction given a txid and the accepting block daa score.
         for hash in hashes.iter().cloned() {
@@ -398,8 +407,6 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
         params.merge_depth = 64 * 2;
         params.mergeset_size_limit = 32 * 2;
         params.pruning_depth = 100 * 2 * 2 + 50;
-
-        params.toccata_activation = ForkActivation::new(1000);
 
         info!("Setting pruning depth to {:?}", params.pruning_depth());
     }
@@ -511,6 +518,44 @@ fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64,
     info!("[DELAY={delay}, BPS={bps}, GHOSTDAG K={k}]");
     info!("[Average stats of generated DAG] blues: {blues_mean}, reds: {reds_mean}, parents: {parents_mean}, txs: {txs_mean}");
     num_txs
+}
+
+fn assert_retained_transaction_queries(consensus: &Consensus) {
+    let sampled_hashes = {
+        let chain = consensus.selected_chain_store.read();
+        let first = chain.get_by_hash(consensus.get_retention_period_root()).unwrap() + 1;
+        let (tip, _) = chain.get_tip().unwrap();
+        if first > tip {
+            Vec::new()
+        } else {
+            [first, first + (tip - first) / 2, tip].into_iter().unique().map(|index| chain.get_by_index(index).unwrap()).collect_vec()
+        }
+    };
+    for hash in sampled_hashes {
+        let mut tx_ids = consensus
+            .get_block_acceptance_data(hash)
+            .unwrap()
+            .iter()
+            .flat_map(|block| block.accepted_transactions.iter().map(|tx| tx.transaction_id))
+            .take(16)
+            .collect_vec();
+        if tx_ids.is_empty() {
+            continue;
+        }
+        tx_ids.reverse();
+        let daa_score = consensus.get_header(hash).unwrap().daa_score;
+        let (TransactionQueryResult::SignableTransaction(by_score), TransactionQueryResult::SignableTransaction(by_hash)) = (
+            consensus
+                .get_transactions_by_accepting_daa_score(daa_score, Some(tx_ids.clone()), TransactionType::SignableTransaction)
+                .unwrap(),
+            consensus.get_transactions_by_accepting_block(hash, Some(tx_ids.clone()), TransactionType::SignableTransaction).unwrap(),
+        ) else {
+            panic!("expected populated transactions for accepting block {hash}");
+        };
+        assert_eq!(by_score, by_hash);
+        assert_eq!(by_hash.iter().map(|tx| tx.id()).collect_vec(), tx_ids);
+        assert!(by_hash.iter().all(|tx| tx.is_verifiable()));
+    }
 }
 
 #[cfg(test)]

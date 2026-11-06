@@ -14,8 +14,6 @@ cfg_if::cfg_if! {
         mod appender;
         mod consts;
         mod logger;
-
-        pub use appender::FORK_KEYWORD;
     }
 }
 

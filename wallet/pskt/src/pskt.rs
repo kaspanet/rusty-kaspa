@@ -16,13 +16,13 @@ pub use crate::output::{Output, OutputBuilder};
 pub use crate::role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::constants::TX_VERSION_TOCCATA;
-use kaspa_consensus_core::mass::{MassCalculator, NonContextualMasses};
+use kaspa_consensus_core::mass::{Gram, MassCalculator, NonContextualMasses};
 use kaspa_consensus_core::{
     hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{ComputeCommit, MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
 };
-use kaspa_txscript::{TxScriptEngine, caches::Cache};
+use kaspa_txscript::{EngineFlags, TxScriptEngine, caches::Cache, covenants::CovenantsContext};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -488,10 +488,16 @@ impl PSKT<Extractor> {
             let tx = tx.as_verifiable();
             let cache = Cache::new(10_000);
             let reused_values = SigHashReusedValuesUnsync::new();
-            let ctx = EngineCtx::new(&cache).with_reused(&reused_values);
+            let covenants_ctx = CovenantsContext::from_tx(&tx)
+                .map_err(|err| ExtractError::TxScriptError(kaspa_txscript_errors::TxScriptError::from(err)))?;
+            let ctx = EngineCtx::new(&cache).with_reused(&reused_values).with_covenants_ctx(&covenants_ctx);
+            let flags = EngineFlags { sigop_script_units: Gram(params.mass_per_sig_op).into() };
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
-                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, ctx, Default::default()).execute()?;
+                // Bound execution by the input's committed script units, matching consensus validation.
+                let script_units_limit = input.compute_commit.allowed_script_units();
+                TxScriptEngine::from_transaction_input_with_script_units_limit(&tx, input, idx, entry, ctx, flags, script_units_limit)
+                    .execute()?;
                 <Result<(), ExtractError>>::Ok(())
             })?;
         }

@@ -1,8 +1,8 @@
 use crate::zk_to_script::wasm::{ZkScriptBuilder, decode_hash_fn_id, into_array_32};
 use crate::zk_to_script::{
-    append_r0_groth16_verifier, append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier,
-    append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof, prepare_r0_succinct_witness, push_r0_groth16_proof,
-    push_r0_succinct_witness,
+    append_r0_groth16_verifier, append_r0_groth16_verifier_dynamic_image_id, append_r0_groth16_verifier_with_fixed_journal,
+    append_r0_succinct_verifier, append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof,
+    prepare_r0_succinct_witness, push_r0_groth16_proof, push_r0_succinct_witness,
 };
 use kaspa_txscript::error::Error;
 use kaspa_txscript::result::Result;
@@ -52,6 +52,15 @@ impl ZkScriptBuilder {
     pub fn append_r0_groth16_verifier(&mut self, image_id: BinaryT) -> Result<()> {
         let image_id = into_array_32(image_id.try_as_vec_u8()?, "imageId")?;
         append_r0_groth16_verifier(self.inner.builder_mut()?, image_id).map_err(|e| Error::custom(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Appends the r0-over-groth16 verifier fragment, consuming the image id
+    /// from the stack. Expects
+    /// `[..., journal_hash, compressed_proof, image_id]` on the stack.
+    #[wasm_bindgen(js_name = "appendR0Groth16VerifierDynamicImageId")]
+    pub fn append_r0_groth16_verifier_dynamic_image_id(&mut self) -> Result<()> {
+        append_r0_groth16_verifier_dynamic_image_id(self.inner.builder_mut()?).map_err(|e| Error::custom(e.to_string()))?;
         Ok(())
     }
 

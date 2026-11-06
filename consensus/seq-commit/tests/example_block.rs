@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 //! Example: computing a sequencing commitment for a block.
 //!
 //! Simulates a selected block B that merges 2 blocks (selected parent + one anticone block).

@@ -572,6 +572,99 @@ message GetUtxosByAddressesResponseMessage {
   RPCError error = 1000;
 }
 
+// GetUtxosByAddressesV2RequestMessage requests UTXOs for multiple addresses,
+// optionally bounded by an inclusive DAA-score range.
+//
+// This call is only available when this kaspad was started with `--utxoindex`.
+message GetUtxosByAddressesV2RequestMessage {
+  // Addresses to query UTXOs for. Note an empty set of addresses is considered an invalid query.
+  // max addresses without requiring --unsafe-rpc flag on the node is 5_000
+  repeated string addresses = 1;
+  // Inclusive DAA-score range start; omitted defaults to 0.
+  optional uint64 fromDaaScore = 2;
+  // Inclusive DAA-score range end; omitted defaults to u64::MAX.
+  optional uint64 toDaaScore = 3;
+
+  // ### Cursor based fields. ###
+  // if omitted, starts from scratch.
+  optional RpcGetUtxosByAddressesCursor Cursor = 4;
+
+  // limit on the number of entries to return; omitted means default limit of 1_000
+  // max limit without requiring --unsafe-rpc flag on the node is 5_000
+  optional uint64 limit = 8;
+}
+
+message GetUtxosByAddressesV2ResponseMessage {
+  // UTXO entries for the requested addresses and DAA-score range.
+  repeated RpcUtxosByAddressesEntry entries = 1;
+  // Cursor address for the next page; omitted means there is no next page.
+  optional RpcGetUtxosByAddressesCursor nextCursor = 2;
+
+  RPCError error = 1000;
+}
+
+message RpcGetUtxosByAddressesCursor {
+  // Cursor start address, leaving it blank makes start address = first address of the request's address list.
+  optional string startAddress = 1;
+  // Cursor start DAA score for startAddress; omitted starts from fromDaaScore.
+  uint64 startDaaScore = 2;
+  // transaction outpoint
+  RpcOutpoint startOutpoint = 3;
+}
+
+// Cursor for resuming a GetUtxosByCovenantIds page: a request either carries a full
+// cursor (echoed from a previous response's nextCursor) or none at all.
+message RpcGetUtxosByCovenantIdsCursor {
+  // Cursor start covenant id; must be one of the requested covenant ids. Ids sorting before
+  // it are skipped, so a resume request may keep the original id list unchanged.
+  string startCovenantId = 1;
+  // Cursor start DAA score; must lie within the requested DAA-score range.
+  uint64 startDaaScore = 2;
+  // Cursor start script public key.
+  RpcScriptPublicKey startScriptPublicKey = 3;
+  // transaction outpoint
+  RpcOutpoint startOutpoint = 4;
+}
+
+message RpcUtxosByCovenantIdsEntry {
+  string address = 1;
+  RpcOutpoint outpoint = 2;
+  RpcUtxoEntry utxoEntry = 3;
+}
+
+// GetUtxosByCovenantIdsRequestMessage requests UTXOs for multiple covenant ids,
+// optionally bounded by an inclusive DAA-score range and a script public key list.
+//
+// This call is only available when this kaspad was started with `--utxoindex --covenant-index`.
+message GetUtxosByCovenantIdsRequestMessage {
+  // Covenant ids to query UTXOs for. Note an empty set of covenant ids is considered an invalid query.
+  // Ids are traversed in ascending covenant id order regardless of request order.
+  // max covenant ids without requiring --unsafe-rpc flag on the node is 5_000
+  repeated string covenantIds = 1;
+  // Inclusive DAA-score range start; omitted defaults to 0.
+  optional uint64 fromDaaScore = 2;
+  // Inclusive DAA-score range end; omitted defaults to u64::MAX.
+  optional uint64 toDaaScore = 3;
+  // Script public keys to include; an empty list includes every script public key.
+  // max script public keys without requiring --unsafe-rpc flag on the node is 5_000
+  repeated RpcScriptPublicKey scriptPublicKeys = 4;
+  // if omitted, starts from scratch.
+  optional RpcGetUtxosByCovenantIdsCursor Cursor = 5;
+  // budget of weighted db operations spent for the page; a seek costs 10 units, an iterator advance costs 1
+  // omitted means default budget of 1_000 units; entries per page never exceed the budget
+  // max budget without requiring --unsafe-rpc flag on the node is 5_000
+  optional uint64 budget = 6;
+}
+
+message GetUtxosByCovenantIdsResponseMessage {
+  // UTXO entries for the requested covenant ids and DAA-score range, in ascending covenant id order.
+  repeated RpcUtxosByCovenantIdsEntry entries = 1;
+  // Cursor for the next page; omitted means there is no next page.
+  optional RpcGetUtxosByCovenantIdsCursor nextCursor = 2;
+
+  RPCError error = 1000;
+}
+
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
 //
 // This call is only available when this kaspad was started with `--utxoindex`
@@ -967,6 +1060,30 @@ message GetFeeEstimateExperimentalResponseMessage {
   RpcFeeEstimate estimate = 1;
   RpcFeeEstimateVerboseExperimentalData verbose = 2;
 
+  RPCError error = 1000;
+}
+
+// Requests full transactions and their input UTXOs in request order.
+// The request must contain 1-8192 unique IDs accepted by the specified block.
+// Typical mergesets contain far fewer transactions; split larger batches across
+// calls using the same accepting-block selector.
+// For a UTXO obtained from notifications or a UTXO/covenant index query, use its
+// outpoint transaction ID and entry blockDaaScore, while the transaction is retained.
+// A daaScore selector must identify the accepting block in the current virtual
+// selected-parent chain. Reorgs can invalidate a previously observed score.
+// For a newly observed UTXO, consider waiting 1-2 seconds for its accepting block
+// to stabilize, or refresh the UTXO data and retry a failed lookup with its current score.
+// This delay reduces small-reorg races and does not guarantee finality.
+message GetTransactionsByAcceptingBlockRequestMessage {
+  oneof acceptingBlock {
+    string hash = 1;
+    uint64 daaScore = 2;
+  }
+  repeated string transactionIds = 3;
+}
+
+message GetTransactionsByAcceptingBlockResponseMessage {
+  repeated RpcOptionalTransaction transactions = 1;
   RPCError error = 1000;
 }
 

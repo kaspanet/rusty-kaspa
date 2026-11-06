@@ -23,11 +23,17 @@ pub fn diagnose_pow_issue(header: &Header, nonce: u64) {
     let exponent = header.bits >> 24;
     let mantissa = header.bits & 0xFFFFFF;
     tracing::debug!("\n[TARGET CALCULATION]");
+
     tracing::debug!("  Exponent: {} (0x{:x})", exponent, exponent);
     tracing::debug!("  Mantissa: {} (0x{:06x})", mantissa, mantissa);
-    tracing::debug!("  Shift: 8 * ({} - 3) = {} bits", exponent, 8 * (exponent - 3));
 
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "header.bits is u32, so exponent <= 255; the guard prevents underflow and the product is at most 8 * 252 = 2016."
+    )]
     let shift = if exponent > 3 { 8 * (exponent - 3) } else { 0 };
+    tracing::debug!("  Shift: {} bits", shift);
+    #[allow(clippy::arithmetic_side_effects, reason = "BigUint can't overflow.")]
     let target = BigUint::from(mantissa) << shift;
     tracing::debug!("  Target: 0x{:064x}", target);
     tracing::debug!("  Target magnitude: {:.3e}", target.to_f64().unwrap_or(0.0));

@@ -12,7 +12,7 @@ use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     IncomingRoute, Router,
     common::{DEFAULT_TIMEOUT, ProtocolError},
-    convert::{header::HeaderFormat, header::Versioned, model::trusted::TrustedDataEntry},
+    convert::model::trusted::TrustedDataEntry,
     make_message,
     pb::{
         RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage, RequestNextPruningPointSmtChunkMessage,
@@ -42,13 +42,12 @@ pub const SMT_FLOW_CONTROL_WINDOW: usize = 2;
 pub struct TrustedEntryStream<'a, 'b> {
     router: &'a Router,
     incoming_route: &'b mut IncomingRoute,
-    header_format: HeaderFormat,
     i: usize,
 }
 
 impl<'a, 'b> TrustedEntryStream<'a, 'b> {
-    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute, header_format: HeaderFormat) -> Self {
-        Self { router, incoming_route, header_format, i: 0 }
+    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
+        Self { router, incoming_route, i: 0 }
     }
 
     pub async fn next(&mut self) -> Result<Option<TrustedDataEntry>, ProtocolError> {
@@ -57,7 +56,7 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
                 if let Some(msg) = op {
                     match msg.payload {
                         Some(Payload::BlockWithTrustedDataV4(payload)) => {
-                            let entry: TrustedDataEntry = Versioned(self.header_format, payload).try_into()?;
+                            let entry: TrustedDataEntry = payload.try_into()?;
                             Ok(Some(entry))
                         }
                         Some(Payload::DoneBlocksWithTrustedData(_)) => {
@@ -78,7 +77,10 @@ impl<'a, 'b> TrustedEntryStream<'a, 'b> {
 
         // Request the next batch only if the stream is still live
         if let Ok(Some(_)) = res {
-            self.i += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.i += 1;
+            }
             if self.i.is_multiple_of(IBD_BATCH_SIZE) {
                 self.router
                     .enqueue(make_message!(
@@ -99,13 +101,12 @@ pub type HeadersChunk = Vec<Arc<Header>>;
 pub struct HeadersChunkStream<'a, 'b> {
     router: &'a Router,
     incoming_route: &'b mut IncomingRoute,
-    header_format: HeaderFormat,
     i: usize,
 }
 
 impl<'a, 'b> HeadersChunkStream<'a, 'b> {
-    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute, header_format: HeaderFormat) -> Self {
-        Self { router, incoming_route, header_format, i: 0 }
+    pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
+        Self { router, incoming_route, i: 0 }
     }
 
     pub async fn next(&mut self) -> Result<Option<HeadersChunk>, ProtocolError> {
@@ -118,7 +119,7 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
                                 // The syncer should have sent a done message if the search completed, and not an empty list
                                 Err(ProtocolError::Other("Received an empty headers message"))
                             } else {
-                                Ok(Some(Versioned(self.header_format, payload).try_into()?))
+                                Ok(Some(payload.try_into()?))
                             }
                         }
                         Some(Payload::DoneHeaders(_)) => {
@@ -139,7 +140,10 @@ impl<'a, 'b> HeadersChunkStream<'a, 'b> {
 
         // Request the next batch only if the stream is still live
         if let Ok(Some(_)) = res {
-            self.i += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.i += 1;
+            }
             self.router.enqueue(make_message!(Payload::RequestNextHeaders, RequestNextHeadersMessage {})).await?;
         }
 
@@ -195,8 +199,14 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
 
         // Request the next batch only if the stream is still live
         if let Ok(Some(chunk)) = res {
-            self.i += 1;
-            self.utxo_count += chunk.len();
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.i += 1;
+            }
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+            {
+                self.utxo_count += chunk.len();
+            }
             if self.i.is_multiple_of(IBD_BATCH_SIZE) {
                 info!("Received {} UTXO set chunks so far, totaling in {} UTXOs", self.i, self.utxo_count);
                 self.router
@@ -301,6 +311,7 @@ impl<'a, 'b> SmtStream<'a, 'b> {
             return Err(ProtocolError::Other("SmtLaneChunk exceeds SMT_CHUNK_SIZE"));
         }
 
+        #[allow(clippy::arithmetic_side_effects, reason = "next_chunk() returned above if lane_count >= expected_count.")]
         let remaining = self.expected_count - self.lane_count;
         if payload.entries.len() as u64 > remaining {
             return Err(ProtocolError::Other("received more SMT lane entries than active_lanes_count"));
@@ -330,10 +341,16 @@ impl<'a, 'b> SmtStream<'a, 'b> {
             };
 
             lanes.push(kaspa_consensus_core::api::ImportLane { lane_key, lane_tip, blue_score: entry.blue_score, proof });
-            self.lane_count += 1;
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
+            {
+                self.lane_count += 1;
+            }
         }
 
-        self.chunks_received += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            self.chunks_received += 1;
+        }
 
         // Enqueue RequestNext for the next window — but only if more lanes remain.
         // When `lane_count == expected_count` the caller will stop iterating and the

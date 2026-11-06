@@ -49,33 +49,36 @@ where
 }
 
 // Convert 8bit array to 5bit array with right padding
+#[allow(clippy::arithmetic_side_effects, reason = "See below")]
 fn conv8to5(payload: &[u8]) -> Vec<u8> {
     let padding = match payload.len().is_multiple_of(5) {
         true => 0,
         false => 1,
     };
-    let mut five_bit = vec![0u8; payload.len() * 8 / 5 + padding];
+    let mut five_bit = vec![0u8; payload.len() * 8 / 5 + padding]; // Safe since we expect `payload.len() << usize::MAX` and `padding <= 1`.
     let mut current_idx = 0;
 
     let mut buff = 0u16;
     let mut bits = 0;
     for c in payload.iter() {
         buff = (buff << 8) | *c as u16;
-        bits += 8;
+        bits += 8; // Safe since `bits < 5`.
         while bits >= 5 {
-            bits -= 5;
+            bits -= 5; // Safe since `bits >= 5`.
             five_bit[current_idx] = (buff >> bits) as u8;
-            buff &= (1 << bits) - 1;
-            current_idx += 1;
+            buff &= (1 << bits) - 1; // Safe since `(1 << bits) >= 1`.
+            current_idx += 1; // The panic here is unrealistic because it would require `usize::MAX` increments.
         }
     }
+
     if bits > 0 {
-        five_bit[current_idx] = (buff << (5 - bits)) as u8;
+        five_bit[current_idx] = (buff << (5 - bits)) as u8; // Safe since the while-loop gurantees `bits < 5`.
     }
     five_bit
 }
 
 // Convert 5 bit array to 8 bit array, ignore right side padding
+#[allow(clippy::arithmetic_side_effects, reason = "See below")]
 fn conv5to8(payload: &[u8]) -> Vec<u8> {
     let mut eight_bit = vec![0u8; payload.len() * 5 / 8];
     let mut current_idx = 0;
@@ -84,12 +87,12 @@ fn conv5to8(payload: &[u8]) -> Vec<u8> {
     let mut bits = 0;
     for c in payload.iter() {
         buff = (buff << 5) | *c as u16;
-        bits += 5;
+        bits += 5; // This can't panic because it's guaranteed that `bits < 8`.
         while bits >= 8 {
-            bits -= 8;
+            bits -= 8; // Safe since `bits >= 8`.
             eight_bit[current_idx] = (buff >> bits) as u8;
-            buff &= (1 << bits) - 1;
-            current_idx += 1;
+            buff &= (1 << bits) - 1; // Safe since `(1 << bits) >= 1`.
+            current_idx += 1; // ARITH-SAFETY(INDEX)
         }
     }
     eight_bit
@@ -124,11 +127,9 @@ impl Address {
             })
             .collect::<Vec<u8>>();
         err?;
-        if address.len() < 8 {
-            return Err(AddressError::BadPayload);
-        }
 
-        let (payload_u5, checksum_u5) = address_u5.split_at(address.len() - 8);
+        let split_at = address.len().checked_sub(8).ok_or(AddressError::BadPayload)?;
+        let (payload_u5, checksum_u5) = address_u5.split_at(split_at);
         let fivebit_prefix = prefix.as_str().as_bytes().iter().copied().map(|c| c & 0x1fu8);
 
         // Convert to number
@@ -140,6 +141,7 @@ impl Address {
         }
 
         let payload_u8 = conv5to8(payload_u5);
-        Ok(Self::new(prefix, payload_u8[0].try_into()?, payload_u8[1..].into()))
+        let (version, payload) = payload_u8.split_first().ok_or(AddressError::BadPayload)?;
+        Self::try_new(prefix, (*version).try_into()?, payload)
     }
 }

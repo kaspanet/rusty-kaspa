@@ -155,6 +155,7 @@ impl LogColors {
         ];
 
         // Cycle through colors if we have more than 12 instances
+        #[allow(clippy::arithmetic_side_effects, reason = "instance_num is guaranteed to be >= 1.")]
         COLORS[(instance_num - 1) % COLORS.len()]
     }
 

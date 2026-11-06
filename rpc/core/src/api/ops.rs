@@ -12,7 +12,7 @@ use workflow_core::enums::Describe;
 pub const RPC_API_VERSION: u16 = 1;
 /// API revision. Change in this value denotes
 /// backwards-compatible changes.
-pub const RPC_API_REVISION: u16 = 0;
+pub const RPC_API_REVISION: u16 = 1;
 
 #[derive(Describe, Clone, Copy, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,6 +144,12 @@ pub enum RpcApiOps {
     GetBlockRewardInfo = 152,
     /// Get Seq-Commit Lane Proof
     GetSeqCommitLaneProof = 153,
+    /// Get a page of UTXOs for multiple addresses with optional DAA-score range filtering Options.
+    GetUtxosByAddressesV2 = 154,
+    /// Get a page of UTXOs for multiple covenant ids with optional DAA-score range and script public key list.
+    GetUtxosByCovenantIds = 155,
+    /// Get fully populated transactions by accepting block hash or DAA score.
+    GetTransactionsByAcceptingBlock = 156,
 }
 
 impl RpcApiOps {

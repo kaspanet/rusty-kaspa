@@ -68,7 +68,11 @@ impl AddressManager {
     ) -> Result<Self> {
         let length = pubkey_managers.len();
         if length < minimum_signatures {
-            return Err(format!{"The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})", minimum_signatures}.into());
+            return Err(format!(
+                "The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})",
+                minimum_signatures
+            )
+            .into());
         }
 
         for m in pubkey_managers.iter() {
@@ -387,7 +391,7 @@ impl AddressDerivationManager {
     pub fn indexes(&self, manager: &Arc<AddressManager>) -> Result<Vec<u32>> {
         let map = &manager.inner().address_to_index_map;
         let mut indexes = vec![];
-        for (_, index) in map.iter() {
+        for index in map.values() {
             indexes.push(*index);
         }
         Ok(indexes)
@@ -494,7 +498,11 @@ pub fn create_address(
 ) -> Result<Address> {
     let length = keys.len();
     if length < minimum_signatures {
-        return Err(format!{"The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})", minimum_signatures}.into());
+        return Err(format!(
+            "The minimum amount of signatures ({}) is greater than the amount of provided public keys ({length})",
+            minimum_signatures
+        )
+        .into());
     }
 
     if length > 1 {

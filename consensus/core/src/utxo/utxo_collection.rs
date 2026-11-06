@@ -1,6 +1,6 @@
 use super::utxo_view::UtxoView;
+use crate::HashMap;
 use crate::tx::*;
-use std::collections::HashMap;
 
 pub type UtxoCollection = HashMap<TransactionOutpoint, UtxoEntry>;
 

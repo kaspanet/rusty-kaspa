@@ -48,7 +48,9 @@ impl UserAgentRuleSet {
         for rule in rules {
             match UserAgentRule::parse(rule) {
                 Ok(rule) => rule_set.add(rule),
-                Err(err) => warn!("Ignoring invalid user agent rule `{}`: {}", rule, err),
+                Err(err) => {
+                    warn!("Ignoring invalid user agent rule `{}`: {}", rule, err);
+                }
             }
         }
         rule_set
@@ -122,6 +124,7 @@ fn parse_version_matcher(expr: &str) -> Result<UserAgentRuleMatcher, UserAgentRu
     let (op_index, op_len, op) =
         find_version_op(expr).ok_or_else(|| UserAgentRuleParseError("expected version comparison operator".to_string()))?;
     let name = expr[..op_index].trim().trim_end_matches(':').trim();
+    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
     let version = expr[op_index + op_len..].trim();
 
     if name.is_empty() {

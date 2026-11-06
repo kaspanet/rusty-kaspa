@@ -56,6 +56,11 @@ use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
+use kaspa_rpc_core::api::rpc::{
+    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS, MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS,
+    MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT, MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE,
+    MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_DB_OPS, MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT,
+};
 use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
     api::{
@@ -72,6 +77,9 @@ use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use kaspa_utxoindex::errors::UtxoIndexError;
+use kaspa_utxoindex::model::{OrderedUtxoEntriesPage, UtxoPageCursor};
+use std::ops::RangeInclusive;
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -275,6 +283,29 @@ impl RpcCoreService {
             .unwrap_or_default()
     }
 
+    async fn get_ordered_utxo_set_by_script_public_key_page<'a>(
+        &self,
+        addresses: impl Iterator<Item = &'a RpcAddress>,
+        daa_score_range: RangeInclusive<u64>,
+        cursor: Option<UtxoPageCursor>,
+        limit: Option<usize>,
+    ) -> RpcResult<OrderedUtxoEntriesPage> {
+        self.utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_from_script_public_keys_by_daa_score_page(
+                addresses.map(pay_to_address_script).collect(),
+                daa_score_range,
+                cursor,
+                limit,
+            )
+            .await
+            .map_err(|e| match e {
+                UtxoIndexError::StoreAccessError(err) => RpcError::General(err.to_string()),
+                other => RpcError::InvalidGetUtxosByAddressesV2Request(other.to_string()),
+            })
+    }
+
     fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
         match (filter_transaction_pool, include_orphan_pool) {
             (true, true) => Ok(TransactionQuery::OrphansOnly),
@@ -326,7 +357,7 @@ impl RpcApi for RpcCoreService {
             // and should not be accepted unless user explicitly requests.
             let difficulty_window_duration = self.config.difficulty_window_duration_in_block_units();
             if virtual_daa_score > difficulty_window_duration
-                && block.header.daa_score < virtual_daa_score - difficulty_window_duration
+                && block.header.daa_score.saturating_add(difficulty_window_duration) < virtual_daa_score
             {
                 // error = format!("Block rejected. Reason: block DAA score {0} is too far behind virtual's DAA score {1}", block.header.daa_score, virtual_daa_score)
                 return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) });
@@ -369,7 +400,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         // Make sure the pay address prefix matches the config network type
         if request.pay_address.prefix != self.config.prefix() {
-            return Err(kaspa_addresses::AddressError::InvalidPrefix(request.pay_address.prefix.to_string()))?;
+            Err(kaspa_addresses::AddressError::InvalidPrefix(request.pay_address.prefix.to_string()))?;
         }
 
         // Build block template
@@ -471,6 +502,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
             // only a chain block has its own red-reward coinbase output, as an extra output
             // see CoinbaseManager::expected_coinbase_transaction
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(LENGTH)")]
             if queried_coinbase.outputs.len() == queried_ghostdag.mergeset_blues.len() + 1 {
                 let own_red_reward_output =
                     queried_coinbase.outputs.last().ok_or_else(|| RpcError::General("missing own red reward output".to_string()))?;
@@ -802,6 +834,168 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
     }
 
+    async fn get_utxos_by_addresses_v2_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        mut request: GetUtxosByAddressesV2Request,
+    ) -> RpcResult<GetUtxosByAddressesV2Response> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+
+        // We define an empty address set as an invalid request, as the user should be aware proactively that this is an empty query. This is also a safety measure to prevent accidental unbounded queries, as the user may not be aware that this is an empty query.
+        // TODO: Potentially we could redefine this case to get all utxos in the DAA range, but this is somewhat of an engineering effort to implement.
+        if request.addresses.is_empty() {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request(UtxoIndexError::QueryingEmptyAddressSet.to_string()));
+        }
+
+        let limit = request.limit.unwrap_or(DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT);
+
+        if !self.config.unsafe_rpc && (request.addresses.len() > MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT) {
+            return Err(RpcError::General(format!(
+                "addresses count is greater than maximum allowed ({})",
+                MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT
+            )));
+        }
+        if !self.config.unsafe_rpc && (limit > MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE) {
+            return Err(RpcError::General(format!(
+                "utxos limit is greater than maximum allowed ({})",
+                MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE
+            )));
+        }
+
+        if limit == 0 {
+            return Err(RpcError::InvalidGetUtxosByAddressesV2Request("limit must be greater than zero".to_string()));
+        }
+
+        // Some checks and preparations for the cursor and DAA score range.
+        let (from_daa_score, to_daa_score) = if let Some(ref mut cursor) = request.cursor {
+            let start_address = cursor.start_address.get_or_insert_with(|| request.addresses[0].clone());
+            if !request.addresses.contains(start_address) {
+                return Err(RpcError::InvalidGetUtxosByAddressesV2Request(
+                    "cursor start address must be included in the request's address list".to_string(),
+                ));
+            };
+
+            // make sure cursor's start DAA score is within the specified DAA score range.
+            let from_daa_score = request.from_daa_score.unwrap_or(0);
+            let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
+
+            if cursor.start_daa_score < from_daa_score || cursor.start_daa_score > to_daa_score {
+                return Err(RpcError::InvalidGetUtxosByAddressesV2Request(format!(
+                    "cursor.daa_score {} must be within from_daa_score and to_daa_score",
+                    cursor.start_daa_score
+                )));
+            }
+            // return the DAA score range for further processing.
+            (from_daa_score, to_daa_score)
+        } else {
+            // return the DAA score range for further processing.
+            (request.from_daa_score.unwrap_or(0), request.to_daa_score.unwrap_or(u64::MAX))
+        };
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let page = self
+            .get_ordered_utxo_set_by_script_public_key_page(
+                request.addresses.iter(),
+                from_daa_score..=to_daa_score,
+                request.cursor.map(|r| r.try_into()).transpose()?,
+                Some(limit),
+            )
+            .await?;
+
+        let next_cursor = page.next_cursor();
+        let entries = page.entries();
+        let entries = self.index_converter.get_ordered_utxos_by_addresses_entries(entries);
+
+        Ok(GetUtxosByAddressesV2Response::new(entries, next_cursor.map(|c| (c, self.config.prefix()).try_into()).transpose()?))
+    }
+
+    async fn get_utxos_by_covenant_ids_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxosByCovenantIdsRequest,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        if !self.config.covenant_index {
+            return Err(RpcError::NoCovenantIndex);
+        }
+
+        // An empty covenant id set is an invalid request, preventing accidental unbounded queries.
+        if request.covenant_ids.is_empty() {
+            return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(UtxoIndexError::QueryingEmptyCovenantIdSet.to_string()));
+        }
+
+        let budget = request.budget.unwrap_or(DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS);
+
+        if !self.config.unsafe_rpc
+            && (request.covenant_ids.len() > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT
+                || request.script_public_keys.len() > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT)
+        {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        if !self.config.unsafe_rpc && (budget > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_DB_OPS) {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+
+        if budget == 0 {
+            return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest("budget must be greater than zero".to_string()));
+        }
+
+        // A request carries either a full cursor (echoed from a previous response's nextCursor)
+        // or none at all; partial cursors are rejected at the conversion boundary.
+        let from_daa_score = request.from_daa_score.unwrap_or(0);
+        let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
+        let cursor = request
+            .cursor
+            .map(|cursor| {
+                if !request.covenant_ids.contains(&cursor.start_covenant_id) {
+                    return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(
+                        "cursor start covenant id must be one of the requested covenant ids".to_string(),
+                    ));
+                }
+                if cursor.start_daa_score < from_daa_score || cursor.start_daa_score > to_daa_score {
+                    return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(format!(
+                        "cursor.daa_score {} must be within from_daa_score and to_daa_score",
+                        cursor.start_daa_score
+                    )));
+                }
+                Ok(cursor.into())
+            })
+            .transpose()?;
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let page = self
+            .utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_by_covenant_ids_page(
+                request.covenant_ids.clone(),
+                from_daa_score..=to_daa_score,
+                request.script_public_keys.clone(),
+                cursor,
+                Some(budget),
+            )
+            .await
+            .map_err(|e| RpcError::InvalidGetUtxosByCovenantIdsRequest(e.to_string()))?;
+
+        let entries = self.index_converter.get_ordered_utxos_by_covenant_ids_entries(page.entries());
+
+        Ok(GetUtxosByCovenantIdsResponse::new(entries, page.next_cursor().map(RpcGetUtxosByCovenantIdsCursor::from)))
+    }
+
     async fn get_balance_by_address_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -905,13 +1099,28 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
                     // estimate milliseconds = (daa_score * target_time_per_block)
-                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block())
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "The enclosing branch checks header.daa_score <= curr_daa_score."
+                    )]
+                    {
+                        (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block())
+                    }
                 } else {
                     // "next" header is the one that we processed last iteration
+                    #[allow(clippy::arithmetic_side_effects, reason = "This branch excludes header_idx == 0.")]
                     let next_header = &headers[header_idx - 1];
                     // Unlike DAA scores which are monotonic (over the selected chain), timestamps are not strictly monotonic, so we avoid assuming so
                     let time_between_headers = next_header.timestamp.saturating_sub(header.timestamp);
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "The enclosing branch checks header.daa_score <= curr_daa_score."
+                    )]
                     let score_between_query_and_header = (curr_daa_score - header.daa_score) as f64;
+                    #[allow(
+                        clippy::arithmetic_side_effects,
+                        reason = "Headers are sorted by DAA score, so next_header.daa_score >= header.daa_score."
+                    )]
                     let score_between_headers = (next_header.daa_score - header.daa_score) as f64;
                     // Interpolate the timestamp delta using the estimated fraction based on DAA scores
                     ((time_between_headers as f64) * (score_between_query_and_header / score_between_headers)) as u64
@@ -921,9 +1130,15 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 daa_score_timestamp_map.insert(curr_daa_score, daa_score_timestamp);
 
                 // Process the next daa score that's <= than current one (at earlier idx)
-                req_idx += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    req_idx += 1;
+                }
             } else {
-                header_idx += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    header_idx += 1;
+                }
             }
         }
 
@@ -966,6 +1181,39 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             let estimate = self.get_fee_estimate_call(connection, GetFeeEstimateRequest {}).await?.estimate;
             Ok(GetFeeEstimateExperimentalResponse { estimate, verbose: None })
         }
+    }
+
+    async fn get_transactions_by_accepting_block_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByAcceptingBlockRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlockResponse> {
+        if request.transaction_ids.len() > MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS {
+            return Err(RpcError::General(format!(
+                "GetTransactionsByAcceptingBlock accepts at most {} transaction IDs (got {})",
+                MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS,
+                request.transaction_ids.len(),
+            )));
+        }
+
+        let session = self.consensus_manager.consensus().session().await;
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let tx_ids = Some(request.transaction_ids);
+        let result = match request.accepting_block {
+            RpcAcceptingBlock::Hash(hash) => {
+                session.async_get_transactions_by_accepting_block(hash, tx_ids, TransactionType::SignableTransaction).await?
+            }
+            RpcAcceptingBlock::DaaScore(score) => {
+                session.async_get_transactions_by_accepting_daa_score(score, tx_ids, TransactionType::SignableTransaction).await?
+            }
+        };
+        let TransactionQueryResult::SignableTransaction(transactions) = result else {
+            return Err(RpcError::General("expected populated transactions from consensus".to_string()));
+        };
+        Ok(GetTransactionsByAcceptingBlockResponse { transactions: transactions.iter().map(Into::into).collect() })
     }
 
     async fn get_utxo_return_address_call(

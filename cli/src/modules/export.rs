@@ -54,12 +54,18 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                     prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
 
                 tprintln!(ctx, "");
-                tprintln!(ctx, "extended public key {}:", id + 1);
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    tprintln!(ctx, "extended public key {}:", id + 1);
+                }
                 tprintln!(ctx, "");
                 tprintln!(ctx, "{}", ctx.wallet().network_format_xpub(&xpub_key));
                 tprintln!(ctx, "");
 
-                tprintln!(ctx, "mnemonic {}:", id + 1);
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                {
+                    tprintln!(ctx, "mnemonic {}:", id + 1);
+                }
                 tprintln!(ctx, "");
                 tprintln!(ctx, "{}", mnemonic.phrase());
                 tprintln!(ctx, "");

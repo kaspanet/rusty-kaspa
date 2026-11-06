@@ -1,8 +1,9 @@
-use crate::v7::{
+use self::{
     address::{ReceiveAddressesFlow, SendAddressesFlow},
     blockrelay::{flow::HandleRelayInvsFlow, handle_requests::HandleRelayBlockRequests},
     ping::{ReceivePingsFlow, SendPingsFlow},
     request_antipast::HandleAntipastRequests,
+    request_block_bodies::HandleBlockBodyRequests,
     request_block_locator::RequestBlockLocatorFlow,
     request_headers::RequestHeadersFlow,
     request_ibd_blocks::HandleIbdBlockRequests,
@@ -12,19 +13,33 @@ use crate::v7::{
     request_pruning_point_utxo_set::RequestPruningPointUtxoSetFlow,
     txrelay::flow::{RelayTransactionsFlow, RequestTransactionsFlow},
 };
-use crate::v8::request_block_bodies::HandleBlockBodyRequests;
+pub(crate) mod address;
+pub(crate) mod blockrelay;
+pub(crate) mod ping;
+pub(crate) mod request_antipast;
+pub(crate) mod request_block_bodies;
+pub(crate) mod request_block_locator;
+pub(crate) mod request_headers;
+pub(crate) mod request_ibd_blocks;
+pub(crate) mod request_ibd_chain_block_locator;
+pub(crate) mod request_pp_proof;
+pub(crate) mod request_pruning_point_and_anticone;
 pub(crate) mod request_pruning_point_smt_state;
+pub(crate) mod request_pruning_point_utxo_set;
+pub(crate) mod txrelay;
 use request_pruning_point_smt_state::RequestPruningPointSmtStateFlow;
 
 use crate::{flow_context::FlowContext, flow_trait::Flow, ibd::IbdFlow};
-use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute, convert::header::HeaderFormat};
+use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
 use kaspa_utils::channel;
 use std::sync::Arc;
 
-pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) -> Vec<Box<dyn Flow>> {
+pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
+    register_flows(ctx, router, false)
+}
+
+pub(crate) fn register_flows(ctx: FlowContext, router: Arc<Router>, use_ibd_chunks: bool) -> Vec<Box<dyn Flow>> {
     let (ibd_sender, relay_receiver) = channel::job();
-    let body_only_ibd_permitted = true;
-    let header_format = HeaderFormat::from(protocol_version);
     let mut flows: Vec<Box<dyn Flow>> = vec![
         Box::new(IbdFlow::new(
             ctx.clone(),
@@ -37,11 +52,14 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::BlockWithTrustedDataV4,
                 KaspadMessagePayloadType::DoneBlocksWithTrustedData,
                 KaspadMessagePayloadType::IbdChainBlockLocator,
-                KaspadMessagePayloadType::IbdBlock,
                 KaspadMessagePayloadType::BlockBody,
                 KaspadMessagePayloadType::TrustedData,
+                KaspadMessagePayloadType::TrustedDataChunk,
+                KaspadMessagePayloadType::TrustedDataChunksEnd,
                 KaspadMessagePayloadType::PruningPoints,
                 KaspadMessagePayloadType::PruningPointProof,
+                KaspadMessagePayloadType::PruningPointProofChunk,
+                KaspadMessagePayloadType::PruningPointProofChunksEnd,
                 KaspadMessagePayloadType::UnexpectedPruningPoint,
                 KaspadMessagePayloadType::PruningPointUtxoSetChunk,
                 KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
@@ -49,14 +67,12 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::SmtLaneChunk,
             ]),
             relay_receiver,
-            body_only_ibd_permitted,
-            header_format,
+            use_ibd_chunks,
         )),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestRelayBlocks]),
-            header_format,
         )),
         Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]))),
         Box::new(SendPingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
@@ -64,13 +80,12 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestHeaders, KaspadMessagePayloadType::RequestNextHeaders]),
-            header_format,
         )),
         Box::new(RequestPruningPointProofFlow::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointProof]),
-            header_format,
+            use_ibd_chunks,
         )),
         Box::new(RequestIbdChainBlockLocatorFlow::new(
             ctx.clone(),
@@ -84,7 +99,7 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
                 KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
             ]),
-            header_format,
+            use_ibd_chunks,
         )),
         Box::new(RequestPruningPointUtxoSetFlow::new(
             ctx.clone(),
@@ -102,11 +117,12 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
                 KaspadMessagePayloadType::RequestNextPruningPointSmtChunk,
             ]),
         )),
+        // The IBD client flow currently requests block bodies only. Keep serving full-block
+        // requests in case a future IBD flow needs them again.
         Box::new(HandleIbdBlockRequests::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocks]),
-            header_format,
         )),
         Box::new(HandleBlockBodyRequests::new(
             ctx.clone(),
@@ -117,7 +133,6 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![KaspadMessagePayloadType::RequestAntipast]),
-            header_format,
         )),
         Box::new(RelayTransactionsFlow::new(
             ctx.clone(),
@@ -158,7 +173,6 @@ pub fn register(ctx: FlowContext, router: Arc<Router>, protocol_version: u32) ->
             shared_invs_route.clone(),
             router.subscribe(vec![]),
             ibd_sender.clone(),
-            header_format,
         )) as Box<dyn Flow>
     }));
 

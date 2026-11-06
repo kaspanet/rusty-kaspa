@@ -293,6 +293,14 @@ message PruningPointProofMessage {
   repeated PruningPointProofHeaderArray headers = 1;
 }
 
+message PruningPointProofChunkMessage {
+  repeated BlockHeader chunk = 1;
+  uint32 level = 2;
+}
+
+message PruningPointProofChunksEndMessage {
+}
+
 message PruningPointProofHeaderArray {
   repeated BlockHeader headers = 1;
 }
@@ -309,6 +317,13 @@ message BlockWithTrustedDataV4Message {
 message TrustedDataMessage {
   repeated DaaBlockV4 daaWindow = 1; // TODO: rename to `trustedSubDag` once v5 is obsolete
   repeated BlockGhostdagDataHashPair ghostdagData = 2; // TODO: remove once v5 is obsolete
+}
+
+message TrustedDataChunkMessage {
+  repeated DaaBlockV4 headers = 1;
+}
+
+message TrustedDataChunksEndMessage {
 }
 
 // SMT state sync (KIP-21 IBD)

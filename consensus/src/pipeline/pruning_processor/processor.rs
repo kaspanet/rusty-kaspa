@@ -25,6 +25,7 @@ use crate::{
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
+use hashbrown::hash_map::Entry::Vacant;
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel,
@@ -44,7 +45,7 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::{VecDeque, hash_map::Entry::Vacant},
+    collections::VecDeque,
     ops::Deref,
     sync::{
         Arc,
@@ -417,7 +418,7 @@ impl PruningProcessor {
                     pruned_tips.len(),
                     pruned_tips.iter().take(5.min(pruned_tips.len().div_ceil(2))).reusable_format(", "),
                     pruned_tips.iter().rev().take(5.min(pruned_tips.len() / 2)).reusable_format(", ")
-                )
+                );
             }
 
             // Prune the selected chain index below the pruning point
@@ -583,16 +584,14 @@ impl PruningProcessor {
         // The inclusive cutoff is `pp.blue_score − finality_depth − 1`: the
         // score `pp.blue_score − finality_depth` is still inside the active
         // window at the pruning point and must be preserved.
-        if self.config.toccata_activation.is_active(pp_header.daa_score) {
-            let smt_cutoff = crate::pipeline::virtual_processor::bounds::SeqCommitBounds::inclusive_prune_cutoff(
-                pp_header.blue_score,
-                self.config.params.finality_depth(),
-            );
-            info!("SMT pruning: cutoff_blue_score={}", smt_cutoff);
-            self.smt_stores.prune(&self.db, smt_cutoff);
-            if self.config.enable_sanity_checks {
-                self.assert_smt_rebuilding(new_pruning_point, pp_header.blue_score);
-            }
+        let smt_cutoff = crate::pipeline::virtual_processor::bounds::SeqCommitBounds::inclusive_prune_cutoff(
+            pp_header.blue_score,
+            self.config.params.finality_depth(),
+        );
+        info!("SMT pruning: cutoff_blue_score={}", smt_cutoff);
+        self.smt_stores.prune(&self.db, smt_cutoff);
+        if self.config.enable_sanity_checks {
+            self.assert_smt_rebuilding(new_pruning_point, pp_header.blue_score);
         }
 
         {

@@ -11,11 +11,13 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
+itertools.workspace = true
+zerocopy.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
-kaspa-hashes.workspace = true
+kaspa-hashes = { workspace = true, features = ["zerocopy"] }
 kaspa-index-core.workspace = true
 kaspa-utils = { workspace = true, features = ["hashmap"] }
 log.workspace = true

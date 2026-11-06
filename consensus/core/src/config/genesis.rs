@@ -4,6 +4,8 @@ use crate::{
     subnets::SUBNETWORK_ID_COINBASE,
     tx::Transaction,
 };
+use alloc::vec;
+use alloc::vec::Vec;
 use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_muhash::EMPTY_MUHASH;
 

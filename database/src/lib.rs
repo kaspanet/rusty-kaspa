@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 mod access;
 mod cache;
 mod db;

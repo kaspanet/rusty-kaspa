@@ -327,6 +327,15 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_transactions_by_accepting_daa_score(accepting_daa_score, tx_ids, tx_type)).await
     }
 
+    pub async fn async_get_transactions_by_accepting_block(
+        &self,
+        accepting_block: Hash,
+        tx_ids: Option<Vec<TransactionId>>,
+        tx_type: TransactionType,
+    ) -> ConsensusResult<TransactionQueryResult> {
+        self.clone().spawn_blocking(move |c| c.get_transactions_by_accepting_block(accepting_block, tx_ids, tx_type)).await
+    }
+
     pub async fn async_get_transactions_by_block_acceptance_data(
         &self,
         accepting_block: Hash,

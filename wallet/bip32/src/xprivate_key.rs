@@ -141,7 +141,7 @@ where
 {
     fn ct_eq(&self, other: &Self) -> Choice {
         let mut key_a = self.to_bytes();
-        let mut key_b = self.to_bytes();
+        let mut key_b = other.to_bytes();
 
         let result = key_a.ct_eq(&key_b)
             & self.attrs.depth.ct_eq(&other.attrs.depth)

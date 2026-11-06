@@ -1,11 +1,12 @@
 //! Conversion of Transaction related types
 
 use crate::{
-    RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionOutput, RpcResult, RpcTransaction,
-    RpcTransactionInput, RpcTransactionOutput,
+    RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionInputVerboseData,
+    RpcOptionalTransactionOutput, RpcOptionalTransactionVerboseData, RpcResult, RpcTransaction, RpcTransactionInput,
+    RpcTransactionOutput,
 };
 use kaspa_consensus_core::mass::{ComputeBudget, SigopCount};
-use kaspa_consensus_core::tx::{ComputeCommit, Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_core::tx::{ComputeCommit, SignableTransaction, Transaction, TransactionInput, TransactionOutput};
 
 struct RpcInputWithVersion {
     version: u16,
@@ -174,6 +175,23 @@ impl From<&Transaction> for RpcOptionalTransaction {
             storage_mass: Some(item.storage_mass()),
             verbose_data: None,
         }
+    }
+}
+
+impl From<&SignableTransaction> for RpcOptionalTransaction {
+    fn from(item: &SignableTransaction) -> Self {
+        let mut transaction = Self::from(&item.tx);
+        for (input, entry) in transaction.inputs.iter_mut().zip(&item.entries) {
+            input.verbose_data = Some(RpcOptionalTransactionInputVerboseData { utxo_entry: entry.clone().map(Into::into) });
+        }
+        transaction.verbose_data = Some(RpcOptionalTransactionVerboseData {
+            transaction_id: Some(item.id()),
+            hash: Some(kaspa_consensus_core::hashing::tx::hash(&item.tx)),
+            compute_mass: item.calculated_non_contextual_masses.map(|masses| masses.compute_mass),
+            block_hash: None,
+            block_time: None,
+        });
+        transaction
     }
 }
 

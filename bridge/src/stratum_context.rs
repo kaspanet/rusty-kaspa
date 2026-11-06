@@ -502,6 +502,7 @@ impl StratumContext {
                 };
 
                 let result = if let Some(mut write_half) = write_half_opt {
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(TIMESTAMP)")]
                     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
 
                     // Try to write directly (no need to wait for writable)

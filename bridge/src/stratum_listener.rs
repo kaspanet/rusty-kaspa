@@ -124,7 +124,10 @@ impl StratumListener {
                             };
                             info!("[CONNECTION] client disconnecting - {}", ctx.remote_addr);
                             info!("[CONNECTION] Disconnect event for {}:{}", ctx.remote_addr, ctx.remote_port);
-                            stats.lock().disconnects += 1;
+                            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                            {
+                                stats.lock().disconnects += 1;
+                            }
                             on_disconnect(ctx);
                         }
                     }
@@ -134,7 +137,10 @@ impl StratumListener {
                     };
                     info!("[CONNECTION] client disconnecting - {}", ctx.remote_addr);
                     info!("[CONNECTION] Disconnect event for {}:{}", ctx.remote_addr, ctx.remote_port);
-                    stats.lock().disconnects += 1;
+                    #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                    {
+                        stats.lock().disconnects += 1;
+                    }
                     on_disconnect(ctx);
                 }
             }
@@ -289,6 +295,7 @@ impl StratumListener {
 
             let read_result = if let Some(mut read_half) = read_half_opt {
                 // Set read deadline
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(TIMESTAMP)")]
                 let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
 
                 let result = tokio::time::timeout_at(deadline, read_half.read(&mut buffer)).await;
@@ -495,7 +502,10 @@ impl StratumListener {
                     // Process complete lines
                     while let Some(newline_pos) = line_buffer.find('\n') {
                         let line = line_buffer[..newline_pos].trim().to_string();
-                        line_buffer = line_buffer[newline_pos + 1..].to_string();
+                        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(INDEX)")]
+                        {
+                            line_buffer = line_buffer[newline_pos + 1..].to_string();
+                        }
 
                         if !line.is_empty() {
                             // Get client context for detailed logging

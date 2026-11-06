@@ -68,7 +68,7 @@ impl BorshSerialize for Payload {
 
 impl BorshDeserialize for Payload {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
-        let StorageHeader { version: _, .. } =
+        let StorageHeader { .. } =
             StorageHeader::deserialize_reader(reader)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
         let prv_key_data = BorshDeserialize::deserialize_reader(reader)?;
         let accounts = BorshDeserialize::deserialize_reader(reader)?;

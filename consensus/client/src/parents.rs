@@ -83,7 +83,37 @@ impl TryCastFromJs for CompressedParents {
                 })
                 .collect::<std::result::Result<Vec<(u8, Vec<Hash>)>, Error>>()?;
 
-            Ok(Self { inner: runs.try_into()? }.into())
+            let inner: native::CompressedParents = runs.try_into()?;
+
+            Ok(Self { inner }.into())
         })
+    }
+}
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::errors::header::CompressedParentsError;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn oversized_compressed_parents_js_cast_returns_error() {
+        let parents = js_sys::Array::new();
+        let parent = JsValue::from_str(&"00".repeat(32));
+        for _ in 0..2049 {
+            parents.push(&parent);
+        }
+
+        let run = js_sys::Array::new();
+        run.push(&JsValue::from(u8::MAX));
+        run.push(&parents);
+
+        let runs = js_sys::Array::new();
+        runs.push(&run);
+
+        assert!(matches!(
+            CompressedParents::try_cast_from(&runs),
+            Err(Error::CompressedParents(CompressedParentsError::SizeExceeded))
+        ));
     }
 }

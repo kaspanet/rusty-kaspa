@@ -41,8 +41,18 @@ impl LaneSelectionState {
                 if usage.gas.saturating_add(gas) > policy.gas_per_lane_limit {
                     return false;
                 }
-                usage.tx_count += 1;
-                usage.gas += gas;
+
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                {
+                    usage.tx_count += 1;
+                }
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    reason = "The guard above establishes that the saturating sum is at most the configured gas-per-lane limit, which is operationally far below u64::MAX. Therefore saturation did not occur and the exact sum fits in u64."
+                )]
+                {
+                    usage.gas += gas;
+                }
                 true
             }
             Entry::Vacant(entry) => {
@@ -55,6 +65,10 @@ impl LaneSelectionState {
         }
     }
 
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "We assume we reject a transaction that was counted in `usage` below, so the subtraction cannot underflow."
+    )]
     fn reject(&mut self, lane: LaneId, gas: u64) {
         let usage = self.occupied.get_mut(&lane).expect("previously selected txs occupy a lane");
         usage.tx_count -= 1;
@@ -171,7 +185,11 @@ impl TemplateTransactionSelector for SequenceSelector {
             if !self.lanes.try_select(&self.policy, tx.tx.subnetwork_id, tx.tx.gas) {
                 continue;
             }
-            self.total_selected_mass += tx.mass;
+
+            #[allow(clippy::arithmetic_side_effects, reason = "We checked above that this cannot exceed self.policy.max_block_mass")]
+            {
+                self.total_selected_mass += tx.mass;
+            }
             self.selected_vec.push(SequenceSelectorSelection {
                 tx_id: tx.tx.id(),
                 mass: tx.mass,
@@ -190,10 +208,19 @@ impl TemplateTransactionSelector for SequenceSelector {
             .selected_map
             .get_or_insert_with(|| self.selected_vec.iter().map(|tx| (tx.tx_id, (tx.mass, tx.lane, tx.gas))).collect());
         let (mass, lane, gas) = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
-        // Selections must be counted in total selected mass, so this subtraction cannot underflow
-        self.total_selected_mass -= mass;
+
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "Selections must be counted in total selected mass, so this subtraction cannot underflow"
+        )]
+        {
+            self.total_selected_mass -= mass;
+        }
         self.lanes.reject(lane, gas);
-        self.overall_rejections += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            self.overall_rejections += 1;
+        }
     }
 
     fn is_successful(&self) -> bool {
@@ -326,7 +353,10 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
 
             if candidate.mass > self.gap {
                 self.mass_deferred.push(candidate);
-                mass_null_attempts += 1;
+                #[allow(clippy::arithmetic_side_effects, reason = "The loop guard requires mass_null_attempts < MAX_NULL_ATTEMPTS.")]
+                {
+                    mass_null_attempts += 1;
+                }
                 continue;
             }
 
@@ -337,7 +367,10 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
                 continue;
             }
 
-            self.gap -= candidate.mass;
+            #[allow(clippy::arithmetic_side_effects, reason = "The candidate.mass > self.gap branch continues above.")]
+            {
+                self.gap -= candidate.mass;
+            }
             self.selected_vec.push(TreeSelectorSelection { tx_id: tx.id(), mass: candidate.mass, lane, gas: tx.gas });
             transactions.push(tx.clone());
         }
@@ -351,10 +384,18 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
             .get_or_insert_with(|| self.selected_vec.drain(..).map(|selection| (selection.tx_id, selection)).collect());
         let selection = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
 
-        // Rejected selections were previously subtracted from the gap, so this cannot exceed the block mass limit.
-        self.gap += selection.mass;
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "Rejected selections were previously subtracted from the gap, so this cannot exceed the block mass limit."
+        )]
+        {
+            self.gap += selection.mass;
+        }
         self.lanes.reject(selection.lane, selection.gas);
-        self.overall_rejections += 1;
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            self.overall_rejections += 1;
+        }
     }
 
     fn is_successful(&self) -> bool {

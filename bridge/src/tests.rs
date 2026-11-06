@@ -23,6 +23,8 @@
 // Tests are designed to be educational, helping developers understand the codebase.
 // ============================================================================
 
+#![allow(clippy::arithmetic_side_effects)]
+
 #[cfg(test)]
 use crate::cli::{parse_bool, parse_instance_spec};
 #[cfg(test)]
@@ -1369,6 +1371,16 @@ mod comprehensive_tests {
     }
 
     #[tokio::test]
+    async fn test_subscribe_rejects_oversized_extranonce() {
+        let ctx = create_test_context().await;
+        *ctx.extranonce.lock() = "00".repeat(9);
+        let event = JsonRpcEvent::new(Some("1".to_string()), "mining.subscribe", vec![json!("Bitmain")]);
+
+        let err = handle_subscribe(ctx, event, None).await.unwrap_err();
+        assert_eq!(err.to_string(), "extranonce exceeds the 8-byte nonce size");
+    }
+
+    #[tokio::test]
     async fn test_stratum_protocol_subscribe_with_client_handler() {
         // Test: mining.subscribe with ClientHandler for extranonce assignment
         // This demonstrates how extranonce is auto-assigned based on miner type
@@ -1650,13 +1662,13 @@ mod comprehensive_tests {
 
         // Assign first extranonce
         let extranonce1 =
-            counter.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
+            counter.try_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
         assert!(extranonce1.is_ok());
         assert_eq!(extranonce1.unwrap(), 0);
 
         // Assign second extranonce
         let extranonce2 =
-            counter.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
+            counter.try_update(Ordering::SeqCst, Ordering::SeqCst, |val| if val < max_extranonce { Some(val + 1) } else { Some(0) });
         assert!(extranonce2.is_ok());
         assert_eq!(extranonce2.unwrap(), 1);
     }

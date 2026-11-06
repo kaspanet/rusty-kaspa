@@ -6,10 +6,13 @@ use crate::config::constants::consensus::*;
 /// `x` is expected to be 2Dλ where D is the maximal network delay and λ is the block mining rate.
 /// `delta` is an upper bound for the probability of anticones larger than k.
 /// Returns the minimal k such that the above conditions hold.
+///
+/// Relies on floating-point transcendental math from the standard library.
+#[cfg(feature = "std")]
 pub fn calculate_ghostdag_k(x: f64, delta: f64) -> u64 {
     assert!(x > 0.0);
     assert!(delta > 0.0 && delta < 1.0);
-    let (mut k_hat, mut sigma, mut fraction, exp) = (0u64, 0.0, 1.0, std::f64::consts::E.powf(-x));
+    let (mut k_hat, mut sigma, mut fraction, exp) = (0u64, 0.0, 1.0, core::f64::consts::E.powf(-x));
     loop {
         sigma += exp * fraction;
         if 1.0 - sigma < delta {

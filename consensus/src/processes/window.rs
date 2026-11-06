@@ -1,3 +1,4 @@
+use crate::errors::RuleError;
 use crate::{
     model::stores::{
         block_window_cache::{BlockWindowCacheReader, BlockWindowCacheWriter, BlockWindowHeap},
@@ -11,7 +12,7 @@ use kaspa_consensus_core::{
     BlockHashSet, BlueWorkType, HashMapCustomHasher,
     blockhash::{BlockHashExtensions, ORIGIN},
     config::genesis::GenesisBlock,
-    errors::{block::RuleError, difficulty::DifficultyResult},
+    errors::difficulty::DifficultyResult,
 };
 use kaspa_hashes::Hash;
 use kaspa_math::Uint256;

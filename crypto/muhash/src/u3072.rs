@@ -1,7 +1,7 @@
 use crate::ELEMENT_BYTE_SIZE;
+use core::ops::{DivAssign, MulAssign};
 use kaspa_math::Uint3072;
 use serde::{Deserialize, Serialize};
-use std::ops::{DivAssign, MulAssign};
 
 // TODO: Add u32 support for optimization on 32 bit machines.
 
@@ -58,8 +58,8 @@ impl U3072 {
     #[inline(always)]
     pub fn from_le_bytes(bytes: [u8; ELEMENT_BYTE_SIZE]) -> Self {
         let mut res = Self::zero();
-        bytes.chunks_exact(LIMB_SIZE_BYTES).zip(res.limbs.iter_mut()).for_each(|(chunk, word)| {
-            *word = Limb::from_le_bytes(chunk.try_into().unwrap());
+        bytes.as_chunks::<LIMB_SIZE_BYTES>().0.iter().zip(res.limbs.iter_mut()).for_each(|(chunk, word)| {
+            *word = Limb::from_le_bytes(*chunk);
         });
         res
     }
@@ -68,7 +68,7 @@ impl U3072 {
     #[must_use]
     pub fn to_le_bytes(self) -> [u8; ELEMENT_BYTE_SIZE] {
         let mut res = [0u8; ELEMENT_BYTE_SIZE];
-        self.limbs.iter().zip(res.chunks_exact_mut(LIMB_SIZE_BYTES)).for_each(|(limb, chunk)| {
+        self.limbs.iter().zip(res.as_chunks_mut::<LIMB_SIZE_BYTES>().0.iter_mut()).for_each(|(limb, chunk)| {
             chunk.copy_from_slice(&limb.to_le_bytes());
         });
         res
@@ -296,6 +296,7 @@ impl Default for U3072 {
 #[cfg(test)]
 mod tests {
     use crate::u3072::{self, LIMBS, Limb, U3072};
+    use alloc::vec::Vec;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha8Rng;
 

@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 #![no_std]
 
 extern crate alloc;

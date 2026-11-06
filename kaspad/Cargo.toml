@@ -62,9 +62,9 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
 serde_json.workspace = true
+serde_with.workspace = true
 
 toml = "0.8.10"
-serde_with = "3.7.0"
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]

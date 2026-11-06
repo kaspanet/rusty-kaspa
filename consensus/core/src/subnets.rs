@@ -1,6 +1,8 @@
-use std::fmt::{Debug, Display, Formatter};
-use std::str::{self, FromStr};
+use core::fmt::{Debug, Display, Formatter};
+use core::str::{self, FromStr};
 
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::hex::{FromHex, ToHex};
 use kaspa_utils::{serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref};
@@ -27,7 +29,7 @@ const _: () = assert!(SUBNETWORK_NAMESPACE_LEN + SUBNETWORK_ZERO_TAIL_LEN == SUB
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
 impl Debug for SubnetworkId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SubnetworkId").field("", &self.to_hex()).finish()
     }
 }
@@ -116,10 +118,16 @@ impl SubnetworkId {
 #[derive(Error, Debug, Clone)]
 pub enum SubnetworkConversionError {
     #[error(transparent)]
-    SliceError(#[from] std::array::TryFromSliceError),
+    SliceError(#[from] core::array::TryFromSliceError),
 
-    #[error(transparent)]
-    HexError(#[from] faster_hex::Error),
+    #[error("{0}")]
+    HexError(faster_hex::Error),
+}
+
+impl From<faster_hex::Error> for SubnetworkConversionError {
+    fn from(err: faster_hex::Error) -> Self {
+        SubnetworkConversionError::HexError(err)
+    }
 }
 
 impl TryFrom<&[u8]> for SubnetworkId {
@@ -133,7 +141,7 @@ impl TryFrom<&[u8]> for SubnetworkId {
 
 impl Display for SubnetworkId {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let mut hex = [0u8; SUBNETWORK_ID_SIZE * 2];
         faster_hex::hex_encode(&self.0, &mut hex).expect("The output is exactly twice the size of the input");
         f.write_str(str::from_utf8(&hex).expect("hex is always valid UTF-8"))

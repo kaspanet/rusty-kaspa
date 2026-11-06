@@ -1,3 +1,6 @@
+// Benchmarks are exempt from the arithmetic-side-effects lint.
+#![allow(clippy::arithmetic_side_effects)]
+
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use futures_util::future::join_all;
 use kaspa_utils::sync::rwlock::{RfRwLock, RfRwLockOwnedReadGuard, RfRwLockOwnedWriteGuard};

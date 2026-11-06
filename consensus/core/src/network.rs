@@ -11,14 +11,19 @@
 
 #![allow(non_snake_case)]
 
+use alloc::format;
+use alloc::string::{String, ToString};
 use borsh::{BorshDeserialize, BorshSerialize};
+use core::fmt::{Debug, Display, Formatter};
+use core::ops::Deref;
+use core::str::FromStr;
 use kaspa_addresses::Prefix;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::Deref;
-use std::str::FromStr;
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::convert::TryFromJsValue;
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::prelude::*;
+#[cfg(feature = "wasm32-sdk")]
 use workflow_wasm::prelude::*;
 
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
@@ -30,7 +35,7 @@ pub enum NetworkTypeError {
 /// @category Consensus
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "lowercase")]
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 pub enum NetworkType {
     Mainnet,
     Testnet,
@@ -114,7 +119,7 @@ impl FromStr for NetworkType {
 
 impl Display for NetworkType {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let s = match self {
             NetworkType::Mainnet => "mainnet",
             NetworkType::Testnet => "testnet",
@@ -125,6 +130,7 @@ impl Display for NetworkType {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryFrom<&NetworkTypeT> for NetworkType {
     type Error = NetworkTypeError;
     fn try_from(value: &NetworkTypeT) -> Result<Self, Self::Error> {
@@ -140,6 +146,7 @@ impl TryFrom<&NetworkTypeT> for NetworkType {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_name = "Network", typescript_type = "NetworkType | NetworkId | string")]
@@ -147,6 +154,7 @@ extern "C" {
     pub type NetworkTypeT;
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryFrom<&NetworkTypeT> for Prefix {
     type Error = NetworkIdError;
     fn try_from(value: &NetworkTypeT) -> Result<Self, Self::Error> {
@@ -177,10 +185,12 @@ pub enum NetworkIdError {
     #[error("Invalid network id: '{0}'")]
     InvalidNetworkId(String),
 
+    #[cfg(feature = "wasm32-sdk")]
     #[error(transparent)]
     Wasm(#[from] workflow_wasm::error::Error),
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl From<NetworkIdError> for JsValue {
     fn from(err: NetworkIdError) -> Self {
         JsValue::from_str(&err.to_string())
@@ -193,12 +203,13 @@ impl From<NetworkIdError> for JsValue {
 ///
 /// @category Consensus
 ///
-#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Ord, PartialOrd, CastFromJs)]
-#[wasm_bindgen(inspectable)]
+#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[cfg_attr(feature = "wasm32-sdk", derive(CastFromJs))]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(inspectable))]
 pub struct NetworkId {
-    #[wasm_bindgen(js_name = "type")]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = "type"))]
     pub network_type: NetworkType,
-    #[wasm_bindgen(js_name = "suffix")]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = "suffix"))]
     pub suffix: Option<u32>,
 }
 
@@ -323,7 +334,7 @@ impl FromStr for NetworkId {
 }
 
 impl Display for NetworkId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         if let Some(suffix) = self.suffix { write!(f, "{}-{}", self.network_type, suffix) } else { write!(f, "{}", self.network_type) }
     }
 }
@@ -342,11 +353,11 @@ struct NetworkIdVisitor;
 impl de::Visitor<'_> for NetworkIdVisitor {
     type Value = NetworkId;
 
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
         formatter.write_str("a string containing network_type and optional suffix separated by a '-'")
     }
 
-    fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+    fn visit_str<E>(self, value: &str) -> core::result::Result<Self::Value, E>
     where
         E: de::Error,
     {
@@ -363,6 +374,7 @@ impl<'de> Deserialize<'de> for NetworkId {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 #[wasm_bindgen]
 impl NetworkId {
     #[wasm_bindgen(constructor)]
@@ -386,12 +398,14 @@ impl NetworkId {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "NetworkId | string")]
     pub type NetworkIdT;
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryFrom<&JsValue> for NetworkId {
     type Error = NetworkIdError;
     fn try_from(value: &JsValue) -> Result<Self, Self::Error> {
@@ -399,6 +413,7 @@ impl TryFrom<&JsValue> for NetworkId {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryFrom<JsValue> for NetworkId {
     type Error = NetworkIdError;
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
@@ -406,6 +421,7 @@ impl TryFrom<JsValue> for NetworkId {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryCastFromJs for NetworkId {
     type Error = NetworkIdError;
     fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>

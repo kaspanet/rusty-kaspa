@@ -325,11 +325,14 @@ impl UtxosChangedSubscription {
     pub fn with_capacity(state: UtxosChangedState, listener_id: ListenerId, capacity: usize) -> Self {
         let data = RwLock::new(UtxosChangedSubscriptionData::with_capacity(state, capacity));
         let subscription = Self { data, listener_id };
-        trace!(
-            "UtxosChangedSubscription: {} in total (new {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
-            subscription
-        );
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            trace!(
+                "UtxosChangedSubscription: {} in total (new {})",
+                UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
+                subscription
+            );
+        }
         subscription
     }
 
@@ -366,11 +369,14 @@ impl UtxosChangedSubscription {
 impl Clone for UtxosChangedSubscription {
     fn clone(&self) -> Self {
         let subscription = Self { data: RwLock::new(self.data().clone()), listener_id: self.listener_id };
-        trace!(
-            "UtxosChangedSubscription: {} in total (clone {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
-            subscription
-        );
+        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+        {
+            trace!(
+                "UtxosChangedSubscription: {} in total (clone {})",
+                UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
+                subscription
+            );
+        }
         subscription
     }
 }
@@ -387,8 +393,9 @@ impl Drop for UtxosChangedSubscription {
         // before, but due to some race condition it overflowed in some cases. Since the counter is only used for
         // logging purposes, we can afford to have an inaccurate count rather than risking an underflow panic.
         // It's still worth investigating the root cause of the race condition and fixing it.
+        #[allow(clippy::arithmetic_side_effects, reason = "`try_update` returned `Ok(previous)`, which implies that `previous >= 1`.")]
         let subscriptions =
-            match UTXOS_CHANGED_SUBSCRIPTIONS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| count.checked_sub(1)) {
+            match UTXOS_CHANGED_SUBSCRIPTIONS.try_update(Ordering::SeqCst, Ordering::SeqCst, |count| count.checked_sub(1)) {
                 Ok(previous) => previous - 1,
                 Err(current) => current,
             };
@@ -614,16 +621,16 @@ mod tests {
                 assert_eq!(
                     cmp, self.should_match,
                     "{name}: subscriptions should {equal}, comparing {:?} with {:?}",
-                    &subscriptions[self.left], &subscriptions[self.right],
+                    subscriptions[self.left], subscriptions[self.right],
                 );
                 // Compare Box dyn Single hash
                 assert_eq!(
                     get_hash(&subscriptions[self.left]) == get_hash(&subscriptions[self.right]),
                     self.should_match,
                     "{name}: subscription hashes should {equal}, comparing {:?} => {} with {:?} => {}",
-                    &subscriptions[self.left],
+                    subscriptions[self.left],
                     get_hash(&subscriptions[self.left]),
-                    &subscriptions[self.right],
+                    subscriptions[self.right],
                     get_hash(&subscriptions[self.right]),
                 );
                 // Compare Arc dyn Single

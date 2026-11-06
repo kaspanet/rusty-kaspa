@@ -63,6 +63,8 @@ impl Factory {
                 ResolveFinalityConflict,
                 GetHeaders,
                 GetUtxosByAddresses,
+                GetUtxosByAddressesV2,
+                GetUtxosByCovenantIds,
                 GetBalanceByAddress,
                 GetBalancesByAddresses,
                 GetSinkBlueScore,
@@ -84,6 +86,7 @@ impl Factory {
                 GetBlockRewardInfo,
                 GetUtxoReturnAddress,
                 GetVirtualChainFromBlockV2,
+                GetTransactionsByAcceptingBlock,
                 GetSeqCommitLaneProof,
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,
@@ -144,7 +147,7 @@ impl Factory {
         interface.set_method_properties(
             KaspadPayloadOps::SubmitBlock,
             network_bps,
-            10.max(network_bps * 2),
+            10.max(network_bps.saturating_mul(2)),
             KaspadRoutingPolicy::DropIfFull(Arc::new(Box::new(|_: &KaspadRequest| {
                 Ok(Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::RouteIsFull) }).into())
             }))),

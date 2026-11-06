@@ -115,8 +115,8 @@ try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
 mod tests {
     use crate::protowire;
     use itertools::Itertools;
-    use kaspa_consensus_core::{block::Block, header::Header};
-    use kaspa_rpc_core::{RpcBlock, RpcHash, RpcHeader};
+    use kaspa_consensus_core::{block::Block, errors::header::CompressedParentsError, header::Header};
+    use kaspa_rpc_core::{RpcBlock, RpcError, RpcHash, RpcHeader};
 
     fn new_unique() -> RpcHash {
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -196,6 +196,21 @@ mod tests {
 
         assert_eq!(rpc_header.hash, reconverted_rpc_header.hash);
         assert_eq!(proto_header, reconverted_proto_header);
+    }
+
+    #[test]
+    fn test_rpc_header_with_too_many_parents_is_rejected() {
+        let proto_header = protowire::RpcBlockHeader {
+            parents: vec![protowire::RpcBlockLevelParents {
+                parent_hashes: vec![RpcHash::default().to_string(); u8::MAX as usize * 2048 + 1],
+            }],
+            ..Default::default()
+        };
+
+        assert!(matches!(
+            RpcHeader::try_from(&proto_header),
+            Err(RpcError::CompressedParentsError(CompressedParentsError::SizeExceeded))
+        ));
     }
 
     #[test]

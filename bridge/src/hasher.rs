@@ -1,6 +1,6 @@
 use kaspa_hashes::{BlockHash, HasherBase};
 use num_bigint::BigUint;
-use num_traits::{ToPrimitive, Zero};
+use num_traits::{CheckedDiv, ToPrimitive, Zero};
 
 /// Maximum target value (2^224 - 1)
 /// This is 28 bytes = 56 hex characters = 224 bits = 2^224 - 1
@@ -71,7 +71,12 @@ pub fn diff_to_target_alternative(diff: f64) -> BigUint {
     let difficulty_big = BigUint::from((diff * 1000000.0) as u64);
 
     // Calculate target = max_target * 1000000 / (difficulty * 1000000)
-    max_target_big * BigUint::from(1000000u64) / difficulty_big
+    #[allow(clippy::arithmetic_side_effects, reason = "BigUint can't overflow")]
+    {
+        (max_target_big * BigUint::from(1000000u64))
+            .checked_div(&difficulty_big)
+            .unwrap_or(<BigUint as Num>::from_str_radix(MAX_TARGET, 16).unwrap())
+    }
 }
 
 /// Stratum difficulty to target (IceRiver specific)
@@ -81,16 +86,21 @@ pub fn stratum_difficulty_to_target_kaspa(stratum_diff: u64) -> BigUint {
     // Handle zero difficulty - return maximum target
     if stratum_diff == 0 {
         const KASPA_MAX_TARGET: u64 = 0xFFFFFFFFFFFFFFFF;
+        #[allow(clippy::arithmetic_side_effects, reason = "BigUint can't overflow.")]
         return BigUint::from(KASPA_MAX_TARGET) * BigUint::from(1000u64);
     }
 
     // KASPA_MAX_TARGET = 2^64 - 1
     const KASPA_MAX_TARGET: u64 = 0xFFFFFFFFFFFFFFFF;
     let base_target = BigUint::from(KASPA_MAX_TARGET);
+    #[allow(clippy::arithmetic_side_effects, reason = "BigUint can't overflow.")]
     let scaled_diff = BigUint::from(stratum_diff) * BigUint::from(1000u64);
 
     // target = max_target * 1000 / (stratum_diff * 1000)
-    base_target * BigUint::from(1000u64) / scaled_diff
+    #[allow(clippy::arithmetic_side_effects, reason = "The zero case returned above, so scaled_diff is strictly positive.")]
+    {
+        base_target * BigUint::from(1000u64) / scaled_diff
+    }
 }
 
 /// Convert difficulty to target
@@ -175,7 +185,12 @@ fn diff_to_target_standard(diff: f64) -> BigUint {
 
     // target = (maxTarget * 1e18) / (diff * 1e18)
     // Uses big.Float division followed by Int() truncation
-    (max_target * BigUint::from(1_000_000_000_000_000_000u128)) / diff_big
+    #[allow(clippy::arithmetic_side_effects, reason = "BigUint can't overflow")]
+    {
+        (max_target * BigUint::from(1_000_000_000_000_000_000u128))
+            .checked_div(&diff_big)
+            .unwrap_or(<BigUint as Num>::from_str_radix(MAX_TARGET, 16).unwrap())
+    }
 }
 
 /// Convert difficulty to hash value
@@ -254,6 +269,7 @@ pub fn generate_job_header(header_data: &[u8]) -> Vec<u64> {
     let mut ids = Vec::new();
 
     // Read 4 uint64 values (little endian)
+    #[allow(clippy::arithmetic_side_effects, reason = "i is 0..4, so i * 8 <= 24 and every offset + 8 <= 32.")]
     for i in 0..4 {
         let offset = i * 8;
         if offset + 8 <= header_data.len() {
@@ -368,6 +384,7 @@ pub fn generate_large_job_params(header_data: &[u8], timestamp: u64) -> String {
     let mut ids = Vec::new();
 
     // Read 4 uint64 values (big endian)
+    #[allow(clippy::arithmetic_side_effects, reason = "i is 0..4, so i * 8 <= 24 and every offset + 8 <= 32.")]
     for i in 0..4 {
         let offset = i * 8;
         if offset + 8 <= header_data.len() {
@@ -399,16 +416,27 @@ pub fn calculate_target(bits: u64) -> BigUint {
 
     let (mantissa, exponent) = if exponent <= 3 {
         // Special case: if exponent <= 3, shift mantissa right instead
+        #[allow(clippy::arithmetic_side_effects, reason = "exponent is unsigned and <= 3, so the product is at most 24.")]
         let shift = 8 * (3 - exponent);
         (mantissa >> shift, 0u32)
     } else {
         // Normal case: target = mantissa << (8 * (exponent - 3))
-        (mantissa, (8 * (exponent - 3)) as u32)
+        #[allow(
+            clippy::arithmetic_side_effects,
+            reason = "exponent > 3 and exponent = bits >> 24 <= 2^40 - 1; the subtraction and multiplication fit u64. This does not justify the narrowing cast."
+        )]
+        {
+            (mantissa, (8 * (exponent - 3)) as u32)
+        }
     };
 
     // Calculate final target: mantissa << exponent
     let mut target = BigUint::from(mantissa);
-    target <<= exponent;
+
+    #[allow(clippy::arithmetic_side_effects, reason = "BigUint can't overflow.")]
+    {
+        target <<= exponent;
+    }
 
     target
 }
