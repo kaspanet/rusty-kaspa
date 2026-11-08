@@ -169,6 +169,76 @@ async fn daemon_mining_test() {
     }
 }
 
+/// Runs real nodes on testnet13 (DAGKnight at 4 BPS, real PoW) and checks that blocks mined on one node propagate to a
+/// connected peer, and that a node joining later syncs the same DAG. Every round submits two sibling blocks on top of the
+/// same template, so the DAG is wide and DAGKnight has to resolve real parallel blocks.
+///
+/// `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_testnet13_dagknight_sync_test`
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn daemon_testnet13_dagknight_sync_test() {
+    init_allocator_with_default_settings();
+    kaspa_core::log::try_init_logger("INFO");
+
+    const ROUNDS: u64 = 40;
+    const WIDTH: usize = 2;
+
+    async fn same_dag(a: GrpcClient, b: GrpcClient) -> bool {
+        let (a, b) = (a.get_block_dag_info().await.unwrap(), b.get_block_dag_info().await.unwrap());
+        a.sink == b.sink && a.block_count == b.block_count && a.virtual_daa_score == b.virtual_daa_score
+    }
+
+    let args = Args {
+        testnet: true,
+        testnet_suffix: 13,
+        unsafe_rpc: true,
+        enable_unsynced_mining: true,
+        disable_upnp: true, // UPnP registration might take some time and is not needed for this test
+        ..Default::default()
+    };
+    let total_fd_limit = 10;
+
+    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut kaspad2 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let rpc_client1 = kaspad1.start().await;
+    let rpc_client2 = kaspad2.start().await;
+
+    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
+    assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
+
+    // Mine ROUNDS rounds of WIDTH sibling blocks (distinct valid PoW nonces over the same template) on daemon #1
+    let pay_address = Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
+    for _ in 0..ROUNDS {
+        let template = rpc_client1.get_block_template(pay_address.clone(), vec![]).await.unwrap();
+        let header: Header = (&template.block.header).try_into().unwrap();
+        let pow_state = kaspa_pow::State::new(&header);
+        let nonces: Vec<u64> = (0u64..).filter(|&nonce| pow_state.check_pow(nonce).0).take(WIDTH).collect();
+        for nonce in nonces {
+            let mut block = template.block.clone();
+            block.header.nonce = nonce;
+            rpc_client1.submit_block(block, false).await.unwrap();
+        }
+    }
+
+    // Blocks are relayed to daemon #2
+    wait_for(200, 100, || same_dag(rpc_client1.clone(), rpc_client2.clone()), "daemon #2 did not follow daemon #1").await;
+    let dag_info = rpc_client1.get_block_dag_info().await.unwrap();
+    assert_eq!(dag_info.block_count, ROUNDS * WIDTH as u64);
+    assert!(dag_info.tip_hashes.len() >= WIDTH, "expected a wide DAG, got {} tips", dag_info.tip_hashes.len());
+
+    // A node joining after the fact syncs the whole DAG
+    let mut kaspad3 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client3 = kaspad3.start().await;
+    rpc_client3.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    wait_for(500, 120, || same_dag(rpc_client1.clone(), rpc_client3.clone()), "late-joining daemon #3 did not sync").await;
+
+    for (client, daemon) in [(rpc_client1, &mut kaspad1), (rpc_client2, &mut kaspad2), (rpc_client3, &mut kaspad3)] {
+        client.disconnect().await.unwrap();
+        drop(client);
+        daemon.shutdown();
+    }
+}
+
 /// `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_utxos_propagation_test`
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_utxos_propagation_test() {
