@@ -720,12 +720,16 @@ pub const TESTNET_PARAMS: Params = Params {
 
 // The DAGKnight testnet: equivalent to TESTNET_PARAMS, with its own genesis, an empty DNS
 // seeders list (first iteration), DAGKnight enabled from genesis, and dedicated default ports.
-// Runs at 4 BPS (250ms blocks) with Crescendo rules active from genesis.
+// Runs at 4 BPS (250ms blocks) with Crescendo rules active from genesis, so (as in simnet/devnet) the pre-Crescendo
+// timing and the emission params are all expressed in the network's own BPS.
 pub const TESTNET13_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 13),
     genesis: TESTNET13_GENESIS,
     dns_seeders: &[],
+    deflationary_phase_daa_score: Bps::<4>::deflationary_phase_daa_score(),
+    pre_deflationary_phase_base_subsidy: Bps::<4>::pre_deflationary_phase_base_subsidy(),
     blockrate: BlockrateParams::new::<4>(),
+    pre_crescendo_target_time_per_block: Bps::<4>::target_time_per_block(),
     crescendo_activation: ForkActivation::always(),
     dagknight_activation: ForkActivation::always(),
     ..TESTNET_PARAMS

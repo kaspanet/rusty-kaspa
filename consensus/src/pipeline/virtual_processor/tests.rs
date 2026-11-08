@@ -182,6 +182,9 @@ async fn testnet13_dagknight_4bps_sanity_test() {
     assert_eq!(params.ghostdag_k(), 55);
     assert!(params.dagknight_activation.is_active(0));
     assert!(params.crescendo_activation.is_active(0));
+    // Emission is expressed in the network's own BPS: 4x the blocks must mean 1/4 of the per-block subsidy
+    assert_eq!(params.pre_deflationary_phase_base_subsidy, 50_000_000_000 / 4);
+    assert_eq!(params.bps_history().before(), 4);
 
     let config = ConfigBuilder::new(params).skip_proof_of_work().build();
     let mut ctx = TestContext::new(TestConsensus::new(&config));
