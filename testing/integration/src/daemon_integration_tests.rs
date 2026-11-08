@@ -182,6 +182,23 @@ async fn daemon_testnet13_dagknight_sync_test() {
     const ROUNDS: u64 = 40;
     const WIDTH: usize = 2;
 
+    /// Mines `width` sibling blocks: distinct valid PoW nonces over the same block template
+    async fn mine_round(client: &GrpcClient, pay_address: &Address, width: usize) {
+        let template = client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
+        let header: Header = (&template.block.header).try_into().unwrap();
+        let pow_state = kaspa_pow::State::new(&header);
+        let nonces: Vec<u64> = (0u64..).filter(|&nonce| pow_state.check_pow(nonce).0).take(width).collect();
+        for nonce in nonces {
+            let mut block = template.block.clone();
+            block.header.nonce = nonce;
+            client.submit_block(block, false).await.unwrap();
+        }
+    }
+
+    async fn same_sink(a: GrpcClient, b: GrpcClient) -> bool {
+        a.get_block_dag_info().await.unwrap().sink == b.get_block_dag_info().await.unwrap().sink
+    }
+
     async fn same_dag(a: GrpcClient, b: GrpcClient) -> bool {
         let (a, b) = (a.get_block_dag_info().await.unwrap(), b.get_block_dag_info().await.unwrap());
         a.sink == b.sink && a.block_count == b.block_count && a.virtual_daa_score == b.virtual_daa_score
@@ -209,15 +226,7 @@ async fn daemon_testnet13_dagknight_sync_test() {
     // Mine ROUNDS rounds of WIDTH sibling blocks (distinct valid PoW nonces over the same template) on daemon #1
     let pay_address = Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
     for _ in 0..ROUNDS {
-        let template = rpc_client1.get_block_template(pay_address.clone(), vec![]).await.unwrap();
-        let header: Header = (&template.block.header).try_into().unwrap();
-        let pow_state = kaspa_pow::State::new(&header);
-        let nonces: Vec<u64> = (0u64..).filter(|&nonce| pow_state.check_pow(nonce).0).take(WIDTH).collect();
-        for nonce in nonces {
-            let mut block = template.block.clone();
-            block.header.nonce = nonce;
-            rpc_client1.submit_block(block, false).await.unwrap();
-        }
+        mine_round(&rpc_client1, &pay_address, WIDTH).await;
     }
 
     // Blocks are relayed to daemon #2
@@ -226,11 +235,16 @@ async fn daemon_testnet13_dagknight_sync_test() {
     assert_eq!(dag_info.block_count, ROUNDS * WIDTH as u64);
     assert!(dag_info.tip_hashes.len() >= WIDTH, "expected a wide DAG, got {} tips", dag_info.tip_hashes.len());
 
-    // A node joining after the fact syncs the whole DAG
+    // A node joining after the fact IBDs to the same sink. IBD covers the past of the syncer sink, so the sibling tip left
+    // unmerged by the sink (in its antipast) arrives later via relay.
     let mut kaspad3 = Daemon::new_random_with_args(args, total_fd_limit);
     let rpc_client3 = kaspad3.start().await;
     rpc_client3.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
-    wait_for(500, 120, || same_dag(rpc_client1.clone(), rpc_client3.clone()), "late-joining daemon #3 did not sync").await;
+    wait_for(500, 120, || same_sink(rpc_client1.clone(), rpc_client3.clone()), "late-joining daemon #3 did not reach the same sink").await;
+
+    // The next block merges both sibling tips, so daemon #3 must resolve the missing one and fully converge
+    mine_round(&rpc_client1, &pay_address, WIDTH).await;
+    wait_for(500, 120, || same_dag(rpc_client1.clone(), rpc_client3.clone()), "daemon #3 did not converge after relay").await;
 
     for (client, daemon) in [(rpc_client1, &mut kaspad1), (rpc_client2, &mut kaspad2), (rpc_client3, &mut kaspad3)] {
         client.disconnect().await.unwrap();
