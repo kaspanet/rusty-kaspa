@@ -719,11 +719,14 @@ pub const TESTNET_PARAMS: Params = Params {
 };
 
 // The DAGKnight testnet: equivalent to TESTNET_PARAMS, with its own genesis, an empty DNS
-// seeders list (first iteration), DAGKnight enabled from genesis, and dedicated default ports
+// seeders list (first iteration), DAGKnight enabled from genesis, and dedicated default ports.
+// Runs at 4 BPS (250ms blocks) with Crescendo rules active from genesis.
 pub const TESTNET13_PARAMS: Params = Params {
     net: NetworkId::with_suffix(NetworkType::Testnet, 13),
     genesis: TESTNET13_GENESIS,
     dns_seeders: &[],
+    blockrate: BlockrateParams::new::<4>(),
+    crescendo_activation: ForkActivation::always(),
     dagknight_activation: ForkActivation::always(),
     ..TESTNET_PARAMS
 };

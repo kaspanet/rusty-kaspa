@@ -6,7 +6,10 @@ use kaspa_consensus_core::{
     blockhash,
     blockstatus::BlockStatus,
     coinbase::MinerData,
-    config::{ConfigBuilder, params::MAINNET_PARAMS},
+    config::{
+        ConfigBuilder,
+        params::{MAINNET_PARAMS, TESTNET13_PARAMS},
+    },
     constants::BLOCK_VERSION,
     tx::{ScriptPublicKey, ScriptVec, Transaction},
 };
@@ -161,6 +164,29 @@ async fn template_mining_sanity_test() {
     let width = 3;
     for _ in 0..rounds {
         ctx.build_block_template_row(0..width)
+            .assert_row_parents()
+            .validate_and_insert_row()
+            .await
+            .assert_tips()
+            .assert_virtual_parents_subset()
+            .assert_valid_utxo_tip();
+    }
+}
+
+/// TESTNET13 is the DAGKnight testnet: 250ms blocks (4 BPS), with DAGKnight and Crescendo rules active from genesis.
+#[tokio::test]
+async fn testnet13_dagknight_4bps_sanity_test() {
+    let params = TESTNET13_PARAMS;
+    assert_eq!(params.bps_history().after(), 4);
+    assert_eq!(params.blockrate.target_time_per_block, 250);
+    assert_eq!(params.ghostdag_k(), 55);
+    assert!(params.dagknight_activation.is_active(0));
+    assert!(params.crescendo_activation.is_active(0));
+
+    let config = ConfigBuilder::new(params).skip_proof_of_work().build();
+    let mut ctx = TestContext::new(TestConsensus::new(&config));
+    for _ in 0..20 {
+        ctx.build_block_template_row(0..3)
             .assert_row_parents()
             .validate_and_insert_row()
             .await
