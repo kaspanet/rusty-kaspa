@@ -83,7 +83,7 @@ outlive individual circuits, so closing a circuit does not remove the node's
 standing route through its home relay. These allowances apply per circuit;
 opening a new circuit starts a new allowance.
 
-## Ports and persistent identity
+## Ports and node identity
 
 The libp2p UDP listener handles relay service, address observations and direct
 QUIC sessions. Ordinary Kaspa TCP uses its separate P2P listener.
@@ -107,10 +107,11 @@ access to their relay and destination peers. They do not need a manually
 forwarded TCP P2P port for that connection attempt. A local UDP bind failure is a
 startup error; an unreachable remote relay instead triggers another relay attempt.
 
-The node keeps its Ed25519 identity in `<appdir>/<network>/libp2p.secret`. Preserve
-that file and the network's metadata database across restarts; together they
-retain the node's identity and signed address history. The public key identifies the peer
-independently of its IP address or home relay. Connected-peer RPC reports the
+The node generates a fresh Ed25519 identity at startup and keeps its private key
+and signed local address record only in memory. Restarting changes its endpoint
+ID and resets the address nonce; peers learn the new record through handshakes
+and gossip. During a run, the identity remains stable when its IP address or home
+relay changes. Connected-peer RPC reports the
 actual connection socket in `address`, with the authenticated identity in
 `libp2p_id` for libp2p sessions.
 
@@ -163,8 +164,8 @@ IP, TCP port, relay-service port, endpoint identity, libp2p candidate port,
 destination relay socket and identity, nonce, and signature. Identity, ports, nonce and
 signature are grouped in optional `libp2p`; `relay_address` remains outside it
 and carries both the relay socket and its authenticated Ed25519 identity.
-The P2P service reconciles and signs the owner's address at startup, then updates
-it only when the confirmed home relay changes. Handshake and address responses
+The P2P service signs and caches the owner's address in memory at startup, then
+updates it only when the confirmed home relay changes. Handshake and address responses
 read this cached record; other nodes forward it unchanged. Fresh records from
 handshake or gossip are stored without signature verification. For the same TCP socket and identity, a new
 record must verify and either have a greater nonce or replace a record that
@@ -194,7 +195,7 @@ sequenceDiagram
         R->>B: Identify with observed UDP address
     end
     Note over B,R: Relay reservation and address observation use the same QUIC connection
-    B->>B: Sign and persist NetAddress with confirmed R route
+    B->>B: Sign and cache NetAddress with confirmed R route
     Note over B: Later Version and Addresses messages read the cached record
     A->>B: Try advertised TCP listener first
     Note over A,B: If TCP succeeds, use its normal Kaspa session

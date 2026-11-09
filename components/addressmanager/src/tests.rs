@@ -201,7 +201,7 @@ fn valid_updates_repair_invalid_stored_records_regardless_of_nonce_and_preserve_
 }
 
 #[test]
-fn local_nonce_is_persisted_and_unchanged_records_are_reused() {
+fn local_nonce_advances_only_when_the_in_memory_record_changes() {
     let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let key = SigningKey::from_bytes(&[1; 32]);
     let addresses = manager(db.clone());
@@ -215,15 +215,6 @@ fn local_nonce_is_persisted_and_unchanged_records_are_reused() {
     let repeated = addresses
         .lock()
         .sign_local_address::<std::convert::Infallible>(candidate, |_| panic!("unchanged record must not be signed again"))
-        .unwrap();
-    assert_eq!(first, repeated);
-    drop(addresses);
-    let addresses = manager(db);
-    let repeated = addresses
-        .lock()
-        .sign_local_address::<std::convert::Infallible>(first.clone(), |_| {
-            panic!("persisted unchanged record must not be signed again")
-        })
         .unwrap();
     assert_eq!(first, repeated);
     let mut changed = first;
@@ -344,7 +335,7 @@ fn own_identity_and_banned_ip_are_excluded() {
 }
 
 #[test]
-fn local_publication_tracks_only_effective_relay_changes_and_hides_saved_routes_until_reconciled() {
+fn local_publication_tracks_relay_changes_and_resets_on_restart() {
     use std::{cell::Cell, convert::Infallible};
     let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let addresses = manager(db.clone());
@@ -381,19 +372,21 @@ fn local_publication_tracks_only_effective_relay_changes_and_hides_saved_routes_
     drop(addresses);
     let addresses = manager(db.clone());
     assert!(!addresses.lock().local_advertisement_initialized());
-    assert!(addresses.lock().local_advertisement().is_none_or(|address| address.libp2p.is_none()), "saved reservation is unconfirmed");
+    assert!(
+        addresses.lock().local_advertisement().is_none_or(|address| address.libp2p.is_none()),
+        "local advertisements must not survive restart"
+    );
     addresses.lock().update_local_relay::<Infallible>(None, |_| panic!("no usable local address yet")).unwrap();
     assert!(addresses.lock().local_advertisement().is_none_or(|address| address.libp2p.is_none()));
-    // Confirmation before first publication reuses the saved signature and nonce.
-    addresses.lock().sign_local_address::<Infallible>(saved.clone(), |_| panic!("unchanged startup candidate")).unwrap();
-    assert_eq!(addresses.lock().local_advertisement(), Some(saved.clone()));
-    drop(addresses);
-    let addresses = manager(db);
-    let mut candidate = saved.clone();
-    candidate.relay_address = None;
-    let reconciled = addresses.lock().sign_local_address(candidate, sign).unwrap();
-    assert_eq!(reconciled.nonce(), Some(saved.nonce().unwrap() + 1));
-    assert_eq!(reconciled.relay_address, None);
+    let restarted = addresses
+        .lock()
+        .sign_local_address(signed("8.8.8.8:16111", 2, 99), |address| {
+            Ok::<_, Infallible>(SigningKey::from_bytes(&[2; 32]).sign(&address.signing_bytes("kaspa-simnet")).to_bytes().to_vec())
+        })
+        .unwrap();
+    assert_eq!(restarted.nonce(), Some(1));
+    assert_ne!(restarted.endpoint_id(), saved.endpoint_id());
+    assert!(restarted.verify("kaspa-simnet"));
 }
 
 #[test]
@@ -432,45 +425,43 @@ fn local_publication_rejects_missing_metadata_and_nonce_overflow() {
         .unwrap_err();
     assert!(matches!(error, LocalAdvertisementError::MissingMetadata));
     let maximum = signed("8.8.8.8:16111", 1, u64::MAX);
-    addresses.lock().address_store.set_local_advertisement(&maximum).unwrap();
+    addresses.lock().address_store.set_local_advertisement(maximum.clone());
     let mut changed = maximum;
     changed.relay_address = None;
     let error = addresses.lock().sign_local_address::<Infallible>(changed, |_| panic!("nonce exhausted")).unwrap_err();
     assert!(matches!(error, LocalAdvertisementError::NonceExhausted));
-    assert!(!addresses.lock().local_advertisement_initialized());
+    assert!(addresses.lock().local_advertisement_initialized());
 }
 
 #[test]
-fn readonly_local_publication_reuses_saved_record_and_reports_failed_replacement() {
-    use crate::LocalAdvertisementError;
-    use std::{convert::Infallible, error::Error};
+fn local_publication_works_with_readonly_database_and_does_not_write() {
+    use std::convert::Infallible;
     let directory = kaspa_database::utils::get_kaspa_tempdir();
     let builder = || ConnBuilder::default().with_files_limit(10).with_db_path(directory.path().to_owned());
-    let addresses = manager(builder().build().unwrap());
+    drop(builder().build().unwrap());
+    let db = builder().build_readonly().unwrap();
+    let snapshot = || db.iterator(rocksdb::IteratorMode::Start).collect::<Result<Vec<_>, _>>().unwrap();
+    let before = snapshot();
+    let addresses = manager(db.clone());
     let sign = |address: &PeerAddress| -> Result<_, Infallible> {
         Ok(SigningKey::from_bytes(&[1; 32]).sign(&address.signing_bytes("kaspa-simnet")).to_bytes().to_vec())
     };
-    let saved = addresses.lock().sign_local_address(signed("8.8.8.8:16111", 1, 99), sign).unwrap();
-    drop(addresses);
-    let addresses = manager(builder().build_readonly().unwrap());
-    addresses.lock().sign_local_address::<Infallible>(saved.clone(), |_| panic!("unchanged startup must not sign or write")).unwrap();
+    let first = addresses.lock().sign_local_address(signed("8.8.8.8:16111", 1, 99), sign).unwrap();
+    assert_eq!(first.nonce(), Some(1));
     for _ in 0..3 {
-        assert_eq!(addresses.lock().local_advertisement(), Some(saved.clone()));
-        addresses
-            .lock()
-            .update_local_relay::<Infallible>(saved.relay_address, |_| panic!("unchanged relay must not sign or write"))
-            .unwrap();
+        assert_eq!(addresses.lock().local_advertisement(), Some(first.clone()));
+        addresses.lock().update_local_relay::<Infallible>(first.relay_address, |_| panic!("unchanged relay must not sign")).unwrap();
     }
-    let error = addresses.lock().update_local_relay(None, sign).unwrap_err();
-    assert!(matches!(error, LocalAdvertisementError::Store(_)));
-    assert!(error.source().unwrap().is::<kaspa_database::prelude::StoreError>());
+    addresses.lock().update_local_relay(None, sign).unwrap();
+    let changed = addresses.lock().local_advertisement().unwrap();
+    assert_eq!(changed.relay_address, None);
+    assert_eq!(changed.nonce(), Some(2));
+    assert!(changed.verify("kaspa-simnet"));
+    assert_eq!(snapshot(), before, "local publication must not write to the database");
     drop(addresses);
-    let addresses = manager(builder().build_readonly().unwrap());
-    addresses
-        .lock()
-        .sign_local_address::<Infallible>(saved.clone(), |_| panic!("the persisted record must remain unchanged"))
-        .unwrap();
-    assert_eq!(addresses.lock().local_advertisement(), Some(saved));
+    let addresses = manager(db);
+    assert!(!addresses.lock().local_advertisement_initialized());
+    assert!(addresses.lock().local_advertisement().is_none_or(|address| address.libp2p.is_none()));
 }
 
 #[test]
@@ -498,38 +489,4 @@ fn local_advertisement_falls_back_to_tcp_without_initializing_signed_publication
         .unwrap();
     assert!(book.local_advertisement_initialized());
     assert_eq!(book.local_advertisement(), Some(signed));
-}
-
-#[test]
-fn tcp_publication_preserves_saved_signature_and_nonce_across_restart() {
-    use std::convert::Infallible;
-    let directory = kaspa_database::utils::get_kaspa_tempdir();
-    let builder = || ConnBuilder::default().with_files_limit(10).with_db_path(directory.path().to_owned());
-    let addresses = manager(builder().build().unwrap());
-    let sign = |address: &PeerAddress| -> Result<_, Infallible> {
-        Ok(SigningKey::from_bytes(&[1; 32]).sign(&address.signing_bytes("kaspa-simnet")).to_bytes().to_vec())
-    };
-    let saved = addresses.lock().sign_local_address(signed("8.8.8.8:16111", 1, 1), sign).unwrap();
-    drop(addresses);
-    // The TCP fallback must work even on a read-only DB, retaining the saved signed record.
-    let addresses = manager(builder().build_readonly().unwrap());
-    let fallback = "1.1.1.1:17000".parse::<NetAddress>().unwrap();
-    addresses.lock().local_net_addresses = vec![fallback];
-    assert_eq!(addresses.lock().local_advertisement(), Some(PeerAddress::from(fallback)));
-    assert!(!addresses.lock().local_advertisement_initialized());
-    addresses.lock().local_net_addresses.clear();
-    assert_eq!(addresses.lock().local_advertisement(), None, "without a TCP address, the saved route must remain hidden");
-    addresses.lock().sign_local_address::<Infallible>(saved.clone(), |_| panic!("unchanged saved record must be reused")).unwrap();
-    assert_eq!(addresses.lock().local_advertisement(), Some(saved.clone()));
-    drop(addresses);
-    let addresses = manager(builder().build().unwrap());
-    addresses.lock().local_net_addresses = vec![fallback];
-    drop(addresses);
-    // A crash/restart while publishing TCP must not reset the next signed nonce.
-    let addresses = manager(builder().build().unwrap());
-    let mut changed = saved.clone();
-    changed.relay_address = None;
-    let next = addresses.lock().sign_local_address(changed, sign).unwrap();
-    assert_eq!(next.nonce(), saved.nonce().map(|nonce| nonce + 1));
-    assert!(next.verify("kaspa-simnet"));
 }

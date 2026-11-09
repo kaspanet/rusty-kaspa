@@ -9,14 +9,7 @@ async fn main() {
     kaspa_core::log::init_logger(None, "debug");
     // [0] - init p2p-adaptor
     let initializer = Arc::new(EchoFlowInitializer::new());
-    let transport = Arc::new(
-        Libp2pTransport::new(
-            libp2p::identity::Keypair::generate_ed25519(),
-            NetworkId::new(NetworkType::Mainnet).default_relay_port(),
-            false,
-        )
-        .unwrap(),
-    );
+    let transport = Arc::new(Libp2pTransport::new(NetworkId::new(NetworkType::Mainnet).default_relay_port(), false).unwrap());
     let adaptor = kaspa_p2p_lib::Adaptor::client_only(kaspa_p2p_lib::Hub::new(), initializer, Default::default(), transport);
     // [1] - connect 128 peers + flows
     let ip_port = String::from("[::1]:50051");

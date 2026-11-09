@@ -722,7 +722,6 @@ Do you confirm? (y/n)";
         dns_seeders,
         config.default_p2p_port(),
         p2p_tower_counters.clone(),
-        app_dir.join(network.to_prefixed()).join("libp2p.secret"),
     ));
 
     let rpc_core_service = Arc::new(RpcCoreService::new(

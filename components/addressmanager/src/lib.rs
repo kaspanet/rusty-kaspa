@@ -64,8 +64,6 @@ pub enum UpnpError {
 
 #[derive(Error, Debug)]
 pub enum LocalAdvertisementError<E> {
-    #[error("local advertisement store: {0}")]
-    Store(#[from] kaspa_database::prelude::StoreError),
     #[error("local address has no libp2p metadata")]
     MissingMetadata,
     #[error("local address nonce exhausted")]
@@ -81,8 +79,6 @@ pub struct AddressManager {
     local_net_addresses: Vec<NetAddress>,
     /// This node's authenticated Libp2p identity, set after the endpoint starts.
     local_libp2p_id: Option<Libp2pId>,
-    /// The saved advertisement has been reconciled with this run's identity and confirmed relay.
-    local_advertisement_initialized: bool,
 }
 
 impl AddressManager {
@@ -92,7 +88,6 @@ impl AddressManager {
             address_store: address_store_with_cache::new(db),
             local_net_addresses: Vec::new(),
             local_libp2p_id: None,
-            local_advertisement_initialized: false,
             config,
         };
 
@@ -295,20 +290,19 @@ impl AddressManager {
         self.local_net_addresses.iter().find(|address| !address.ip.is_loopback()).or_else(|| self.local_net_addresses.first()).copied()
     }
 
-    /// Reuses an unchanged local record, or signs and stores its next nonce before publication.
+    /// Reuses an unchanged local record, or signs its next nonce and publishes it in memory.
     pub fn sign_local_address<E>(
         &mut self,
         mut address: PeerAddress,
         sign: impl FnOnce(&PeerAddress) -> Result<Vec<u8>, E>,
     ) -> Result<PeerAddress, LocalAdvertisementError<E>> {
-        let previous = self.address_store.local_advertisement()?;
+        let previous = self.address_store.local_advertisement();
         let metadata = address.libp2p.as_mut().ok_or(LocalAdvertisementError::MissingMetadata)?;
         if let Some(previous) = &previous {
             metadata.nonce = previous.nonce().unwrap_or_default();
             metadata.signature = previous.signature().unwrap_or_default().to_vec();
         }
         if previous.as_ref() == Some(&address) {
-            self.local_advertisement_initialized = true;
             return Ok(address);
         }
         let nonce = previous
@@ -320,24 +314,18 @@ impl AddressManager {
         address.libp2p.as_mut().unwrap().nonce = nonce;
         let signature = sign(&address).map_err(LocalAdvertisementError::Signing)?;
         address.libp2p.as_mut().unwrap().signature = signature;
-        self.address_store.set_local_advertisement(&address)?;
-        self.local_advertisement_initialized = true;
+        self.address_store.set_local_advertisement(address.clone());
         Ok(address)
     }
 
-    /// Whether the saved advertisement has been reconciled for this run, independently of the TCP fallback.
+    /// Whether this run has published a signed address, independently of the TCP fallback.
     pub fn local_advertisement_initialized(&self) -> bool {
-        self.local_advertisement_initialized
+        self.address_store.local_advertisement().is_some()
     }
 
-    /// Returns the reconciled signed advertisement, or the best local TCP address until initialization.
+    /// Returns this run's signed advertisement, or the best local TCP address until initialization.
     pub fn local_advertisement(&self) -> Option<PeerAddress> {
-        if self.local_advertisement_initialized {
-            // Successful initialization has already populated CachedDbItem; this cannot access the database.
-            self.address_store.local_advertisement().expect("initialized local advertisement must be cached")
-        } else {
-            self.best_local_address().map(PeerAddress::from)
-        }
+        self.address_store.local_advertisement().or_else(|| self.best_local_address().map(PeerAddress::from))
     }
 
     /// Updates only the relay route after initial publication. Renewing the same reservation is a no-op.
@@ -346,8 +334,7 @@ impl AddressManager {
         relay: Option<LibP2pAddress>,
         sign: impl FnOnce(&PeerAddress) -> Result<Vec<u8>, E>,
     ) -> Result<(), LocalAdvertisementError<E>> {
-        if self.local_advertisement_initialized
-            && let Some(mut address) = self.local_advertisement()
+        if let Some(mut address) = self.address_store.local_advertisement()
             && address.relay_address != relay
         {
             address.relay_address = relay;
@@ -526,7 +513,7 @@ mod address_store_with_cache {
         stores::address_store::{DbAddressesStore, Entry},
     };
     use itertools::Itertools;
-    use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
+    use kaspa_database::prelude::{CachePolicy, DB};
     use kaspa_utils::{
         connection::{AddressKey, Libp2pId, PeerAddress},
         networking::{NetAddress, PrefixBucket},
@@ -544,6 +531,8 @@ mod address_store_with_cache {
     pub struct Store {
         db_store: DbAddressesStore,
         addresses: HashMap<AddressKey, Entry>,
+        /// Signed local address for this run; never written to the address database.
+        local_advertisement: Option<PeerAddress>,
     }
 
     impl Store {
@@ -551,7 +540,7 @@ mod address_store_with_cache {
             // The in-memory map already caches all address entries.
             let db_store = DbAddressesStore::new(db, CachePolicy::Empty);
             let addresses = db_store.iterator().map(|row| row.expect("address database entry")).collect();
-            let mut store = Self { db_store, addresses };
+            let mut store = Self { db_store, addresses, local_advertisement: None };
             store.keep_limit();
             store
         }
@@ -564,12 +553,12 @@ mod address_store_with_cache {
             self.addresses.iter()
         }
 
-        pub(super) fn local_advertisement(&self) -> StoreResult<Option<PeerAddress>> {
-            self.db_store.local_advertisement()
+        pub(super) fn local_advertisement(&self) -> Option<PeerAddress> {
+            self.local_advertisement.clone()
         }
 
-        pub(super) fn set_local_advertisement(&mut self, address: &PeerAddress) -> StoreResult<()> {
-            self.db_store.set_local_advertisement(address)
+        pub(super) fn set_local_advertisement(&mut self, address: PeerAddress) {
+            self.local_advertisement = Some(address);
         }
 
         pub(super) fn set(&mut self, key: AddressKey, entry: Entry) {

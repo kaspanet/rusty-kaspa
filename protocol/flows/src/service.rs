@@ -12,7 +12,7 @@ use kaspa_core::{
 };
 use kaspa_p2p_lib::{
     Adaptor, ConnectionError,
-    libp2p_transport::{Libp2pTransport, TransportError, load_identity},
+    libp2p_transport::{Libp2pTransport, TransportError},
 };
 use kaspa_utils::{
     connection::{Libp2pMetadata, PeerAddress},
@@ -36,7 +36,6 @@ pub struct P2pService {
     default_port: u16,
     shutdown: SingleTrigger,
     counters: Arc<TowerConnectionCounters>,
-    identity_path: std::path::PathBuf,
 }
 
 impl P2pService {
@@ -51,7 +50,6 @@ impl P2pService {
         dns_seeders: &'static [&'static str],
         default_port: u16,
         counters: Arc<TowerConnectionCounters>,
-        identity_path: std::path::PathBuf,
     ) -> Self {
         Self {
             core,
@@ -65,11 +63,10 @@ impl P2pService {
             dns_seeders,
             default_port,
             counters,
-            identity_path,
         }
     }
 
-    /// Reconciles once at startup, then signs and persists only effective home-relay changes.
+    /// Publishes the first signed address in memory, then updates it only when the home relay changes.
     fn update_local_advertisement(&self, transport: &Libp2pTransport) -> Result<(), LocalAdvertisementError<TransportError>> {
         let ctx = &self.flow_context;
         let mut manager = ctx.address_manager.lock();
@@ -123,9 +120,8 @@ impl AsyncService for P2pService {
 
         Box::pin(async move {
             let startup = async {
-                let (identity, _) = load_identity(self.identity_path.clone()).await?;
                 let allow_private = matches!(self.flow_context.config.net.network_type, NetworkType::Simnet | NetworkType::Devnet);
-                let transport = Arc::new(Libp2pTransport::new(identity, self.flow_context.config.relay_port, allow_private)?);
+                let transport = Arc::new(Libp2pTransport::new(self.flow_context.config.relay_port, allow_private)?);
                 self.flow_context.address_manager.lock().set_local_libp2p_id(transport.id());
 
                 let p2p_adaptor = if self.inbound_limit == 0 {
@@ -168,7 +164,7 @@ impl AsyncService for P2pService {
                 connection_manager.add_connection_request(peer_address.into(), true).await;
             }
 
-            // Reconcile startup once, then persist effective relay changes before handshake/gossip can read them.
+            // Publish the first signed address, then replace the in-memory record when the home relay changes.
             // TCP bootstrap remains available while libp2p has no usable local candidate.
             let result = loop {
                 if let Err(error) = self.update_local_advertisement(&transport) {

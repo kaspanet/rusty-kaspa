@@ -30,4 +30,3 @@ workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-database.workspace = true
 local-ip-address.workspace = true
-tempfile.workspace = true

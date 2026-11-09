@@ -36,7 +36,6 @@ either = "1"
 h2.workspace = true
 hex.workspace = true
 libp2p.workspace = true
-tempfile.workspace = true
 tokio-util = { workspace = true, features = ["compat"] }
 hyper-util.workspace = true
 tower.workspace = true

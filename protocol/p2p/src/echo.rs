@@ -157,15 +157,13 @@ mod tests {
         kaspa_core::log::try_init_logger("debug");
 
         let address1 = NetAddress::from_str("[::1]:50053").unwrap();
-        let transport1 =
-            Arc::new(Libp2pTransport::new(libp2p::identity::Keypair::generate_ed25519(), address1.port + 1, true).unwrap());
+        let transport1 = Arc::new(Libp2pTransport::new(address1.port + 1, true).unwrap());
         let adaptor1 =
             Adaptor::bidirectional(address1, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default(), transport1)
                 .unwrap();
 
         let address2 = NetAddress::from_str("[::1]:50054").unwrap();
-        let transport2 =
-            Arc::new(Libp2pTransport::new(libp2p::identity::Keypair::generate_ed25519(), address2.port + 1, true).unwrap());
+        let transport2 = Arc::new(Libp2pTransport::new(address2.port + 1, true).unwrap());
         let adaptor2 =
             Adaptor::bidirectional(address2, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default(), transport2)
                 .unwrap();

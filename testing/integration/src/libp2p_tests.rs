@@ -9,18 +9,13 @@ use std::time::Duration;
 async fn libp2p_startup_failures_stop_the_daemon_and_release_listeners() {
     use std::sync::atomic::Ordering;
 
-    for failure in ["identity", "quic"] {
+    for failure in ["quic"] {
         let args = Args { simnet: true, disable_upnp: true, disable_dns_seeding: true, outbound_target: 0, ..Default::default() };
         let mut server = Daemon::new_random_with_args(args, 10);
         let port = server.p2p_port;
         let relay_port = server.args.read().relay_port.unwrap();
         let occupied_udp =
             (failure == "quic").then(|| std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, relay_port)).unwrap());
-        if failure == "identity" {
-            let args = server.args.read();
-            let path = std::path::Path::new(args.appdir.as_ref().unwrap()).join(args.network().to_prefixed()).join("libp2p.secret");
-            std::fs::write(path, [1; 31]).unwrap();
-        }
         server.run();
         let stopped = tokio::time::timeout(Duration::from_secs(10), async {
             while server.core.keep_running.load(Ordering::SeqCst) {
@@ -34,6 +29,66 @@ async fn libp2p_startup_failures_stop_the_daemon_and_release_listeners() {
         drop(occupied_udp);
         assert!(std::net::TcpListener::bind((std::net::Ipv4Addr::UNSPECIFIED, relay_port)).is_ok());
         assert!(std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, relay_port)).is_ok());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn restart_creates_a_new_identity_and_local_advertisement_without_using_a_key_file() {
+    use kaspa_core::signals::Shutdown;
+    use kaspa_database::utils::get_kaspa_tempdir;
+    use kaspa_utils::connection::PeerAddress;
+
+    let directory = get_kaspa_tempdir();
+    let mut args = Args {
+        appdir: Some(directory.path().to_str().unwrap().to_owned()),
+        simnet: true,
+        yes: true,
+        disable_upnp: true,
+        disable_dns_seeding: true,
+        outbound_target: 0,
+        ..Default::default()
+    };
+    Daemon::fill_args_with_random_ports(&mut args);
+    let port = args.listen.unwrap().normalize(0).port;
+    args.externalip = Some(format!("127.0.0.1:{port}").parse().unwrap());
+    let key_path = directory.path().join(args.network().to_prefixed()).join("libp2p.secret");
+    let mut previous: Option<PeerAddress> = None;
+    for run in 0..2 {
+        // Even a malformed key file from an earlier version must be ignored.
+        if run == 1 {
+            std::fs::write(&key_path, [1; 31]).unwrap();
+        }
+        let (core, rpc) = kaspad_lib::daemon::create_core_with_runtime(&Default::default(), &args, 10);
+        let workers = core.start();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let mut published = None;
+        wait(
+            async || {
+                let session = AddressSession::connect(port, None).await;
+                published = session.advertised.filter(|address| address.endpoint_id().is_some());
+                published.is_some()
+            },
+            10,
+        )
+        .await;
+        let published = published.unwrap();
+        assert_eq!(published.nonce(), Some(1));
+        assert!(published.verify("kaspa-simnet"));
+        let mut observer = AddressSession::connect(port, None).await;
+        assert_eq!(observer.advertised, Some(published.clone()));
+        assert!(observer.addresses().await.contains(&published));
+        drop(observer);
+        core.shutdown();
+        core.join(workers);
+        drop(rpc);
+        drop(core);
+        if let Some(previous) = previous {
+            assert_ne!(published.endpoint_id(), previous.endpoint_id());
+            assert_eq!(std::fs::read(&key_path).unwrap(), [1; 31], "startup must leave old key files untouched");
+        } else {
+            assert!(!key_path.exists(), "startup must not persist an identity");
+        }
+        previous = Some(published);
     }
 }
 
@@ -95,12 +150,12 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
         Adaptor, ConnectionInitializer, Hub, KaspadHandshake, KaspadMessagePayloadType, Router,
         common::ProtocolError,
         convert::model::version::Version,
-        libp2p_transport::{Libp2pTransport, load_identity},
+        libp2p_transport::Libp2pTransport,
         make_message,
         pb::{self, kaspad_message::Payload},
     };
     use kaspa_utils::{
-        connection::{EndpointAddress, Libp2pMetadata, PeerAddress},
+        connection::{Libp2pMetadata, PeerAddress},
         networking::PeerId,
     };
     use std::sync::Arc;
@@ -159,14 +214,9 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
         };
         let mut server = Daemon::new_random_with_args(args.clone(), 10);
         let rpc = server.start().await;
-        let identity_path = {
-            let args = server.args.read();
-            std::path::Path::new(args.appdir.as_ref().unwrap()).join(args.network().to_prefixed()).join("libp2p.secret")
-        };
-        let (_, id) = load_identity(identity_path).await.unwrap();
         // These explicit routes are only for injecting a protocol violation.
         // Automatic discovery has its own separate daemon/NAT tests.
-        let mut endpoint = EndpointAddress { id, relay: None };
+        let mut endpoint = None;
         let mut relay_node = None;
         let mut relay_client = None;
         if use_libp2p {
@@ -183,7 +233,7 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
                     if let Some(route) =
                         session.advertised.and_then(|address| address.endpoint()).filter(|route| route.relay.is_some())
                     {
-                        endpoint = route;
+                        endpoint = Some(route);
                         true
                     } else {
                         false
@@ -196,11 +246,9 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
             relay_client = Some(relay_rpc);
             relay_node = Some(relay);
         }
-        let directory = tempfile::tempdir().unwrap();
         let mut ports = args;
         Daemon::fill_args_with_random_ports(&mut ports);
-        let (key, _) = load_identity(directory.path().join("client.key")).await.unwrap();
-        let transport = Arc::new(Libp2pTransport::new(key, ports.relay_port.unwrap(), true).unwrap());
+        let transport = Arc::new(Libp2pTransport::new(ports.relay_port.unwrap(), true).unwrap());
         let initializer = Arc::new(Initializer { advertised: Default::default() });
         let client = Adaptor::client_only(Hub::new(), initializer.clone(), Default::default(), transport.clone());
         client.start_libp2p(std::net::Ipv4Addr::LOCALHOST.into()).unwrap();
@@ -219,14 +267,14 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
         };
         advertised.libp2p.as_mut().unwrap().signature = transport.sign_address(&advertised, "kaspa-simnet").unwrap();
         if use_libp2p {
-            let (other_key, other_id) = load_identity(directory.path().join("other.key")).await.unwrap();
+            let other = Libp2pTransport::new(30000, true).unwrap();
             let mut mismatched = advertised.clone();
-            mismatched.libp2p.as_mut().unwrap().endpoint_id = other_id;
-            mismatched.libp2p.as_mut().unwrap().signature = other_key.sign(&mismatched.signing_bytes("kaspa-simnet")).unwrap();
+            mismatched.libp2p.as_mut().unwrap().endpoint_id = other.id();
+            mismatched.libp2p.as_mut().unwrap().signature = other.sign_address(&mismatched, "kaspa-simnet").unwrap();
             assert!(mismatched.verify("kaspa-simnet"));
             *initializer.advertised.write() = Some(mismatched);
             assert!(
-                client.connect_libp2p_peer(&endpoint).await.is_err(),
+                client.connect_libp2p_peer(endpoint.as_ref().unwrap()).await.is_err(),
                 "another owner's valid signature must not bypass transport identity"
             );
             assert_eq!(client.active_peers_len(), 0);
@@ -234,7 +282,7 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
             *initializer.advertised.write() = None;
         }
         let peer = if use_libp2p {
-            client.connect_libp2p_peer(&endpoint).await.unwrap()
+            client.connect_libp2p_peer(endpoint.as_ref().unwrap()).await.unwrap()
         } else {
             client.connect_peer(tcp.clone()).await.unwrap()
         };
@@ -284,7 +332,7 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
         // Matching metadata is accepted as well; TCP does not require transport authentication.
         *initializer.advertised.write() = Some(advertised);
         let peer = if use_libp2p {
-            client.connect_libp2p_peer(&endpoint).await.unwrap()
+            client.connect_libp2p_peer(endpoint.as_ref().unwrap()).await.unwrap()
         } else {
             client.connect_peer(tcp.clone()).await.unwrap()
         };
@@ -322,7 +370,12 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
         client.terminate(peer).await;
         wait(async || client.active_peers_len() == 0, 10).await;
         assert!(client.connect_peer(tcp).await.is_err(), "the shared ban must reject TCP reconnection");
-        assert!(client.connect_libp2p_peer(&endpoint).await.is_err(), "the shared ban must reject libp2p reconnection");
+        if use_libp2p {
+            assert!(
+                client.connect_libp2p_peer(endpoint.as_ref().unwrap()).await.is_err(),
+                "the shared ban must reject libp2p reconnection"
+            );
+        }
         client.close().await;
         rpc.disconnect().await.unwrap();
         server.shutdown();
@@ -496,7 +549,7 @@ impl AddressSession {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn gossip_accepts_fresh_unverified_addresses_and_repairs_invalid_records() {
     use kaspa_p2p_lib::{
-        libp2p_transport::load_identity,
+        libp2p_transport::Libp2pTransport,
         make_message,
         pb::{self, kaspad_message::Payload},
     };
@@ -531,13 +584,12 @@ async fn gossip_accepts_fresh_unverified_addresses_and_repairs_invalid_records()
     let args = Args { simnet: true, disable_upnp: true, disable_dns_seeding: true, outbound_target: 0, ..Default::default() };
     let mut server = Daemon::new_random_with_args(args, 10);
     let rpc = server.start().await;
-    let directory = tempfile::tempdir().unwrap();
-    let (key, id) = load_identity(directory.path().join("owner.key")).await.unwrap();
+    let owner = Libp2pTransport::new(30000, true).unwrap();
     let mut valid = PeerAddress {
-        libp2p: Some(Libp2pMetadata { endpoint_id: id, port: 30000, relay_port: 0, nonce: 1, signature: Vec::new() }),
+        libp2p: Some(Libp2pMetadata { endpoint_id: owner.id(), port: 30000, relay_port: 0, nonce: 1, signature: Vec::new() }),
         ..PeerAddress::from("8.8.8.8:16111".parse::<NetAddress>().unwrap())
     };
-    let signature = key.sign(&valid.signing_bytes("kaspa-simnet")).unwrap();
+    let signature = owner.sign_address(&valid, "kaspa-simnet").unwrap();
     valid.libp2p.as_mut().unwrap().signature = signature;
     let mut invalid = valid.clone();
     invalid.libp2p.as_mut().unwrap().port = 30001;
@@ -551,7 +603,7 @@ async fn gossip_accepts_fresh_unverified_addresses_and_repairs_invalid_records()
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn signed_handshake_records_update_by_nonce_and_gossip_unchanged() {
-    use kaspa_p2p_lib::libp2p_transport::load_identity;
+    use kaspa_p2p_lib::libp2p_transport::Libp2pTransport;
     use kaspa_utils::{
         connection::{Libp2pMetadata, PeerAddress},
         networking::NetAddress,
@@ -566,13 +618,12 @@ async fn signed_handshake_records_update_by_nonce_and_gossip_unchanged() {
     };
     let mut server = Daemon::new_random_with_args(args, 10);
     let rpc = server.start().await;
-    let directory = tempfile::tempdir().unwrap();
-    let (key, id) = load_identity(directory.path().join("owner.key")).await.unwrap();
+    let owner = Libp2pTransport::new(30000, true).unwrap();
     let mut original = PeerAddress {
-        libp2p: Some(Libp2pMetadata { endpoint_id: id, port: 30000, relay_port: 0, nonce: 1, signature: Vec::new() }),
+        libp2p: Some(Libp2pMetadata { endpoint_id: owner.id(), port: 30000, relay_port: 0, nonce: 1, signature: Vec::new() }),
         ..PeerAddress::from("8.8.8.8:16111".parse::<NetAddress>().unwrap())
     };
-    let signature = key.sign(&original.signing_bytes("kaspa-simnet")).unwrap();
+    let signature = owner.sign_address(&original, "kaspa-simnet").unwrap();
     original.libp2p.as_mut().unwrap().signature = signature;
     // Fresh handshake addresses follow the same optimistic policy as fresh gossip.
     let mut unverified = original.clone();
@@ -595,7 +646,7 @@ async fn signed_handshake_records_update_by_nonce_and_gossip_unchanged() {
     let mut fresh = original.clone();
     fresh.libp2p.as_mut().unwrap().nonce = 2;
     fresh.libp2p.as_mut().unwrap().port = 30001;
-    let signature = key.sign(&fresh.signing_bytes("kaspa-simnet")).unwrap();
+    let signature = owner.sign_address(&fresh, "kaspa-simnet").unwrap();
     fresh.libp2p.as_mut().unwrap().signature = signature;
     let mut second = AddressSession::connect(server.p2p_port, Some(fresh.clone())).await;
     let received = second.addresses().await;

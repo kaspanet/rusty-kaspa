@@ -26,9 +26,8 @@ use std::future::Future;
 use std::{
     collections::{HashMap, VecDeque},
     convert::Infallible,
-    io::{self, Write},
+    io,
     net::{IpAddr, SocketAddr},
-    path::Path,
     pin::Pin,
     sync::{
         Arc,
@@ -66,12 +65,6 @@ pub enum TransportError {
     IdentityType(#[from] identity::OtherVariantError),
     #[error("address signing failed: {0}")]
     Signing(#[from] identity::SigningError),
-    #[error("identity task failed: {0}")]
-    IdentityTask(#[from] tokio::task::JoinError),
-    #[error("invalid libp2p identity file (expected a private, regular 32-byte file)")]
-    InvalidIdentityFile,
-    #[error("identity path has no parent")]
-    InvalidIdentityPath,
     #[error("Kaspa requires an inline Ed25519 peer identity")]
     NonInlineIdentity,
     #[error("unsupported transport destination: {0}")]
@@ -118,9 +111,9 @@ pub enum TransportError {
 /// Shared transport handle used by the adaptor, P2P service, and connection manager.
 /// Sends commands to the driver task and exposes current addresses and shutdown controls.
 pub struct Libp2pTransport {
-    /// Stable authenticated Ed25519 public identity, fixed at construction.
+    /// Authenticated Ed25519 public identity for this run, fixed at construction.
     id: Libp2pId,
-    /// Local key used to sign this node's advertised addresses.
+    /// In-memory private key used to sign this node's advertised addresses.
     signing_key: identity::Keypair,
     /// Current local or observed UDP socket used when constructing address gossip.
     direct: RwLock<Option<SocketAddr>>,
@@ -147,8 +140,9 @@ pub struct Libp2pTransport {
 }
 
 impl Libp2pTransport {
-    /// Constructs the transport with its fixed identity, relay port, and destination policy.
-    pub fn new(signing_key: identity::Keypair, relay_port: u16, allow_private: bool) -> Result<Self, TransportError> {
+    /// Creates a fresh in-memory identity for this transport, with a fixed relay port and destination policy.
+    pub fn new(relay_port: u16, allow_private: bool) -> Result<Self, TransportError> {
+        let signing_key = identity::Keypair::generate_ed25519();
         let id = public_id(signing_key.public().to_peer_id())?;
         Ok(Self {
             id,
@@ -1068,42 +1062,6 @@ fn public_id(peer: PeerId) -> Result<Libp2pId, TransportError> {
     Ok(identity::PublicKey::try_decode_protobuf(peer.as_ref().digest())?.try_into_ed25519()?.to_bytes())
 }
 
-fn load_or_create_secret(path: &Path) -> Result<identity::Keypair, TransportError> {
-    let parent = path.parent().ok_or(TransportError::InvalidIdentityPath)?;
-    std::fs::create_dir_all(parent)?;
-    if !path.try_exists()? {
-        let mut file = tempfile::NamedTempFile::new_in(parent)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.as_file().set_permissions(std::fs::Permissions::from_mode(0o600))?;
-        }
-        let key = identity::ed25519::Keypair::generate();
-        file.write_all(key.secret().as_ref())?;
-        file.as_file().sync_all()?;
-        match file.persist_noclobber(path) {
-            Ok(_) => {
-                #[cfg(unix)]
-                std::fs::File::open(parent)?.sync_all()?;
-            }
-            Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(error.error.into()),
-        }
-    }
-    let metadata = std::fs::symlink_metadata(path)?;
-    if !metadata.is_file() || metadata.len() != 32 {
-        return Err(TransportError::InvalidIdentityFile);
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if metadata.permissions().mode() & 0o077 != 0 {
-            return Err(TransportError::InvalidIdentityFile);
-        }
-    }
-    Ok(identity::Keypair::ed25519_from_bytes(std::fs::read(path)?)?)
-}
-
 pub fn validate_destination(address: SocketAddr, allow_private: bool) -> Result<(), TransportError> {
     let ip = address.ip().to_canonical();
     if address.port() == 0
@@ -1146,13 +1104,6 @@ fn socket(address: &Multiaddr) -> Option<SocketAddr> {
         }
     }
     Some(SocketAddr::new(ip?.to_canonical(), port?))
-}
-
-/// Loads the persisted identity before any peer-processing tasks are started.
-pub async fn load_identity(path: std::path::PathBuf) -> Result<(identity::Keypair, Libp2pId), TransportError> {
-    let key = tokio::task::spawn_blocking(move || load_or_create_secret(&path)).await??;
-    let id = public_id(key.public().to_peer_id())?;
-    Ok((key, id))
 }
 
 fn is_relayed(address: &Multiaddr) -> bool {
@@ -1218,7 +1169,6 @@ mod session_tests {
         adaptor: Arc<Adaptor>,
         state: Arc<Libp2pTransport>,
         received: mpsc::Receiver<(SocketAddr, pb::KaspadMessage)>,
-        _dir: tempfile::TempDir,
     }
 
     fn free_port_pair() -> u16 {
@@ -1248,11 +1198,10 @@ mod session_tests {
     async fn node() -> Node {
         let (sent, received) = mpsc::channel(32);
         let initializer = Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received: sent });
-        let dir = tempfile::tempdir().unwrap();
         let port = free_port_pair();
-        let (identity, id) = load_identity(dir.path().join("libp2p.secret")).await.unwrap();
         let listen = NetAddress::from(SocketAddr::from(([127, 0, 0, 1], port + 1)));
-        let state = Arc::new(Libp2pTransport::new(identity, listen.port, true).unwrap());
+        let state = Arc::new(Libp2pTransport::new(listen.port, true).unwrap());
+        let id = state.id();
         let adaptor = Adaptor::client_only(Hub::new(), initializer, Default::default(), state.clone());
         assert_eq!(state.id(), id);
         assert_eq!(state.relay_port(), listen.port);
@@ -1262,7 +1211,7 @@ mod session_tests {
         assert_eq!(state.id(), id);
         assert!(state.is_ready());
         wait_until(|| state.direct_address().is_some()).await;
-        Node { adaptor, state, received, _dir: dir }
+        Node { adaptor, state, received }
     }
 
     async fn relay_route(destination: &Node, relay: &Node) -> EndpointAddress {
@@ -1314,7 +1263,7 @@ mod session_tests {
         let initializer = Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received });
         let (hub, _events) = mpsc::channel(1);
         let address = SocketAddr::from(([127, 0, 0, 1], free_port_pair()));
-        let state = Arc::new(Libp2pTransport::new(identity::Keypair::generate_ed25519(), address.port(), true).unwrap());
+        let state = Arc::new(Libp2pTransport::new(address.port(), true).unwrap());
         let handler = ConnectionHandler::new(hub, initializer, Default::default(), state.clone());
         let (mut driver, commands) = Driver::new(state.clone(), address.ip().into(), handler).unwrap();
         let listener = driver.quic_listener;
@@ -1342,18 +1291,13 @@ mod session_tests {
     #[tokio::test]
     async fn transport_errors_preserve_causes_and_distinguish_lifecycle_failures() {
         use std::error::Error;
-        let directory = tempfile::tempdir().unwrap();
-        let error = load_identity(directory.path().join("directory").join("identity")).await;
-        assert!(error.is_ok());
-        let error = load_identity(directory.path().join("directory")).await.unwrap_err();
-        assert!(matches!(error, TransportError::InvalidIdentityFile));
         let source = io::Error::new(io::ErrorKind::PermissionDenied, "denied");
         let error = TransportError::Io(source);
         assert_eq!(error.source().unwrap().downcast_ref::<io::Error>().unwrap().kind(), io::ErrorKind::PermissionDenied);
         assert!(matches!(validate_destination("0.0.0.0:1".parse().unwrap(), true), Err(TransportError::InvalidDestination(_))));
-        let (_, id) = load_identity(directory.path().join("identity")).await.unwrap();
+        let id = Libp2pTransport::new(16512, false).unwrap().id();
         assert!(matches!(validate_endpoint(&EndpointAddress { id, relay: None }, true), Err(TransportError::MissingRelay)));
-        let state = Libp2pTransport::new(identity::Keypair::generate_ed25519(), 16512, false).unwrap();
+        let state = Libp2pTransport::new(16512, false).unwrap();
         assert!(matches!(state.sender(), Err(TransportError::NotReady)));
         let (sender, receiver) = mpsc::channel(1);
         *state.commands.write() = Some(sender);
@@ -1369,7 +1313,7 @@ mod session_tests {
         let (received, _receiver) = mpsc::channel(1);
         let initializer = Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received });
         let (hub, _events) = mpsc::channel(1);
-        let state = Arc::new(Libp2pTransport::new(identity::Keypair::generate_ed25519(), free_port_pair(), true).unwrap());
+        let state = Arc::new(Libp2pTransport::new(free_port_pair(), true).unwrap());
         let handler = ConnectionHandler::new(hub, initializer, Default::default(), state.clone());
         let (mut driver, _commands) = Driver::new(state.clone(), std::net::Ipv4Addr::LOCALHOST.into(), handler).unwrap();
         let peer = identity::Keypair::generate_ed25519().public().to_peer_id();
@@ -1403,7 +1347,7 @@ mod session_tests {
             let (received, _receiver) = mpsc::channel(1);
             let initializer = Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received });
             let (hub, _events) = mpsc::channel(1);
-            let state = Arc::new(Libp2pTransport::new(identity::Keypair::generate_ed25519(), free_port_pair(), true).unwrap());
+            let state = Arc::new(Libp2pTransport::new(free_port_pair(), true).unwrap());
             let handler = ConnectionHandler::new(hub, initializer, Default::default(), state.clone());
             let (mut driver, _commands) = Driver::new(state, std::net::Ipv4Addr::LOCALHOST.into(), handler).unwrap();
             let relay = identity::Keypair::generate_ed25519().public().to_peer_id();
@@ -1650,7 +1594,7 @@ mod session_tests {
         let b = node().await;
         let (sent, mut received) = mpsc::channel(32);
         let initializer = Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received: sent });
-        let state = Arc::new(Libp2pTransport::new(identity::Keypair::generate_ed25519(), free_port_pair(), true).unwrap());
+        let state = Arc::new(Libp2pTransport::new(free_port_pair(), true).unwrap());
         let (hub_sender, hub_receiver) = mpsc::channel(32);
         let hub = Hub::new();
         let handler = ConnectionHandler::new(hub_sender, initializer, Default::default(), state.clone());
@@ -1740,12 +1684,11 @@ mod session_tests {
         let mut a = node().await;
         let (received, _receiver) = mpsc::channel(32);
         let initializer = Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received });
-        let directory = tempfile::tempdir().unwrap();
         let port = free_port_pair();
         let _occupied = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port + 1)).unwrap();
         let address = NetAddress::from(SocketAddr::from(([127, 0, 0, 1], port)));
-        let (identity, id) = load_identity(directory.path().join("libp2p.secret")).await.unwrap();
-        let state = Arc::new(Libp2pTransport::new(identity, port + 1, true).unwrap());
+        let state = Arc::new(Libp2pTransport::new(port + 1, true).unwrap());
+        let id = state.id();
         let server = Adaptor::bidirectional(address, Hub::new(), initializer, Default::default(), state.clone()).unwrap();
         let error = server.start_libp2p(address.ip).unwrap_err();
         assert!(error.to_string().contains("cannot bind QUIC listener"));
@@ -1763,25 +1706,14 @@ mod session_tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn identity_load_failure_returns_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("identity");
-        std::fs::write(&path, [1; 31]).unwrap();
-        let error = tokio::time::timeout(Duration::from_secs(2), load_identity(path)).await.unwrap().unwrap_err();
-        assert!(error.to_string().contains("invalid libp2p identity file"));
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn quic_bind_failure_can_retry_without_binding_tcp() {
         let (received, _receiver) = mpsc::channel(32);
         let initializer = Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received });
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("libp2p.secret");
         let port = free_port_pair();
         let address = NetAddress::from(SocketAddr::from(([127, 0, 0, 1], port)));
         let occupied = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port + 1)).unwrap();
-        let (identity, id) = load_identity(path.clone()).await.unwrap();
-        let state = Arc::new(Libp2pTransport::new(identity, port + 1, true).unwrap());
+        let state = Arc::new(Libp2pTransport::new(port + 1, true).unwrap());
+        let id = state.id();
         let adaptor = Adaptor::client_only(Hub::new(), initializer, Default::default(), state.clone());
         let error = adaptor.start_libp2p(address.ip).unwrap_err();
         assert!(error.to_string().contains("cannot bind QUIC listener"));
@@ -1790,8 +1722,6 @@ mod session_tests {
         assert_eq!(state.id(), id);
         drop(occupied);
         wait_until(|| std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, port + 1)).is_ok()).await;
-        let (_, persisted_id) = load_identity(path).await.unwrap();
-        assert_eq!(persisted_id, id);
         adaptor.start_libp2p(address.ip).unwrap();
         assert_eq!(state.id(), id);
         assert!(state.is_ready());
@@ -1799,30 +1729,13 @@ mod session_tests {
         tokio::time::timeout(Duration::from_secs(10), adaptor.close()).await.unwrap();
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn identity_persists_and_rejects_unsafe_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("identity");
-        let creators: Vec<_> = (0..8)
-            .map(|_| {
-                let path = path.clone();
-                std::thread::spawn(move || load_or_create_secret(&path).unwrap().public().to_peer_id())
-            })
-            .collect();
-        let identities: Vec<_> = creators.into_iter().map(|creator| creator.join().unwrap()).collect();
-        let original = identities[0];
-        assert!(identities.iter().all(|identity| *identity == original));
-        assert_eq!(load_or_create_secret(&path).unwrap().public().to_peer_id(), original);
-        assert_eq!(public_id(original).and_then(peer_id).unwrap(), original);
-        std::fs::write(&path, [1; 31]).unwrap();
-        assert!(load_or_create_secret(&path).is_err());
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::write(&path, [1; 32]).unwrap();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-            assert!(load_or_create_secret(&path).is_err());
-        }
+    #[test]
+    fn each_transport_has_a_fresh_in_memory_identity() {
+        let first = Libp2pTransport::new(16512, true).unwrap();
+        let second = Libp2pTransport::new(16512, true).unwrap();
+        assert_ne!(first.id(), second.id());
+        assert_eq!(public_id(peer_id(first.id()).unwrap()).unwrap(), first.id());
+        assert_eq!(public_id(first.signing_key.public().to_peer_id()).unwrap(), first.id());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

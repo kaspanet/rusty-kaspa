@@ -1,5 +1,5 @@
 use kaspa_database::{
-    prelude::{CachePolicy, CachedDbAccess, CachedDbItem, DB, DbKey, DirectDbWriter, StoreError, StoreResult, StoreResultExt},
+    prelude::{CachePolicy, CachedDbAccess, DB, DbKey, DirectDbWriter, StoreError, StoreResult},
     registry::DatabaseStorePrefixes,
 };
 use kaspa_utils::{
@@ -103,24 +103,11 @@ fn decode_key(bytes: &[u8]) -> StoreResult<AddressKey> {
 pub struct DbAddressesStore {
     db: Arc<DB>,
     access: CachedDbAccess<Vec<u8>, Entry>,
-    local_advertisement: CachedDbItem<PeerAddress>,
 }
 
 impl DbAddressesStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
-        Self {
-            access: CachedDbAccess::new(db.clone(), cache_policy, DatabaseStorePrefixes::Addresses.into()),
-            local_advertisement: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::LocalAddressAdvertisement.into()),
-            db,
-        }
-    }
-
-    pub(crate) fn local_advertisement(&self) -> StoreResult<Option<PeerAddress>> {
-        self.local_advertisement.read().optional()
-    }
-
-    pub(crate) fn set_local_advertisement(&mut self, address: &PeerAddress) -> StoreResult<()> {
-        self.local_advertisement.write(DirectDbWriter::new(&self.db), address)
+        Self { access: CachedDbAccess::new(db.clone(), cache_policy, DatabaseStorePrefixes::Addresses.into()), db }
     }
 
     /// Copies master TCP records, retaining connection failures. Extended fields are absent until learned from an owner.

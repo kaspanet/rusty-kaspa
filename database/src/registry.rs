@@ -70,7 +70,6 @@ pub enum DatabaseStorePrefixes {
     AddressesLegacy = 128,
     BannedAddresses = 129,
     Addresses = 132,
-    LocalAddressAdvertisement = 133,
 
     // ---- Indexes ----
     UtxoIndexScriptPublicKey = 192,

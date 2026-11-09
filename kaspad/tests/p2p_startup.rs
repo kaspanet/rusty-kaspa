@@ -6,7 +6,7 @@ use std::{
 
 #[test]
 fn p2p_startup_failures_exit_unsuccessfully_after_cleanup() {
-    for failure in ["identity", "quic", "p2p"] {
+    for failure in ["quic", "p2p"] {
         let directory = tempfile::tempdir().unwrap();
         let legacy = TcpListener::bind("127.0.0.1:0").unwrap();
         let quic_udp = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -14,11 +14,6 @@ fn p2p_startup_failures_exit_unsuccessfully_after_cleanup() {
         let relay_port = quic_udp.local_addr().unwrap().port();
         let rpc = TcpListener::bind("127.0.0.1:0").unwrap();
         let rpc_port = rpc.local_addr().unwrap().port();
-        if failure == "identity" {
-            let network = directory.path().join("kaspa-simnet");
-            std::fs::create_dir(&network).unwrap();
-            std::fs::write(network.join("libp2p.secret"), [0; 31]).unwrap();
-        }
         let occupied_p2p = (failure == "p2p").then_some(legacy);
         let occupied_udp = (failure == "quic").then_some(quic_udp);
         drop(rpc);

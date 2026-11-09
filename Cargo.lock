@@ -3817,7 +3817,6 @@ dependencies = [
  "log",
  "parking_lot",
  "rand 0.8.6",
- "tempfile",
  "tokio",
  "tokio-util",
 ]
@@ -4445,7 +4444,6 @@ dependencies = [
  "rand 0.8.6",
  "seqlock",
  "serde",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",

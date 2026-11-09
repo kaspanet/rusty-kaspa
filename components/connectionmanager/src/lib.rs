@@ -514,7 +514,7 @@ mod libp2p_tests {
     use kaspa_p2p_lib::{
         Adaptor, Hub,
         echo::EchoFlowInitializer,
-        libp2p_transport::{Libp2pTransport, MAX_PENDING_DIALS, load_identity},
+        libp2p_transport::{Libp2pTransport, MAX_PENDING_DIALS},
     };
     use kaspa_utils::connection::Libp2pMetadata;
 
@@ -531,10 +531,9 @@ mod libp2p_tests {
         }
     }
 
-    async fn node(directory: &std::path::Path, name: &str, tcp: bool) -> (Arc<Adaptor>, NetAddress) {
+    async fn node(tcp: bool) -> (Arc<Adaptor>, NetAddress) {
         let listen = free_port_pair();
-        let (key, _) = load_identity(directory.join(name)).await.unwrap();
-        let transport = Arc::new(Libp2pTransport::new(key, listen.port + 1, true).unwrap());
+        let transport = Arc::new(Libp2pTransport::new(listen.port + 1, true).unwrap());
         let adaptor = if tcp {
             Adaptor::bidirectional(listen, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default(), transport).unwrap()
         } else {
@@ -597,8 +596,7 @@ mod libp2p_tests {
         kaspa_core::log::try_init_logger(
             "info,kaspa_connectionmanager=debug,kaspa_p2p_lib::libp2p_transport=debug,libp2p=warn,noq=warn",
         );
-        let directory = tempfile::tempdir().unwrap();
-        let (client, _) = node(directory.path(), "client", false).await;
+        let (client, _) = node(false).await;
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let store = DbAddressesStore::new(db.clone(), CachePolicy::Empty);
         let addresses = address_manager(db);
@@ -606,9 +604,9 @@ mod libp2p_tests {
         let mut relays = Vec::new();
         for index in 0..MAX_PENDING_DIALS + 8 {
             if index % 4 == 0 {
-                relays.push(node(directory.path(), &format!("relay-{index}"), false).await.0);
+                relays.push(node(false).await.0);
             }
-            let (server, listen) = node(directory.path(), &format!("server-{index}"), false).await;
+            let (server, listen) = node(false).await;
             reserve_relay(&server, relays.last().unwrap()).await;
             // Distinct endpoint IDs must remain eligible even with identical advertised UDP sockets.
             let mut advertised = record(&server, listen);
@@ -645,11 +643,10 @@ mod libp2p_tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn tcp_is_preferred_and_failed_tcp_falls_back_to_libp2p() {
-        let directory = tempfile::tempdir().unwrap();
-        let (relay, _) = node(directory.path(), "relay", false).await;
+        let (relay, _) = node(false).await;
         for tcp in [true, false] {
-            let (client, _) = node(directory.path(), &format!("client-{tcp}"), false).await;
-            let (server, listen) = node(directory.path(), &format!("server-{tcp}"), tcp).await;
+            let (client, _) = node(false).await;
+            let (server, listen) = node(tcp).await;
             let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             reserve_relay(&server, &relay).await;
             let store = DbAddressesStore::new(db.clone(), CachePolicy::Empty);
@@ -669,16 +666,15 @@ mod libp2p_tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn outbound_libp2p_limit_counts_existing_outbound_but_not_inbound_sessions() {
         for target in [1usize, 3, 8] {
-            let directory = tempfile::tempdir().unwrap();
-            let (relay, _) = node(directory.path(), "relay", false).await;
-            let (client, _) = node(directory.path(), "client", false).await;
+            let (relay, _) = node(false).await;
+            let (client, _) = node(false).await;
             reserve_relay(&client, &relay).await;
             let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let addresses = address_manager(db);
             let limit = target / 2;
             let mut servers = Vec::new();
             for index in 0..limit.saturating_add(2) {
-                let (server, listen) = node(directory.path(), &format!("libp2p-{index}"), false).await;
+                let (server, listen) = node(false).await;
                 reserve_relay(&server, &relay).await;
                 let address = record(&server, listen);
                 addresses.lock().add_address(address.clone());
@@ -691,21 +687,32 @@ mod libp2p_tests {
                 // EchoFlowInitializer leaves the Kaspa UUID unset; distinct IPs keep its TCP peer keys distinct.
                 let ip = std::net::Ipv4Addr::new(127, 0, 0, u8::try_from(index).unwrap().saturating_add(2));
                 let listen = NetAddress::new(ip.into(), free_port_pair().port);
-                let (key, id) = load_identity(directory.path().join(format!("tcp-{index}"))).await.unwrap();
-                let transport = Arc::new(Libp2pTransport::new(key.clone(), listen.port + 1, true).unwrap());
-                let server =
-                    Adaptor::bidirectional(listen, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default(), transport)
-                        .unwrap();
+
+                let transport = Arc::new(Libp2pTransport::new(listen.port + 1, true).unwrap());
+                let server = Adaptor::bidirectional(
+                    listen,
+                    Hub::new(),
+                    Arc::new(EchoFlowInitializer::new()),
+                    Default::default(),
+                    transport.clone(),
+                )
+                .unwrap();
                 let mut address = PeerAddress {
-                    libp2p: Some(Libp2pMetadata { endpoint_id: id, port: 0, relay_port: 0, nonce: 1, signature: Vec::new() }),
+                    libp2p: Some(Libp2pMetadata {
+                        endpoint_id: transport.id(),
+                        port: 0,
+                        relay_port: 0,
+                        nonce: 1,
+                        signature: Vec::new(),
+                    }),
                     ..listen.into()
                 };
-                let signature = key.sign(&address.signing_bytes("kaspa-simnet")).unwrap();
+                let signature = transport.sign_address(&address, "kaspa-simnet").unwrap();
                 address.libp2p.as_mut().unwrap().signature = signature;
                 addresses.lock().add_address(address);
                 servers.push(server);
             }
-            let (incoming, _) = node(directory.path(), "incoming", false).await;
+            let (incoming, _) = node(false).await;
             incoming.connect_libp2p_peer(&client.libp2p_transport().endpoint_address().unwrap()).await.unwrap();
             wait(|| client.active_peers().iter().any(|peer| !peer.is_outbound()), 10).await;
             let manager = ConnectionManager::new(client.clone(), target, 4, &[], 16511, addresses);
@@ -729,12 +736,11 @@ mod libp2p_tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn full_libp2p_quota_does_not_charge_skipped_fallbacks_as_peer_failures() {
-        let directory = tempfile::tempdir().unwrap();
-        let (relay, _) = node(directory.path(), "relay", false).await;
-        let (client, _) = node(directory.path(), "client", false).await;
+        let (relay, _) = node(false).await;
+        let (client, _) = node(false).await;
         let mut servers = Vec::new();
-        for index in 0..4 {
-            let (server, _) = node(directory.path(), &format!("connected-{index}"), false).await;
+        for _ in 0..4 {
+            let (server, _) = node(false).await;
             reserve_relay(&server, &relay).await;
             client.connect_libp2p_peer(&server.libp2p_transport().endpoint_address().unwrap()).await.unwrap();
             servers.push(server);
@@ -742,11 +748,11 @@ mod libp2p_tests {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let store = DbAddressesStore::new(db.clone(), CachePolicy::Empty);
         let addresses = address_manager(db);
-        let (extra, listen) = node(directory.path(), "extra", false).await;
+        let (extra, listen) = node(false).await;
         reserve_relay(&extra, &relay).await;
         let extra_address = record(&extra, listen);
         addresses.lock().add_address(extra_address.clone());
-        let (unreachable, listen) = node(directory.path(), "unreachable", false).await;
+        let (unreachable, listen) = node(false).await;
         let mut marker = record(&unreachable, listen);
         marker.libp2p.as_mut().unwrap().port = 0;
         marker.libp2p.as_mut().unwrap().relay_port = 0;
@@ -780,10 +786,9 @@ mod libp2p_tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn connected_libp2p_excludes_aliases_but_allows_other_ids_at_the_same_socket() {
-        let directory = tempfile::tempdir().unwrap();
-        let (relay, _) = node(directory.path(), "relay", false).await;
-        let (client, _) = node(directory.path(), "client", false).await;
-        let (server, listen) = node(directory.path(), "server", false).await;
+        let (relay, _) = node(false).await;
+        let (client, _) = node(false).await;
+        let (server, listen) = node(false).await;
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let store = DbAddressesStore::new(db.clone(), CachePolicy::Empty);
         let addresses = address_manager(db);
@@ -797,7 +802,7 @@ mod libp2p_tests {
         let signature = server.libp2p_transport().sign_address(&alias, "kaspa-simnet").unwrap();
         alias.libp2p.as_mut().unwrap().signature = signature;
         addresses.lock().add_address(alias.clone());
-        let (other, _) = node(directory.path(), "other", false).await;
+        let (other, _) = node(false).await;
         reserve_relay(&other, &relay).await;
         let mut shared_socket = record(&other, NetAddress::new(good.ip, good.libp2p_port().unwrap()));
         let signature = other.libp2p_transport().sign_address(&shared_socket, "kaspa-simnet").unwrap();
@@ -818,10 +823,9 @@ mod libp2p_tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn failed_relay_is_reselected_without_charging_tcp_failures() {
-        let directory = tempfile::tempdir().unwrap();
-        let (client, _) = node(directory.path(), "client", false).await;
-        let (first, listen1) = node(directory.path(), "relay1", true).await;
-        let (second, listen2) = node(directory.path(), "relay2", true).await;
+        let (client, _) = node(false).await;
+        let (first, listen1) = node(true).await;
+        let (second, listen2) = node(true).await;
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let store = DbAddressesStore::new(db.clone(), CachePolicy::Empty);
         let addresses = address_manager(db);
@@ -858,8 +862,7 @@ mod libp2p_tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn legacy_tcp_remains_usable_without_any_relay() {
-        let directory = tempfile::tempdir().unwrap();
-        let (client, _) = node(directory.path(), "client", false).await;
+        let (client, _) = node(false).await;
         let ip = local_ip_address::list_afinet_netifas()
             .unwrap()
             .into_iter()
@@ -867,8 +870,7 @@ mod libp2p_tests {
             .find(|ip| ip.is_ipv4() && !ip.is_loopback())
             .unwrap();
         let tcp = NetAddress::new(ip.into(), free_port_pair().port);
-        let (key, _) = load_identity(directory.path().join("tcp-server")).await.unwrap();
-        let transport = Arc::new(Libp2pTransport::new(key, tcp.port + 1, true).unwrap());
+        let transport = Arc::new(Libp2pTransport::new(tcp.port + 1, true).unwrap());
         let server =
             Adaptor::bidirectional(tcp, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default(), transport).unwrap();
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
