@@ -115,11 +115,10 @@ mod tests {
             }
             while closing > 0 {
                 let (_, e) = next(&mut nodes).await;
-                if let SwarmEvent::ConnectionClosed { endpoint, .. } = e {
-                    if endpoint.is_relayed() {
+                if let SwarmEvent::ConnectionClosed { endpoint, .. } = e
+                    && endpoint.is_relayed() {
                         closing -= 1;
                     }
-                }
             }
             let protocol = StreamProtocol::new("/kaspa/prototype/1");
             let mut incoming = nodes[2].behaviour().streams.new_control().accept(protocol.clone()).unwrap();
@@ -150,11 +149,10 @@ mod tests {
             nodes[0].listen_on("/ip4/127.0.0.1/udp/0/quic-v1".parse().unwrap()).unwrap();
             let relay = loop {
                 let (index, event) = next(&mut nodes).await;
-                if index == 0 {
-                    if let SwarmEvent::NewListenAddr { address, .. } = event {
+                if index == 0
+                    && let SwarmEvent::NewListenAddr { address, .. } = event {
                         break address.with(Protocol::P2p(ids[0]));
                     }
-                }
             };
             nodes[0].add_external_address(relay.clone());
             nodes[2].listen_on(relay.clone().with(Protocol::P2pCircuit)).unwrap();
@@ -198,11 +196,10 @@ mod tests {
                     _ = &mut writer => unreachable!(),
                     _ = &mut reader => unreachable!(),
                     (index, event) = next(&mut nodes) => {
-                        if index == 0 {
-                            if let SwarmEvent::Behaviour(BehaviourEvent::RelayServer(relay::Event::CircuitClosed { error, .. })) = event {
+                        if index == 0
+                            && let SwarmEvent::Behaviour(BehaviourEvent::RelayServer(relay::Event::CircuitClosed { error, .. })) = event {
                                 break error.unwrap();
                             }
-                        }
                     }
                 }
             };

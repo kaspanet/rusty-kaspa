@@ -192,11 +192,10 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
                         Some(Payload::Ping(ping)) => Some(make_message!(Payload::Pong, pb::PongMessage { nonce: ping.nonce })),
                         _ => None,
                     };
-                    if let Some(response) = response {
-                        if router.enqueue(response).await.is_err() {
+                    if let Some(response) = response
+                        && router.enqueue(response).await.is_err() {
                             break;
                         }
-                    }
                 }
             });
             Ok(())
