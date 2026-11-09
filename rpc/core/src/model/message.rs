@@ -603,7 +603,7 @@ impl GetConnectedPeerInfoResponse {
 
 impl Serializer for GetConnectedPeerInfoResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(Vec<RpcPeerInfo>, &self.peer_info, writer)?;
         Ok(())
     }
@@ -611,8 +611,29 @@ impl Serializer for GetConnectedPeerInfoResponse {
 
 impl Deserializer for GetConnectedPeerInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
-        let peer_info = load!(Vec<RpcPeerInfo>, reader)?;
+        let version = load!(u16, reader)?;
+        let peer_info = if version > 1 {
+            load!(Vec<RpcPeerInfo>, reader)?
+        } else {
+            // Version one predates the optional libp2p identity in each peer record.
+            let count = load!(u32, reader)?;
+            (0..count)
+                .map(|_| {
+                    Ok(RpcPeerInfo {
+                        id: load!(RpcNodeId, reader)?,
+                        address: load!(RpcPeerAddress, reader)?,
+                        libp2p_id: None,
+                        last_ping_duration: load!(u64, reader)?,
+                        is_outbound: load!(bool, reader)?,
+                        time_offset: load!(i64, reader)?,
+                        user_agent: load!(String, reader)?,
+                        advertised_protocol_version: load!(u32, reader)?,
+                        time_connected: load!(u64, reader)?,
+                        is_ibd_peer: load!(bool, reader)?,
+                    })
+                })
+                .collect::<std::io::Result<Vec<_>>>()?
+        };
         Ok(Self { peer_info })
     }
 }

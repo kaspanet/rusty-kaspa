@@ -4,11 +4,13 @@ use crate::pb::{KaspadMessage, kaspad_message::Payload as KaspadMessagePayload};
 use crate::{KaspadMessagePayloadType, common::ProtocolError};
 use crate::{Peer, make_message};
 use kaspa_core::{debug, error, info, trace, warn};
-use kaspa_utils::networking::PeerId;
+use kaspa_utils::{
+    networking::PeerId,
+    triggers::{Listener, SingleTrigger},
+};
 use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
 use std::fmt::{Debug, Display};
-use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
@@ -20,6 +22,8 @@ use tokio::sync::oneshot::{Sender as OneshotSender, channel as oneshot_channel};
 use tonic::Streaming;
 
 use super::peer::{PeerKey, PeerProperties};
+use kaspa_utils::connection::Libp2pId;
+use std::net::SocketAddr;
 
 pub struct IncomingRoute {
     rx: MpscReceiver<KaspadMessage>,
@@ -89,13 +93,13 @@ impl From<KaspadMessagePayloadType> for IncomingRouteOverflowPolicy {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct RouterMutableState {
     /// Used on router init to signal the router receive loop to start listening
     start_signal: Option<OneshotSender<()>>,
 
-    /// Used on router close to signal the router receive loop to exit
-    shutdown_signal: Option<OneshotSender<()>>,
+    /// Signals router closure to the receive loop and waiting flows.
+    shutdown_signal: SingleTrigger,
 
     /// Properties of the peer
     properties: Arc<PeerProperties>,
@@ -105,8 +109,8 @@ struct RouterMutableState {
 }
 
 impl RouterMutableState {
-    fn new(start_signal: Option<OneshotSender<()>>, shutdown_signal: Option<OneshotSender<()>>) -> Self {
-        Self { start_signal, shutdown_signal, ..Default::default() }
+    fn new(start_signal: Option<OneshotSender<()>>, shutdown_signal: SingleTrigger) -> Self {
+        Self { start_signal, shutdown_signal, properties: Default::default(), last_ping_duration: 0 }
     }
 }
 
@@ -117,8 +121,11 @@ pub struct Router {
     /// Internal identity of this peer
     identity: SeqLock<PeerId>,
 
-    /// The socket address of this peer
+    /// The verified socket address of this connection.
     net_address: SocketAddr,
+
+    /// libp2p identity authenticated before the Kaspa handshake.
+    libp2p_id: Option<Libp2pId>,
 
     /// Indicates whether this connection is an outbound connection
     is_outbound: bool,
@@ -143,13 +150,17 @@ pub struct Router {
 
 impl Display for Router {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.net_address)
+        if let Some(id) = self.libp2p_id {
+            write!(f, "libp2p://{}@{}", hex::encode(id), self.net_address)
+        } else {
+            write!(f, "{}", self.net_address)
+        }
     }
 }
 
 impl From<&Router> for PeerKey {
     fn from(value: &Router) -> Self {
-        Self::new(value.identity.read(), value.net_address.ip().into())
+        value.libp2p_id.map_or_else(|| Self::new(value.identity.read(), value.net_address.ip().into()), Self::Libp2p)
     }
 }
 
@@ -158,6 +169,7 @@ impl From<&Router> for Peer {
         Self::new(
             router.identity(),
             router.net_address,
+            router.libp2p_id,
             router.is_outbound,
             router.connection_started,
             router.properties(),
@@ -175,24 +187,27 @@ fn message_summary(msg: &KaspadMessage) -> impl Debug {
 impl Router {
     pub(crate) async fn new(
         net_address: SocketAddr,
+        libp2p_id: Option<Libp2pId>,
         is_outbound: bool,
         hub_sender: MpscSender<HubEvent>,
         mut incoming_stream: Streaming<KaspadMessage>,
         outgoing_route: MpscSender<KaspadMessage>,
     ) -> Arc<Self> {
         let (start_sender, start_receiver) = oneshot_channel();
-        let (shutdown_sender, mut shutdown_receiver) = oneshot_channel();
+        let shutdown_signal = SingleTrigger::default();
+        let mut shutdown_receiver = shutdown_signal.listener.clone();
 
         let router = Arc::new(Router {
             identity: Default::default(),
             net_address,
+            libp2p_id,
             is_outbound,
             connection_started: Instant::now(),
             routing_map_by_type: RwLock::new(HashMap::new()),
             routing_map_by_id: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
-            mutable_state: Mutex::new(RouterMutableState::new(Some(start_sender), Some(shutdown_sender))),
+            mutable_state: Mutex::new(RouterMutableState::new(Some(start_sender), shutdown_signal)),
         });
 
         let router_clone = router.clone();
@@ -261,9 +276,14 @@ impl Router {
         *self.identity.lock_write() = identity;
     }
 
-    /// The socket address of this peer
+    /// The verified socket address of this connection.
     pub fn net_address(&self) -> SocketAddr {
         self.net_address
+    }
+
+    /// Authenticated libp2p identity, absent for TCP connections.
+    pub fn libp2p_id(&self) -> Option<Libp2pId> {
+        self.libp2p_id
     }
 
     pub fn key(&self) -> PeerKey {
@@ -276,7 +296,12 @@ impl Router {
     }
 
     pub(crate) fn is_closed(&self) -> bool {
-        self.mutable_state.lock().shutdown_signal.is_none()
+        self.mutable_state.lock().shutdown_signal.trigger.is_triggered()
+    }
+
+    /// Resolves when this router closes, including for listeners created after closure.
+    pub fn closed(&self) -> Listener {
+        self.mutable_state.lock().shutdown_signal.listener.clone()
     }
 
     pub fn connection_started(&self) -> Instant {
@@ -441,8 +466,8 @@ impl Router {
                 let _ = signal.send(());
             }
 
-            if let Some(signal) = state.shutdown_signal.take() {
-                let _ = signal.send(());
+            if !state.shutdown_signal.trigger.is_triggered() {
+                state.shutdown_signal.trigger.trigger();
             } else {
                 // This means the router was already closed
                 trace!("P2P, Router close was called more than once, router-id: {}", self.identity());

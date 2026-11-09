@@ -51,6 +51,7 @@ pub struct Args {
     pub add_peers: Vec<ContextualNetAddress>,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub listen: Option<ContextualNetAddress>,
+    pub relay_port: Option<u16>,
     #[serde(rename = "uacomment")]
     pub user_agent_comments: Vec<String>,
     pub ua_rule: Vec<String>,
@@ -133,6 +134,7 @@ impl Default for Args {
             connect_peers: vec![],
             add_peers: vec![],
             listen: None,
+            relay_port: None,
             user_agent_comments: vec![],
             ua_rule: vec![],
             yes: false,
@@ -176,6 +178,7 @@ impl Args {
         config.user_agent_rules.clone_from(&self.ua_rule);
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
         config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
+        config.relay_port = self.relay_port.unwrap_or_else(|| config.net.default_relay_port());
         config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
         config.ram_scale = self.ram_scale;
         config.retention_period_days = self.retention_period_days;
@@ -310,6 +313,15 @@ pub fn cli() -> Command {
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Add an interface:port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
+        )
+        .arg(
+            Arg::new("relay-port")
+                .long("relay-port")
+                .env("KASPAD_RELAY_PORT")
+                .value_name("PORT")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u16).range(1..))
+                .help("QUIC UDP port for libp2p sessions and relay service (default: network-specific, independent of --listen)."),
         )
         .arg(
             Arg::new("outpeers")
@@ -525,6 +537,7 @@ impl Args {
             connect_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "connect-peers", defaults.connect_peers),
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
+            relay_port: m.get_one::<u16>("relay-port").copied().or(defaults.relay_port),
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
@@ -605,6 +618,24 @@ fn validate_ua_rules(rules: &[String]) -> Result<(), clap::Error> {
 #[cfg(test)]
 mod tests {
     use super::Args;
+
+    #[test]
+    fn relay_port_uses_network_default_and_supports_overrides() {
+        use kaspa_consensus_core::config::{Config, params::SIMNET_PARAMS};
+        let mut config = Config::new(SIMNET_PARAMS);
+        let args = Args::parse(["kaspad", "--simnet", "--listen=127.0.0.1:65535"]).unwrap();
+        args.apply_to_config(&mut config);
+        assert_eq!(config.relay_port, 16512);
+        let args = Args::parse(["kaspad", "--simnet", "--relay-port=20000"]).unwrap();
+        args.apply_to_config(&mut config);
+        assert_eq!(config.relay_port, 20000);
+        let args: Args = toml::from_str("relay-port = 21000").unwrap();
+        args.apply_to_config(&mut config);
+        assert_eq!(config.relay_port, 21000);
+        for port in ["0", "65536"] {
+            assert!(Args::parse(["kaspad", &format!("--relay-port={port}")]).is_err());
+        }
+    }
 
     #[test]
     fn rejects_covenant_index_without_utxoindex() {

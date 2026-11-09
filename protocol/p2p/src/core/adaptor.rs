@@ -1,8 +1,8 @@
 use crate::ConnectionError;
 use crate::common::ProtocolError;
 use crate::core::hub::Hub;
-use crate::{Router, core::connection_handler::ConnectionHandler};
-use kaspa_utils::networking::NetAddress;
+use crate::{Router, core::connection_handler::ConnectionHandler, libp2p_transport::Libp2pTransport};
+use kaspa_utils::networking::{IpAddress, NetAddress};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -46,9 +46,14 @@ impl Adaptor {
     }
 
     /// Creates a P2P adaptor with only client-side support. Typical Kaspa nodes should use `Adaptor::bidirectional`
-    pub fn client_only(hub: Hub, initializer: Arc<dyn ConnectionInitializer>, counters: Arc<TowerConnectionCounters>) -> Arc<Self> {
+    pub fn client_only(
+        hub: Hub,
+        initializer: Arc<dyn ConnectionInitializer>,
+        counters: Arc<TowerConnectionCounters>,
+        libp2p: Arc<Libp2pTransport>,
+    ) -> Arc<Self> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
-        let connection_handler = ConnectionHandler::new(hub_sender, initializer, counters);
+        let connection_handler = ConnectionHandler::new(hub_sender, initializer, counters, libp2p);
         let adaptor = Arc::new(Adaptor::new(None, connection_handler, hub));
         adaptor.hub.clone().start_event_loop(hub_receiver);
         adaptor
@@ -60,13 +65,31 @@ impl Adaptor {
         hub: Hub,
         initializer: Arc<dyn ConnectionInitializer>,
         counters: Arc<TowerConnectionCounters>,
+        libp2p: Arc<Libp2pTransport>,
     ) -> Result<Arc<Self>, ConnectionError> {
         let (hub_sender, hub_receiver) = mpsc_channel(Self::hub_channel_size());
-        let connection_handler = ConnectionHandler::new(hub_sender, initializer, counters);
+        let connection_handler = ConnectionHandler::new(hub_sender, initializer, counters, libp2p);
         let server_termination = connection_handler.serve(serve_address)?;
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, hub));
         adaptor.hub.clone().start_event_loop(hub_receiver);
         Ok(adaptor)
+    }
+
+    pub fn libp2p_transport(&self) -> Arc<crate::libp2p_transport::Libp2pTransport> {
+        self.connection_handler.libp2p.clone()
+    }
+
+    /// Starts the QUIC listener for direct sessions and relay service at the supplied address.
+    pub fn start_libp2p(&self, listen_ip: IpAddress) -> Result<(), crate::libp2p_transport::TransportError> {
+        self.connection_handler.libp2p.start(listen_ip, self.connection_handler.clone())
+    }
+
+    pub async fn connect_libp2p_peer(&self, record: &kaspa_utils::connection::EndpointAddress) -> Result<PeerKey, ConnectionError> {
+        let key = PeerKey::Libp2p(record.id);
+        if self.hub.has_peer(key) {
+            return Err(ProtocolError::PeerAlreadyExists(key).into());
+        }
+        self.connection_handler.connect_libp2p(record).await.map(|router| router.key())
     }
 
     /// Connect to a new peer (no retries)
@@ -87,6 +110,7 @@ impl Adaptor {
     /// Terminates all peers and cleans up any additional async resources
     pub async fn close(&self) {
         self.terminate_all_peers().await;
+        self.connection_handler.libp2p.shutdown().await;
     }
 
     pub fn hub_channel_size() -> usize {

@@ -67,8 +67,10 @@ pub enum DatabaseStorePrefixes {
     ConsensusEntries = 125,
 
     // ---- Components ----
-    Addresses = 128,
+    AddressesLegacy = 128,
     BannedAddresses = 129,
+    Addresses = 132,
+    LocalAddressAdvertisement = 133,
 
     // ---- Indexes ----
     UtxoIndexScriptPublicKey = 192,

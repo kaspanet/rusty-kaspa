@@ -26,13 +26,20 @@ kaspa-consensus-core.workspace = true
 kaspa-mining-errors.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math = { workspace = true, features = ["std"] }
-kaspa-utils = { workspace = true, features = ["peer-id"] }
+kaspa-utils = { workspace = true, features = ["peer-id", "triggers"] }
 kaspa-utils-tower.workspace = true
 
 borsh.workspace = true
 ctrlc.workspace = true
 futures = { workspace = true, features = ["alloc"] }
+either = "1"
 h2.workspace = true
+hex.workspace = true
+libp2p.workspace = true
+tempfile.workspace = true
+tokio-util = { workspace = true, features = ["compat"] }
+hyper-util.workspace = true
+tower.workspace = true
 itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
@@ -51,7 +58,7 @@ uuid.workspace = true
 tonic-prost-build = { workspace = true }
 
 [dev-dependencies]
-hex.workspace = true
+libp2p-stream.workspace = true
 
 [lints]
 workspace = true

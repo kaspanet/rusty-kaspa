@@ -487,6 +487,7 @@ mod mockery {
             RpcPeerInfo {
                 id: mock(),
                 address: mock(),
+                libp2p_id: Some(rand::random()),
                 last_ping_duration: mock(),
                 is_outbound: mock(),
                 time_offset: mock(),

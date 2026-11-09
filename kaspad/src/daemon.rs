@@ -25,7 +25,7 @@ use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
-use kaspa_addressmanager::AddressManager;
+use kaspa_addressmanager::{AddressManager, DbAddressesStore};
 use kaspa_consensus::{
     consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
 };
@@ -530,6 +530,12 @@ Do you confirm? (y/n)";
         if version <= 6 {
             mcms.set_version(7).unwrap();
         }
+        if version <= 7 {
+            info!("Migrating address records to database version 8");
+            DbAddressesStore::new(meta_db.clone(), CachePolicy::Empty).migrate().expect("failed migrating address records");
+            mcms.set_version(8).unwrap();
+            info!("Database is now in version 8");
+        }
         // if we reached here, db should be upgraded fully and we should exit the loop next
         assert_eq!(mcms.version().unwrap(), LATEST_DB_VERSION);
     }
@@ -706,6 +712,7 @@ Do you confirm? (y/n)";
         mining_rule_engine.clone(),
     ));
     let p2p_service = Arc::new(P2pService::new(
+        core.clone(),
         flow_context.clone(),
         connect_peers,
         add_peers,
@@ -715,6 +722,7 @@ Do you confirm? (y/n)";
         dns_seeders,
         config.default_p2p_port(),
         p2p_tower_counters.clone(),
+        app_dir.join(network.to_prefixed()).join("libp2p.secret"),
     ));
 
     let rpc_core_service = Arc::new(RpcCoreService::new(
