@@ -2,7 +2,7 @@
 set -e
 
 # tests
-cargo nextest run --release --workspace -p kaspa-testing-integration --lib
+cargo nextest run --release --workspace -p aero-testing-integration --lib
 if [ $? -ne 0 ]; then
     echo "Failed to run integration tests"
     exit 1

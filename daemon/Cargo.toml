@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-daemon"
-description = "Utilities for running Kaspa node and tools as a child processes"
+name = "aero-daemon"
+description = "Utilities for running Aero node and tools as a child processes"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -15,9 +15,9 @@ borsh.workspace = true
 cfg-if.workspace = true
 downcast-rs.workspace = true
 futures.workspace = true
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-wallet-core.workspace = true
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-wallet-core.workspace = true
 nw-sys.workspace = true
 serde.workspace = true
 thiserror.workspace = true

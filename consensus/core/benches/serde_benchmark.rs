@@ -1,8 +1,8 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use kaspa_consensus_core::subnets::SUBNETWORK_ID_COINBASE;
-use kaspa_consensus_core::tx::{
+use aero_consensus_core::subnets::SUBNETWORK_ID_COINBASE;
+use aero_consensus_core::tx::{
     ComputeCommit, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput,
 };
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use smallvec::smallvec;
 use std::time::{Duration, Instant};
 

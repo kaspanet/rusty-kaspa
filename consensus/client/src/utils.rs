@@ -6,14 +6,14 @@
 
 use crate::imports::*;
 use crate::result::Result;
-use kaspa_addresses::*;
-use kaspa_consensus_core::{
+use aero_addresses::*;
+use aero_consensus_core::{
     network::{NetworkType, NetworkTypeT},
     tx::ScriptPublicKeyT,
 };
-use kaspa_txscript::{script_class::ScriptClass, standard};
-use kaspa_utils::hex::ToHex;
-use kaspa_wasm_core::types::{BinaryT, HexString};
+use aero_txscript::{script_class::ScriptClass, standard};
+use aero_utils::hex::ToHex;
+use aero_wasm_core::types::{BinaryT, HexString};
 
 /// Creates a new script to pay a transaction output to the specified address.
 /// @category Wallet SDK

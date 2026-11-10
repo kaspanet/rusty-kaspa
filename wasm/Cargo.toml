@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-wasm"
-description = "KASPA WASM bindings"
+name = "aero-wasm"
+description = "AERO WASM bindings"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -17,22 +17,22 @@ crate-type = ["cdylib"]
 [dependencies]
 cfg-if.workspace = true
 js-sys.workspace = true
-kaspa-addresses.workspace = true
-kaspa-bip32.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-wasm.workspace = true
-kaspa-core.workspace = true
-kaspa-math.workspace = true
-kaspa-pow.workspace = true
-kaspa-txscript.workspace = true
-kaspa-txscript-zk-sdk.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-utils.workspace = true
-kaspa-wasm-core.workspace = true
-kaspa-wallet-core.workspace = true
-kaspa-wallet-keys.workspace = true
-kaspa-wrpc-client.workspace = true
-kaspa-wrpc-wasm.workspace = true
+aero-addresses.workspace = true
+aero-bip32.workspace = true
+aero-consensus-core.workspace = true
+aero-consensus-wasm.workspace = true
+aero-core.workspace = true
+aero-math.workspace = true
+aero-pow.workspace = true
+aero-txscript.workspace = true
+aero-txscript-zk-sdk.workspace = true
+aero-rpc-core.workspace = true
+aero-utils.workspace = true
+aero-wasm-core.workspace = true
+aero-wallet-core.workspace = true
+aero-wallet-keys.workspace = true
+aero-wrpc-client.workspace = true
+aero-wrpc-wasm.workspace = true
 num.workspace = true
 wasm-bindgen.workspace = true
 workflow-log.workspace = true
@@ -41,22 +41,22 @@ workflow-wasm.workspace = true
 
 [features]
 wasm32-sdk = [
-    "kaspa-wallet-core/wasm32-sdk",
-    "kaspa-pow/wasm32-sdk",
-    "kaspa-txscript/wasm32-sdk",
-    "kaspa-txscript-zk-sdk/wasm32-sdk",
+    "aero-wallet-core/wasm32-sdk",
+    "aero-pow/wasm32-sdk",
+    "aero-txscript/wasm32-sdk",
+    "aero-txscript-zk-sdk/wasm32-sdk",
 ]
 wasm32-core = [
-    "kaspa-wallet-core/wasm32-core",
-    "kaspa-pow/wasm32-sdk",
-    "kaspa-txscript/wasm32-sdk",
-    "kaspa-txscript-zk-sdk/wasm32-core",
+    "aero-wallet-core/wasm32-core",
+    "aero-pow/wasm32-sdk",
+    "aero-txscript/wasm32-sdk",
+    "aero-txscript-zk-sdk/wasm32-core",
 ]
 wasm32-rpc = [
-    "kaspa-consensus-core/wasm32-sdk",
-    "kaspa-consensus-wasm/wasm32-sdk",
-    "kaspa-wrpc-client/wasm32-sdk",
-    "kaspa-wrpc-wasm/wasm32-sdk",
+    "aero-consensus-core/wasm32-sdk",
+    "aero-consensus-wasm/wasm32-sdk",
+    "aero-wrpc-client/wasm32-sdk",
+    "aero-wrpc-wasm/wasm32-sdk",
 ]
 wasm32-keygen = []
 default = []
@@ -66,8 +66,8 @@ targets = ["wasm32-unknown-unknown"]
 
 [package.metadata.emanate.wasm]
 targets = [
-    { target = "nodejs", out-dir = "nodejs/kaspa" },
-    { target = "web", out-dir = "web/kaspa" },
+    { target = "nodejs", out-dir = "nodejs/aero" },
+    { target = "web", out-dir = "web/aero" },
 ]
 folder = "setup"
 

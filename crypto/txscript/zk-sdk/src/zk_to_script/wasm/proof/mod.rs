@@ -2,7 +2,7 @@ mod groth16;
 mod succinct;
 
 use crate::zk_to_script::FinalizedR0Script as NativeFinalizedR0Script;
-use kaspa_wasm_core::types::HexString;
+use aero_wasm_core::types::HexString;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// Result of finalizing an ZkScriptBuilder.

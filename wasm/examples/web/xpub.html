@@ -1,13 +1,13 @@
 <html>
     <head>
         <script type="module">
-            import * as kaspa from './kaspa/kaspa_wasm.js';
-            let {PublicKeyGenerator, createAddress, NetworkType, Mnemonic, XPrv} = kaspa;
+            import * as aero from './aero/aero_wasm.js';
+            let {PublicKeyGenerator, createAddress, NetworkType, Mnemonic, XPrv} = aero;
             window.XPublicKey = PublicKeyGenerator;
             (async () => {
-                const wasm = await kaspa.default('./kaspa/kaspa_wasm_bg.wasm');
-                console.log("kaspa", kaspa);
-                console.log("version", kaspa.version());
+                const wasm = await aero.default('./aero/aero_wasm_bg.wasm');
+                console.log("aero", aero);
+                console.log("version", aero.version());
                 tests();
             })();
 

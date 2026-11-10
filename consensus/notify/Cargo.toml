@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-consensus-notify"
-description = "Kaspa consensus notifier"
+name = "aero-consensus-notify"
+description = "Aero consensus notifier"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -14,11 +14,11 @@ async-channel.workspace = true
 cfg-if.workspace = true
 derive_more.workspace = true
 futures.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-notify.workspace = true
-kaspa-utils.workspace = true
+aero-consensus-core.workspace = true
+aero-core.workspace = true
+aero-hashes.workspace = true
+aero-notify.workspace = true
+aero-utils.workspace = true
 log.workspace = true
 paste.workspace = true
 thiserror.workspace = true

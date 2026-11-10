@@ -27,7 +27,7 @@ pub struct InstanceConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct GlobalConfig {
-    pub kaspad_address: String,
+    pub aerod_address: String,
     #[serde(deserialize_with = "deserialize_duration_ms", serialize_with = "serialize_duration_ms")]
     pub block_wait_time: Duration,
     pub print_stats: bool,
@@ -187,7 +187,7 @@ struct BridgeConfigRaw {
 impl Default for GlobalConfig {
     fn default() -> Self {
         Self {
-            kaspad_address: "localhost:16110".to_string(),
+            aerod_address: "localhost:16110".to_string(),
             block_wait_time: Duration::from_millis(1000),
             print_stats: true,
             log_to_file: true,

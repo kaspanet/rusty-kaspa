@@ -1,8 +1,8 @@
-use crate::pb::kaspad_message::Payload as KaspadMessagePayload;
+use crate::pb::aerod_message::Payload as AerodMessagePayload;
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
-pub enum KaspadMessagePayloadType {
+pub enum AerodMessagePayloadType {
     Addresses = 0,
     Block,
     Transaction,
@@ -54,64 +54,62 @@ pub enum KaspadMessagePayloadType {
     RequestNextPruningPointSmtChunk,
 }
 
-impl From<&KaspadMessagePayload> for KaspadMessagePayloadType {
-    fn from(payload: &KaspadMessagePayload) -> Self {
+impl From<&AerodMessagePayload> for AerodMessagePayloadType {
+    fn from(payload: &AerodMessagePayload) -> Self {
         match payload {
-            KaspadMessagePayload::Addresses(_) => KaspadMessagePayloadType::Addresses,
-            KaspadMessagePayload::Block(_) => KaspadMessagePayloadType::Block,
-            KaspadMessagePayload::Transaction(_) => KaspadMessagePayloadType::Transaction,
-            KaspadMessagePayload::BlockLocator(_) => KaspadMessagePayloadType::BlockLocator,
-            KaspadMessagePayload::RequestAddresses(_) => KaspadMessagePayloadType::RequestAddresses,
-            KaspadMessagePayload::RequestRelayBlocks(_) => KaspadMessagePayloadType::RequestRelayBlocks,
-            KaspadMessagePayload::RequestTransactions(_) => KaspadMessagePayloadType::RequestTransactions,
-            KaspadMessagePayload::IbdBlock(_) => KaspadMessagePayloadType::IbdBlock,
-            KaspadMessagePayload::InvRelayBlock(_) => KaspadMessagePayloadType::InvRelayBlock,
-            KaspadMessagePayload::InvTransactions(_) => KaspadMessagePayloadType::InvTransactions,
-            KaspadMessagePayload::Ping(_) => KaspadMessagePayloadType::Ping,
-            KaspadMessagePayload::Pong(_) => KaspadMessagePayloadType::Pong,
-            KaspadMessagePayload::Verack(_) => KaspadMessagePayloadType::Verack,
-            KaspadMessagePayload::Version(_) => KaspadMessagePayloadType::Version,
-            KaspadMessagePayload::TransactionNotFound(_) => KaspadMessagePayloadType::TransactionNotFound,
-            KaspadMessagePayload::Reject(_) => KaspadMessagePayloadType::Reject,
-            KaspadMessagePayload::PruningPointUtxoSetChunk(_) => KaspadMessagePayloadType::PruningPointUtxoSetChunk,
-            KaspadMessagePayload::RequestIbdBlocks(_) => KaspadMessagePayloadType::RequestIbdBlocks,
-            KaspadMessagePayload::UnexpectedPruningPoint(_) => KaspadMessagePayloadType::UnexpectedPruningPoint,
-            KaspadMessagePayload::IbdBlockLocator(_) => KaspadMessagePayloadType::IbdBlockLocator,
-            KaspadMessagePayload::IbdBlockLocatorHighestHash(_) => KaspadMessagePayloadType::IbdBlockLocatorHighestHash,
-            KaspadMessagePayload::RequestNextPruningPointUtxoSetChunk(_) => {
-                KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk
+            AerodMessagePayload::Addresses(_) => AerodMessagePayloadType::Addresses,
+            AerodMessagePayload::Block(_) => AerodMessagePayloadType::Block,
+            AerodMessagePayload::Transaction(_) => AerodMessagePayloadType::Transaction,
+            AerodMessagePayload::BlockLocator(_) => AerodMessagePayloadType::BlockLocator,
+            AerodMessagePayload::RequestAddresses(_) => AerodMessagePayloadType::RequestAddresses,
+            AerodMessagePayload::RequestRelayBlocks(_) => AerodMessagePayloadType::RequestRelayBlocks,
+            AerodMessagePayload::RequestTransactions(_) => AerodMessagePayloadType::RequestTransactions,
+            AerodMessagePayload::IbdBlock(_) => AerodMessagePayloadType::IbdBlock,
+            AerodMessagePayload::InvRelayBlock(_) => AerodMessagePayloadType::InvRelayBlock,
+            AerodMessagePayload::InvTransactions(_) => AerodMessagePayloadType::InvTransactions,
+            AerodMessagePayload::Ping(_) => AerodMessagePayloadType::Ping,
+            AerodMessagePayload::Pong(_) => AerodMessagePayloadType::Pong,
+            AerodMessagePayload::Verack(_) => AerodMessagePayloadType::Verack,
+            AerodMessagePayload::Version(_) => AerodMessagePayloadType::Version,
+            AerodMessagePayload::TransactionNotFound(_) => AerodMessagePayloadType::TransactionNotFound,
+            AerodMessagePayload::Reject(_) => AerodMessagePayloadType::Reject,
+            AerodMessagePayload::PruningPointUtxoSetChunk(_) => AerodMessagePayloadType::PruningPointUtxoSetChunk,
+            AerodMessagePayload::RequestIbdBlocks(_) => AerodMessagePayloadType::RequestIbdBlocks,
+            AerodMessagePayload::UnexpectedPruningPoint(_) => AerodMessagePayloadType::UnexpectedPruningPoint,
+            AerodMessagePayload::IbdBlockLocator(_) => AerodMessagePayloadType::IbdBlockLocator,
+            AerodMessagePayload::IbdBlockLocatorHighestHash(_) => AerodMessagePayloadType::IbdBlockLocatorHighestHash,
+            AerodMessagePayload::RequestNextPruningPointUtxoSetChunk(_) => {
+                AerodMessagePayloadType::RequestNextPruningPointUtxoSetChunk
             }
-            KaspadMessagePayload::DonePruningPointUtxoSetChunks(_) => KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
-            KaspadMessagePayload::IbdBlockLocatorHighestHashNotFound(_) => {
-                KaspadMessagePayloadType::IbdBlockLocatorHighestHashNotFound
+            AerodMessagePayload::DonePruningPointUtxoSetChunks(_) => AerodMessagePayloadType::DonePruningPointUtxoSetChunks,
+            AerodMessagePayload::IbdBlockLocatorHighestHashNotFound(_) => AerodMessagePayloadType::IbdBlockLocatorHighestHashNotFound,
+            AerodMessagePayload::BlockWithTrustedData(_) => AerodMessagePayloadType::BlockWithTrustedData,
+            AerodMessagePayload::DoneBlocksWithTrustedData(_) => AerodMessagePayloadType::DoneBlocksWithTrustedData,
+            AerodMessagePayload::RequestPruningPointAndItsAnticone(_) => AerodMessagePayloadType::RequestPruningPointAndItsAnticone,
+            AerodMessagePayload::BlockHeaders(_) => AerodMessagePayloadType::BlockHeaders,
+            AerodMessagePayload::RequestNextHeaders(_) => AerodMessagePayloadType::RequestNextHeaders,
+            AerodMessagePayload::DoneHeaders(_) => AerodMessagePayloadType::DoneHeaders,
+            AerodMessagePayload::RequestPruningPointUtxoSet(_) => AerodMessagePayloadType::RequestPruningPointUtxoSet,
+            AerodMessagePayload::RequestHeaders(_) => AerodMessagePayloadType::RequestHeaders,
+            AerodMessagePayload::RequestBlockLocator(_) => AerodMessagePayloadType::RequestBlockLocator,
+            AerodMessagePayload::PruningPoints(_) => AerodMessagePayloadType::PruningPoints,
+            AerodMessagePayload::RequestPruningPointProof(_) => AerodMessagePayloadType::RequestPruningPointProof,
+            AerodMessagePayload::PruningPointProof(_) => AerodMessagePayloadType::PruningPointProof,
+            AerodMessagePayload::Ready(_) => AerodMessagePayloadType::Ready,
+            AerodMessagePayload::BlockWithTrustedDataV4(_) => AerodMessagePayloadType::BlockWithTrustedDataV4,
+            AerodMessagePayload::TrustedData(_) => AerodMessagePayloadType::TrustedData,
+            AerodMessagePayload::RequestIbdChainBlockLocator(_) => AerodMessagePayloadType::RequestIbdChainBlockLocator,
+            AerodMessagePayload::IbdChainBlockLocator(_) => AerodMessagePayloadType::IbdChainBlockLocator,
+            AerodMessagePayload::RequestAntipast(_) => AerodMessagePayloadType::RequestAntipast,
+            AerodMessagePayload::RequestNextPruningPointAndItsAnticoneBlocks(_) => {
+                AerodMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks
             }
-            KaspadMessagePayload::BlockWithTrustedData(_) => KaspadMessagePayloadType::BlockWithTrustedData,
-            KaspadMessagePayload::DoneBlocksWithTrustedData(_) => KaspadMessagePayloadType::DoneBlocksWithTrustedData,
-            KaspadMessagePayload::RequestPruningPointAndItsAnticone(_) => KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
-            KaspadMessagePayload::BlockHeaders(_) => KaspadMessagePayloadType::BlockHeaders,
-            KaspadMessagePayload::RequestNextHeaders(_) => KaspadMessagePayloadType::RequestNextHeaders,
-            KaspadMessagePayload::DoneHeaders(_) => KaspadMessagePayloadType::DoneHeaders,
-            KaspadMessagePayload::RequestPruningPointUtxoSet(_) => KaspadMessagePayloadType::RequestPruningPointUtxoSet,
-            KaspadMessagePayload::RequestHeaders(_) => KaspadMessagePayloadType::RequestHeaders,
-            KaspadMessagePayload::RequestBlockLocator(_) => KaspadMessagePayloadType::RequestBlockLocator,
-            KaspadMessagePayload::PruningPoints(_) => KaspadMessagePayloadType::PruningPoints,
-            KaspadMessagePayload::RequestPruningPointProof(_) => KaspadMessagePayloadType::RequestPruningPointProof,
-            KaspadMessagePayload::PruningPointProof(_) => KaspadMessagePayloadType::PruningPointProof,
-            KaspadMessagePayload::Ready(_) => KaspadMessagePayloadType::Ready,
-            KaspadMessagePayload::BlockWithTrustedDataV4(_) => KaspadMessagePayloadType::BlockWithTrustedDataV4,
-            KaspadMessagePayload::TrustedData(_) => KaspadMessagePayloadType::TrustedData,
-            KaspadMessagePayload::RequestIbdChainBlockLocator(_) => KaspadMessagePayloadType::RequestIbdChainBlockLocator,
-            KaspadMessagePayload::IbdChainBlockLocator(_) => KaspadMessagePayloadType::IbdChainBlockLocator,
-            KaspadMessagePayload::RequestAntipast(_) => KaspadMessagePayloadType::RequestAntipast,
-            KaspadMessagePayload::RequestNextPruningPointAndItsAnticoneBlocks(_) => {
-                KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks
-            }
-            KaspadMessagePayload::BlockBody(_) => KaspadMessagePayloadType::BlockBody,
-            KaspadMessagePayload::RequestBlockBodies(_) => KaspadMessagePayloadType::RequestBlockBodies,
-            KaspadMessagePayload::RequestPruningPointSmtState(_) => KaspadMessagePayloadType::RequestPruningPointSmtState,
-            KaspadMessagePayload::SmtMetadata(_) => KaspadMessagePayloadType::SmtMetadata,
-            KaspadMessagePayload::SmtLaneChunk(_) => KaspadMessagePayloadType::SmtLaneChunk,
-            KaspadMessagePayload::RequestNextPruningPointSmtChunk(_) => KaspadMessagePayloadType::RequestNextPruningPointSmtChunk,
+            AerodMessagePayload::BlockBody(_) => AerodMessagePayloadType::BlockBody,
+            AerodMessagePayload::RequestBlockBodies(_) => AerodMessagePayloadType::RequestBlockBodies,
+            AerodMessagePayload::RequestPruningPointSmtState(_) => AerodMessagePayloadType::RequestPruningPointSmtState,
+            AerodMessagePayload::SmtMetadata(_) => AerodMessagePayloadType::SmtMetadata,
+            AerodMessagePayload::SmtLaneChunk(_) => AerodMessagePayloadType::SmtLaneChunk,
+            AerodMessagePayload::RequestNextPruningPointSmtChunk(_) => AerodMessagePayloadType::RequestNextPruningPointSmtChunk,
         }
     }
 }

@@ -9,8 +9,8 @@ use crate::{
     runtime_resource_meter::RuntimeResourceMeter,
     zk_precompiles::{error::ZkIntegrityError, groth16::Groth16Precompile, risc0::R0SuccinctPrecompile, tags::ZkTag},
 };
-use kaspa_consensus_core::mass::ScriptUnits;
-use kaspa_txscript_errors::TxScriptError;
+use aero_consensus_core::mass::ScriptUnits;
+use aero_txscript_errors::TxScriptError;
 
 trait ZkPrecompile {
     type Error: Into<ZkIntegrityError> + std::fmt::Display;

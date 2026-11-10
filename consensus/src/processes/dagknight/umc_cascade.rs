@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use kaspa_consensus_core::{BlueWorkType, KType};
-use kaspa_core::debug;
-use kaspa_database::prelude::StoreError;
-use kaspa_hashes::Hash;
-use kaspa_math::Uint192;
+use aero_consensus_core::{BlueWorkType, KType};
+use aero_core::debug;
+use aero_database::prelude::StoreError;
+use aero_hashes::Hash;
+use aero_math::Uint192;
 use num_traits::Zero;
 
 use crate::model::services::reachability::{MTReachabilityService, ReachabilityService};
@@ -512,7 +512,7 @@ mod checkpoint_tests {
     use crate::model::stores::reachability::{MemoryReachabilityStore, ReachabilityStore};
     use crate::processes::dagknight::umc_cascade_persistence::{MemoryUmcCascadeStore, UmcCascadeKey, UmcCascadeStoreReader};
     use crate::processes::reachability::interval::Interval;
-    use kaspa_consensus_core::blockhash::ORIGIN;
+    use aero_consensus_core::blockhash::ORIGIN;
 
     fn make_reachability()
     -> (MTReachabilityService<MemoryReachabilityStore>, std::sync::Arc<parking_lot::RwLock<MemoryReachabilityStore>>) {

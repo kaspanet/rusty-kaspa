@@ -1,14 +1,14 @@
 use crate::imports::*;
 use crate::result::Result;
+use aero_consensus_client::{Transaction, sign_with_multiple_v3};
+use aero_consensus_core::hashing::wasm::SighashType;
+use aero_consensus_core::sign::sign_input;
+use aero_consensus_core::tx::PopulatedTransaction;
+use aero_consensus_core::{hashing::sighash_type::SIG_HASH_ALL, sign::verify};
+use aero_hashes::Hash;
+use aero_wallet_keys::privatekey::PrivateKey;
+use aero_wasm_core::types::HexString;
 use js_sys::Array;
-use kaspa_consensus_client::{Transaction, sign_with_multiple_v3};
-use kaspa_consensus_core::hashing::wasm::SighashType;
-use kaspa_consensus_core::sign::sign_input;
-use kaspa_consensus_core::tx::PopulatedTransaction;
-use kaspa_consensus_core::{hashing::sighash_type::SIG_HASH_ALL, sign::verify};
-use kaspa_hashes::Hash;
-use kaspa_wallet_keys::privatekey::PrivateKey;
-use kaspa_wasm_core::types::HexString;
 use serde_wasm_bindgen::from_value;
 
 #[wasm_bindgen]

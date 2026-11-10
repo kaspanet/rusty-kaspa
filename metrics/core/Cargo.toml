@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-metrics-core"
-description = "Tools for collecting and reporting Kaspa p2p node metrics"
+name = "aero-metrics-core"
+description = "Tools for collecting and reporting Aero p2p node metrics"
 rust-version.workspace = true
 version.workspace = true
 authors.workspace = true
@@ -13,8 +13,8 @@ repository.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
 futures.workspace = true
-kaspa-core.workspace = true
-kaspa-rpc-core.workspace = true
+aero-core.workspace = true
+aero-rpc-core.workspace = true
 separator.workspace = true
 serde.workspace = true
 thiserror.workspace = true

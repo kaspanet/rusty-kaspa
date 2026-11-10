@@ -7,8 +7,11 @@ extern crate core;
 extern crate std;
 
 mod hashers;
-mod pow_hashers;
 
+use aero_utils::{
+    hex::{FromHex, ToHex},
+    serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
+};
 use alloc::string::String;
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::{
@@ -16,10 +19,6 @@ use core::{
     fmt::{Debug, Display, Formatter},
     hash::{Hash as CoreHash, Hasher as CoreHasher},
     str::{self, FromStr},
-};
-use kaspa_utils::{
-    hex::{FromHex, ToHex},
-    serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
 };
 use wasm_bindgen::prelude::*;
 
@@ -201,7 +200,7 @@ impl FromHex for Hash {
 }
 
 #[cfg(feature = "mem_size")]
-impl kaspa_utils::mem_size::MemSizeEstimator for Hash {}
+impl aero_utils::mem_size::MemSizeEstimator for Hash {}
 
 #[wasm_bindgen]
 impl Hash {

@@ -1,4 +1,4 @@
-// Basic example of a Kaspa wRPC client that connects to a node
+// Basic example of a Aero wRPC client that connects to a node
 // and subscribes to notifications. This example demonstrates
 // how to handle RPC connection events, perform subscriptions,
 // handle subscription notifications etc.
@@ -13,18 +13,18 @@ use workflow_core::channel::{Channel, DuplexChannel, oneshot};
 use workflow_core::task::spawn;
 use workflow_log::prelude::*;
 
-// Kaspa RPC primitives
-use kaspa_wrpc_client::prelude::*;
+// Aero RPC primitives
+use aero_wrpc_client::prelude::*;
 // reuse wRPC Result type for convenience
-use kaspa_wrpc_client::result::Result;
+use aero_wrpc_client::result::Result;
 
 struct Inner {
     // task control duplex channel - a pair of channels where sender
     // is used to signal an async task termination request and receiver
     // is used to signal task termination completion.
     task_ctl: DuplexChannel<()>,
-    // Kaspa wRPC client instance
-    client: Arc<KaspaRpcClient>,
+    // Aero wRPC client instance
+    client: Arc<AeroRpcClient>,
     // our own view on the connection state
     is_connected: AtomicBool,
     // channel supplied to the notification subsystem
@@ -50,8 +50,8 @@ impl Listener {
         // obtain the public node rpc endpoint
         let (resolver, url) = if let Some(url) = url { (None, Some(url)) } else { (Some(Resolver::default()), None) };
 
-        // Create a basic Kaspa RPC client instance using Borsh encoding.
-        let client = Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, url.as_deref(), resolver, Some(network_id), None)?);
+        // Create a basic Aero RPC client instance using Borsh encoding.
+        let client = Arc::new(AeroRpcClient::new_with_args(WrpcEncoding::Borsh, url.as_deref(), resolver, Some(network_id), None)?);
 
         let inner = Inner {
             task_ctl: DuplexChannel::oneshot(),
@@ -103,7 +103,7 @@ impl Listener {
         Ok(())
     }
 
-    pub fn client(&self) -> &Arc<KaspaRpcClient> {
+    pub fn client(&self) -> &Arc<AeroRpcClient> {
         &self.inner.client
     }
 
@@ -186,7 +186,7 @@ impl Listener {
         // channels where sender acts as a trigger signaling termination
         // and the receiver is used to signal termination completion.
         // (this is a common pattern used for channel lifetime management
-        // in the rusty kaspa framework)
+        // in the rusty aero framework)
         let task_ctl_receiver = self.inner.task_ctl.request.receiver.clone();
         let task_ctl_sender = self.inner.task_ctl.response.sender.clone();
 

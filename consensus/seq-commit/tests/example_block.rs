@@ -13,13 +13,13 @@
 //! - Miner payload: one leaf per merged block in mergeset order.
 //! - Active lanes are committed via a 256-bit Sparse Merkle Tree.
 
-use kaspa_consensus_core::BlueWorkType;
-use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::Transaction;
-use kaspa_hashes::{Hash, SeqCommitActiveNode};
-use kaspa_seq_commit::hashing::*;
-use kaspa_seq_commit::types::*;
-use kaspa_smt::tree::SparseMerkleTree;
+use aero_consensus_core::BlueWorkType;
+use aero_consensus_core::subnets::SubnetworkId;
+use aero_consensus_core::tx::Transaction;
+use aero_hashes::{Hash, SeqCommitActiveNode};
+use aero_seq_commit::hashing::*;
+use aero_seq_commit::types::*;
+use aero_smt::tree::SparseMerkleTree;
 
 /// A merged block with its metadata and accepted transactions.
 struct MergedBlock {
@@ -154,8 +154,8 @@ fn example_seq_commit_for_block() {
     let payload_root = miner_payload_root(payload_leaves.into_iter());
 
     // --- State root and final commitment. ---
-    let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&ctx, &payload_root);
-    let activity_root = kaspa_seq_commit::hashing::activity_root_hash(&kaspa_hashes::ZERO_HASH, &lanes_root);
+    let pd = aero_seq_commit::hashing::payload_and_context_digest(&ctx, &payload_root);
+    let activity_root = aero_seq_commit::hashing::activity_root_hash(&aero_hashes::ZERO_HASH, &lanes_root);
     let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
     let commitment = seq_commit(&SeqCommitInput { parent_seq_commit: &parent_seq_commit, state_root: &state_root });
 

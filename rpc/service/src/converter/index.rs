@@ -1,9 +1,9 @@
+use aero_consensus_core::config::Config;
+use aero_index_core::indexed_utxos::UtxoSetByScriptPublicKey;
+use aero_index_core::notification::{self as index_notify, Notification as IndexNotification};
+use aero_notify::converter::Converter;
+use aero_rpc_core::{Notification, RpcUtxosByAddressesEntry, UtxosChangedNotification, utxo_set_into_rpc};
 use async_trait::async_trait;
-use kaspa_consensus_core::config::Config;
-use kaspa_index_core::indexed_utxos::UtxoSetByScriptPublicKey;
-use kaspa_index_core::notification::{self as index_notify, Notification as IndexNotification};
-use kaspa_notify::converter::Converter;
-use kaspa_rpc_core::{Notification, RpcUtxosByAddressesEntry, UtxosChangedNotification, utxo_set_into_rpc};
 use std::sync::Arc;
 
 /// Conversion of consensus_core to rpc_core structures

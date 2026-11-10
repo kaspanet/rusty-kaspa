@@ -1,5 +1,4 @@
-use igd_next::{AddPortError, aio::tokio::Tokio};
-use kaspa_core::{
+use aero_core::{
     debug, error, info,
     task::{
         service::{AsyncService, AsyncServiceFuture},
@@ -7,6 +6,7 @@ use kaspa_core::{
     },
     trace, warn,
 };
+use igd_next::{AddPortError, aio::tokio::Tokio};
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use crate::UPNP_REGISTRATION_NAME;

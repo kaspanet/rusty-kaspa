@@ -6,10 +6,10 @@ use std::sync::Mutex as StdMutex;
 use tracing_subscriber::fmt::format::{FormatEvent, FormatFields, Writer};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt};
 
-use kaspa_stratum_bridge::log_colors::LogColors;
+use aero_stratum_bridge::log_colors::LogColors;
 
 use crate::app_dirs;
-use kaspa_stratum_bridge::BridgeConfig;
+use aero_stratum_bridge::BridgeConfig;
 
 // Global registry mapping instance_id strings to instance numbers
 // This persists across async boundaries and thread switches
@@ -83,7 +83,7 @@ where
             return Ok(());
         }
 
-        // Special-case forwarded node logs (from `tracing_log::LogTracer`) to match kaspad style:
+        // Special-case forwarded node logs (from `tracing_log::LogTracer`) to match aerod style:
         // `[INFO] Accepted ...` (white brackets), and omit the `log:` target prefix.
         if target == "log" && !is_multiline {
             match level {
@@ -287,7 +287,7 @@ where
             } else if message.contains("Starting RKStratum") {
                 write!(writer, "\x1b[92m{}\x1b[0m", &message)?; // Bright Green for startup
             } else if message.starts_with("\t") && message.contains(":") {
-                // Configuration lines - color the label part (e.g., "\tkaspad:          value")
+                // Configuration lines - color the label part (e.g., "\taerod:          value")
                 if let Some(colon_pos) = message.find(':') {
                     // Find the end of the label (colon + whitespace)
                     let label_end = message[colon_pos + 1..].chars().take_while(|c| c.is_whitespace()).count();
@@ -375,9 +375,9 @@ pub(crate) fn init_tracing(
     };
 
     // IMPORTANT: Do not initialize LogTracer in in-process mode.
-    // The embedded kaspad runtime initializes the global `log` logger via
-    // `kaspa_core::log::init_logger(...).unwrap()`. If LogTracer grabs the
-    // global logger first, kaspad panics with SetLoggerError.
+    // The embedded aerod runtime initializes the global `log` logger via
+    // `aero_core::log::init_logger(...).unwrap()`. If LogTracer grabs the
+    // global logger first, aerod panics with SetLoggerError.
     if !inprocess_mode && let Err(e) = tracing_log::LogTracer::init() {
         eprintln!("Failed to initialize log tracer: {}", e);
     }

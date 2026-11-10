@@ -1,4 +1,4 @@
-use kaspa_txscript_errors::TxScriptError;
+use aero_txscript_errors::TxScriptError;
 use risc0_zkp::verify::VerificationError;
 use thiserror::Error;
 

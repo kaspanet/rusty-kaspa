@@ -1,6 +1,4 @@
 use prometheus::proto::MetricFamily;
-#[cfg(feature = "rkstratum_cpu_miner")]
-use prometheus::{Counter, register_counter};
 use prometheus::{CounterVec, Gauge, GaugeVec, register_counter_vec, register_gauge, register_gauge_vec};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -92,24 +90,6 @@ static WORKER_LAST_ACTIVITY: OnceLock<parking_lot::Mutex<HashMap<String, Instant
 /// Bridge start time - tracks when the bridge started (for uptime calculation)
 static BRIDGE_START_TIME: OnceLock<Instant> = OnceLock::new();
 
-// ---------------------------
-// Internal CPU miner metrics (feature-gated)
-// ---------------------------
-#[cfg(feature = "rkstratum_cpu_miner")]
-static INTERNAL_CPU_HASHES_TRIED_TOTAL: OnceLock<Counter> = OnceLock::new();
-#[cfg(feature = "rkstratum_cpu_miner")]
-static INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL: OnceLock<Counter> = OnceLock::new();
-#[cfg(feature = "rkstratum_cpu_miner")]
-static INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL: OnceLock<Counter> = OnceLock::new();
-#[cfg(feature = "rkstratum_cpu_miner")]
-static INTERNAL_CPU_HASHRATE_GHS: OnceLock<Gauge> = OnceLock::new();
-#[cfg(feature = "rkstratum_cpu_miner")]
-static INTERNAL_CPU_MINING_ADDRESS: OnceLock<String> = OnceLock::new();
-#[cfg(feature = "rkstratum_cpu_miner")]
-static INTERNAL_CPU_RECENT_BLOCKS: OnceLock<parking_lot::Mutex<VecDeque<InternalCpuBlock>>> = OnceLock::new();
-#[cfg(feature = "rkstratum_cpu_miner")]
-const INTERNAL_CPU_RECENT_BLOCKS_LIMIT: usize = 256;
-
 /// Initialize Prometheus metrics
 pub fn init_metrics() {
     // Record bridge start time for uptime calculation
@@ -132,7 +112,7 @@ pub fn init_metrics() {
     BLOCK_ACCEPTED_COUNTER.get_or_init(|| {
         register_counter_vec!(
             "ks_blocks_accepted_by_node",
-            "Number of blocks accepted by the connected Kaspa node (may later be red)",
+            "Number of blocks accepted by the connected Aero node (may later be red)",
             WORKER_LABELS
         )
         .unwrap()
@@ -188,109 +168,6 @@ pub fn init_metrics() {
     WORKER_CURRENT_DIFFICULTY.get_or_init(|| {
         register_gauge_vec!("ks_worker_current_difficulty", "Current mining difficulty assigned to worker", WORKER_LABELS).unwrap()
     });
-
-    // Internal CPU miner metrics (no labels; there is only one internal miner per process)
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    {
-        INTERNAL_CPU_HASHES_TRIED_TOTAL.get_or_init(|| {
-            register_counter!("ks_internal_cpu_hashes_tried_total", "Total hashes tried by the internal CPU miner since process start")
-                .unwrap()
-        });
-        INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL.get_or_init(|| {
-            register_counter!(
-                "ks_internal_cpu_blocks_submitted_total",
-                "Total blocks submitted by the internal CPU miner since process start"
-            )
-            .unwrap()
-        });
-        INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL.get_or_init(|| {
-            register_counter!(
-                "ks_internal_cpu_blocks_accepted_total",
-                "Total blocks accepted by the connected Kaspa node from the internal CPU miner since process start"
-            )
-            .unwrap()
-        });
-        INTERNAL_CPU_HASHRATE_GHS
-            .get_or_init(|| register_gauge!("ks_internal_cpu_hashrate_ghs", "Internal CPU miner hashrate (GH/s)").unwrap());
-    }
-}
-
-/// Update internal CPU miner metrics from a snapshot.
-/// Values should be monotonically increasing counts; this function converts them to Prometheus counters.
-#[cfg(feature = "rkstratum_cpu_miner")]
-pub fn record_internal_cpu_miner_snapshot(hashes_tried: u64, blocks_submitted: u64, blocks_accepted: u64, hashrate_ghs: f64) {
-    // Ensure metrics are registered even if the prom server hasn't started yet.
-    init_metrics();
-
-    if let Some(c) = INTERNAL_CPU_HASHES_TRIED_TOTAL.get() {
-        let current = c.get() as u64;
-        if hashes_tried > current {
-            c.inc_by((hashes_tried - current) as f64);
-        }
-    }
-    if let Some(c) = INTERNAL_CPU_BLOCKS_SUBMITTED_TOTAL.get() {
-        let current = c.get() as u64;
-        if blocks_submitted > current {
-            c.inc_by((blocks_submitted - current) as f64);
-        }
-    }
-    if let Some(c) = INTERNAL_CPU_BLOCKS_ACCEPTED_TOTAL.get() {
-        let current = c.get() as u64;
-        if blocks_accepted > current {
-            c.inc_by((blocks_accepted - current) as f64);
-        }
-    }
-    if let Some(g) = INTERNAL_CPU_HASHRATE_GHS.get() {
-        let v = if hashrate_ghs.is_finite() && hashrate_ghs >= 0.0 { hashrate_ghs } else { 0.0 };
-        g.set(v);
-    }
-}
-
-/// Store the internal CPU miner reward address for display in `/api/stats`.
-/// Best-effort: if called multiple times, only the first value is kept.
-#[cfg(feature = "rkstratum_cpu_miner")]
-pub fn set_internal_cpu_mining_address(addr: String) {
-    let addr = addr.trim().to_string();
-    if addr.is_empty() {
-        return;
-    }
-    let _ = INTERNAL_CPU_MINING_ADDRESS.set(addr);
-}
-
-#[cfg(feature = "rkstratum_cpu_miner")]
-#[derive(Clone, Debug)]
-struct InternalCpuBlock {
-    timestamp_unix: u64,
-    bluescore: u64,
-    nonce: u64,
-    hash: String,
-}
-
-/// Record a recently submitted internal CPU miner block so the dashboard can display it
-/// without relying on high-cardinality Prometheus labels.
-#[cfg(feature = "rkstratum_cpu_miner")]
-pub fn record_internal_cpu_recent_block(hash: String, nonce: u64, bluescore: u64) {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    if hash.trim().is_empty() {
-        return;
-    }
-
-    let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-
-    let mut q = INTERNAL_CPU_RECENT_BLOCKS
-        .get_or_init(|| parking_lot::Mutex::new(VecDeque::with_capacity(INTERNAL_CPU_RECENT_BLOCKS_LIMIT)))
-        .lock();
-
-    // De-dupe by hash
-    if q.iter().any(|b| b.hash == hash) {
-        return;
-    }
-
-    q.push_front(InternalCpuBlock { timestamp_unix: ts, bluescore, nonce, hash });
-    if q.len() > INTERNAL_CPU_RECENT_BLOCKS_LIMIT {
-        q.truncate(INTERNAL_CPU_RECENT_BLOCKS_LIMIT);
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -397,7 +274,7 @@ async fn handle_http_request(
     }
 
     if request.starts_with("GET /api/status") {
-        let kaspad_version = crate::kaspaapi::NODE_STATUS.lock().server_version.clone().unwrap_or_else(|| "-".to_string());
+        let aerod_version = crate::aeroapi::NODE_STATUS.lock().server_version.clone().unwrap_or_else(|| "-".to_string());
         let status_cfg = get_web_status_config();
         let web_bind = match mode {
             HttpMode::Aggregated { web_bind } => web_bind.clone(),
@@ -405,7 +282,7 @@ async fn handle_http_request(
         };
 
         let status =
-            WebStatusResponse { kaspad_address: status_cfg.kaspad_address, kaspad_version, instances: status_cfg.instances, web_bind };
+            WebStatusResponse { aerod_address: status_cfg.aerod_address, aerod_version, instances: status_cfg.instances, web_bind };
         let json = serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string());
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
@@ -760,15 +637,15 @@ pub fn record_network_stats(hashrate: u64, block_count: u64, difficulty: f64) {
 
 #[derive(Serialize)]
 struct WebStatusResponse {
-    kaspad_address: String,
-    kaspad_version: String,
+    aerod_address: String,
+    aerod_version: String,
     instances: usize,
     web_bind: String,
 }
 
 #[derive(Clone, Debug)]
 struct WebStatusConfig {
-    kaspad_address: String,
+    aerod_address: String,
     instances: usize,
 }
 
@@ -797,15 +674,15 @@ fn config_write_allowed() -> bool {
 ///
 /// This avoids re-reading `config.yaml` from within the web/prom servers (which can be wrong when
 /// using `--config` / CLI overrides, and also breaks when the working directory differs).
-pub fn set_web_status_config(kaspad_address: String, instances: usize) {
+pub fn set_web_status_config(aerod_address: String, instances: usize) {
     let lock =
-        WEB_STATUS_CONFIG.get_or_init(|| parking_lot::RwLock::new(WebStatusConfig { kaspad_address: "-".to_string(), instances: 1 }));
-    *lock.write() = WebStatusConfig { kaspad_address, instances: instances.max(1) };
+        WEB_STATUS_CONFIG.get_or_init(|| parking_lot::RwLock::new(WebStatusConfig { aerod_address: "-".to_string(), instances: 1 }));
+    *lock.write() = WebStatusConfig { aerod_address, instances: instances.max(1) };
 }
 
 fn get_web_status_config() -> WebStatusConfig {
     WEB_STATUS_CONFIG
-        .get_or_init(|| parking_lot::RwLock::new(WebStatusConfig { kaspad_address: "-".to_string(), instances: 1 }))
+        .get_or_init(|| parking_lot::RwLock::new(WebStatusConfig { aerod_address: "-".to_string(), instances: 1 }))
         .read()
         .clone()
 }
@@ -821,7 +698,7 @@ pub fn record_worker_error(instance_id: &str, wallet: &str, error: &str) {
 pub fn record_balances(instance_id: &str, balances: &[(String, u64)]) {
     if let Some(gauge) = BALANCE_GAUGE.get() {
         for (address, balance) in balances {
-            // Convert from sompi to KAS (divide by 100000000)
+            // Convert from sompi to ARO (divide by 100000000)
             let balance_kas = *balance as f64 / 100_000_000.0;
             gauge.with_label_values(&[instance_id, address]).set(balance_kas);
         }
@@ -930,19 +807,6 @@ pub fn update_worker_difficulty(worker: &WorkerContext, difficulty: f64) {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[allow(non_snake_case)]
-struct InternalCpuStats {
-    hashrateGhs: f64,
-    hashesTried: u64,
-    blocksSubmitted: u64,
-    blocksAccepted: u64,
-    shares: u64,
-    stale: u64,
-    invalid: u64,
-    wallet: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[allow(non_snake_case)]
 struct StatsResponse {
     totalBlocks: u64,
     totalShares: u64,
@@ -950,7 +814,6 @@ struct StatsResponse {
     networkDifficulty: f64,
     networkBlockCount: u64,
     activeWorkers: usize,
-    internalCpu: Option<InternalCpuStats>,
     blocks: Vec<BlockInfo>,
     workers: Vec<WorkerInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1041,7 +904,6 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
         networkDifficulty: 0.0,
         networkBlockCount: 0,
         activeWorkers: 0,
-        internalCpu: None,
         blocks: Vec::new(),
         workers: Vec::new(),
         bridgeUptime: None,
@@ -1058,12 +920,6 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     let mut total_blocks_from_counters = 0u64;
 
     // Parse global network gauges from the unfiltered set.
-    // Also pick up internal CPU miner metrics (if present).
-    let mut internal_cpu_hashrate_ghs: Option<f64> = None;
-    let mut internal_cpu_hashes_tried: Option<u64> = None;
-    let mut internal_cpu_blocks_submitted: Option<u64> = None;
-    let mut internal_cpu_blocks_accepted: Option<u64> = None;
-
     for family in all_families.iter() {
         let name = family.name();
 
@@ -1085,62 +941,6 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
             && let Some(metric) = family.get_metric().first()
         {
             stats.networkBlockCount = metric.get_gauge().value() as u64;
-        }
-
-        // Internal CPU miner metrics (exported when the bridge is built with `rkstratum_cpu_miner`
-        // and the internal miner is enabled at runtime).
-        if name == "ks_internal_cpu_hashrate_ghs"
-            && let Some(metric) = family.get_metric().first()
-        {
-            internal_cpu_hashrate_ghs = Some(metric.get_gauge().value());
-        }
-        if name == "ks_internal_cpu_hashes_tried_total"
-            && let Some(metric) = family.get_metric().first()
-        {
-            internal_cpu_hashes_tried = Some(metric.get_counter().value().max(0.0) as u64);
-        }
-        if name == "ks_internal_cpu_blocks_submitted_total"
-            && let Some(metric) = family.get_metric().first()
-        {
-            internal_cpu_blocks_submitted = Some(metric.get_counter().value().max(0.0) as u64);
-        }
-        if name == "ks_internal_cpu_blocks_accepted_total"
-            && let Some(metric) = family.get_metric().first()
-        {
-            internal_cpu_blocks_accepted = Some(metric.get_counter().value().max(0.0) as u64);
-        }
-    }
-
-    {
-        let blocks_submitted = internal_cpu_blocks_submitted.unwrap_or(0);
-        let blocks_accepted = internal_cpu_blocks_accepted.unwrap_or(0);
-        let hashes_tried = internal_cpu_hashes_tried.unwrap_or(0);
-        let hashrate_ghs = internal_cpu_hashrate_ghs.unwrap_or(0.0);
-
-        // Only surface internal CPU miner data when it is actually enabled/active.
-        // Otherwise a build that includes the feature would always show an "InternalCPU" row with zeros.
-        #[cfg(feature = "rkstratum_cpu_miner")]
-        let wallet = INTERNAL_CPU_MINING_ADDRESS.get().cloned().unwrap_or_default();
-        #[cfg(not(feature = "rkstratum_cpu_miner"))]
-        let wallet = String::new();
-
-        let should_show_internal_cpu =
-            !wallet.is_empty() || blocks_submitted > 0 || blocks_accepted > 0 || hashes_tried > 0 || hashrate_ghs > 0.0;
-
-        if should_show_internal_cpu {
-            let stale = blocks_submitted.saturating_sub(blocks_accepted);
-            stats.internalCpu = Some(InternalCpuStats {
-                hashrateGhs: hashrate_ghs,
-                hashesTried: hashes_tried,
-                blocksSubmitted: blocks_submitted,
-                blocksAccepted: blocks_accepted,
-                // Expose these so the UI can fill Shares/Stale/Invalid columns for InternalCPU.
-                // Internal CPU mining doesn't produce Stratum shares; blocks are the closest analogue.
-                shares: blocks_accepted,
-                stale,
-                invalid: 0,
-                wallet,
-            });
         }
     }
 
@@ -1418,48 +1218,12 @@ async fn get_stats_json_filtered(instance_id: Option<&str>) -> StatsResponse {
     }
 
     stats.workers = active_workers;
-    // Active workers are the number of Stratum workers, plus the internal CPU miner if present.
-    stats.activeWorkers = stats.workers.len() + stats.internalCpu.as_ref().map(|_| 1).unwrap_or(0);
+    // Active workers are the number of Stratum workers.
+    stats.activeWorkers = stats.workers.len();
 
     // The block gauge may have evicted older blocks; fall back to the monotonic counter total so the
     // "Total Blocks" card still reflects the full lifetime count.
     stats.totalBlocks = stats.totalBlocks.max(total_blocks_from_counters);
-
-    // Fold internal CPU miner counts into summary totals so the dashboard top-cards reflect
-    // internal mining even when no ASICs are connected.
-    if let Some(icpu) = stats.internalCpu.as_ref() {
-        stats.totalBlocks = stats.totalBlocks.saturating_add(icpu.blocksAccepted);
-        // Internal CPU mining doesn't produce shares in the Stratum sense; however, blocks are
-        // "shares too" operationally (they represent successful work). Counting accepted blocks
-        // here prevents the Total Shares card from staying at 0 for CPU-only runs.
-        stats.totalShares = stats.totalShares.saturating_add(icpu.blocksAccepted);
-    }
-
-    // Add internal CPU recent blocks into the unified blocks list so the donut chart and
-    // recent blocks table populate even in CPU-only runs.
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    if let Some(icpu) = stats.internalCpu.as_ref() {
-        if let Some(q) = INTERNAL_CPU_RECENT_BLOCKS.get() {
-            let wallet = icpu.wallet.clone();
-            let guard = q.lock();
-            for b in guard.iter() {
-                let hash = b.hash.clone();
-                if hash.is_empty() || block_set.contains(&hash) {
-                    continue;
-                }
-                block_set.insert(hash.clone());
-                stats.blocks.push(BlockInfo {
-                    instance: "-".to_string(),
-                    worker: "InternalCPU".to_string(),
-                    wallet: wallet.clone(),
-                    timestamp: b.timestamp_unix.to_string(),
-                    hash,
-                    nonce: b.nonce.to_string(),
-                    bluescore: b.bluescore.to_string(),
-                });
-            }
-        }
-    }
 
     // Sort blocks by bluescore (newest first)
     stats.blocks.sort_by(|a, b| {
@@ -1502,7 +1266,7 @@ async fn get_config_json() -> String {
 
         let json_value = serde_json::json!({
             // Global fields
-            "kaspad_address": config.global.kaspad_address,
+            "aerod_address": config.global.aerod_address,
             "block_wait_time": config.global.block_wait_time.as_millis() as u64,
             "print_stats": config.global.print_stats,
             "log_to_file": config.global.log_to_file,
@@ -1543,8 +1307,8 @@ async fn update_config_from_json(json_body: &str) -> Result<(), Box<dyn std::err
     };
 
     // Update global fields if provided
-    if let Some(addr) = updates.get("kaspad_address").and_then(|v| v.as_str()) {
-        config.global.kaspad_address = addr.to_string();
+    if let Some(addr) = updates.get("aerod_address").and_then(|v| v.as_str()) {
+        config.global.aerod_address = addr.to_string();
     }
     if let Some(bwt) = updates.get("block_wait_time").and_then(|v| v.as_u64()) {
         config.global.block_wait_time = Duration::from_millis(bwt);
@@ -1670,7 +1434,7 @@ mod tests {
         std::fs::write(
             &config_path,
             r#"
-kaspad_address: "127.0.0.1:16110"
+aerod_address: "127.0.0.1:16110"
 stratum_port: ":5555"
 min_share_diff: 8192
 "#,
@@ -1684,7 +1448,7 @@ min_share_diff: 8192
         let status_resp = send_request(mode.clone(), "GET /api/status HTTP/1.1\r\n\r\n").await;
         assert!(status_resp.contains("200 OK"));
         assert!(status_resp.contains("Connection: close"));
-        assert!(status_resp.contains("\"kaspad_address\""));
+        assert!(status_resp.contains("\"aerod_address\""));
         assert!(status_resp.contains("\"instances\":2"));
 
         let stats_resp = send_request(mode.clone(), "GET /api/stats HTTP/1.1\r\n\r\n").await;
@@ -1693,13 +1457,13 @@ min_share_diff: 8192
 
         let config_resp = send_request(mode.clone(), "GET /api/config HTTP/1.1\r\n\r\n").await;
         assert!(config_resp.contains("200 OK"));
-        assert!(config_resp.contains("\"kaspad_address\""));
+        assert!(config_resp.contains("\"aerod_address\""));
 
         // SAFETY: test-only env change scoped to this process; no concurrent mutation expected.
         unsafe {
             std::env::set_var("RKSTRATUM_ALLOW_CONFIG_WRITE", "1");
         }
-        let json_body = r#"{"kaspad_address":"127.0.0.2:16110","stratum_port":":5556","min_share_diff":4096}"#;
+        let json_body = r#"{"aerod_address":"127.0.0.2:16110","stratum_port":":5556","min_share_diff":4096}"#;
         let post_req = format!("POST /api/config HTTP/1.1\r\nContent-Length: {}\r\n\r\n{}", json_body.len(), json_body);
         let post_resp = send_request(mode, &post_req).await;
         assert!(post_resp.contains("\"success\": true"));

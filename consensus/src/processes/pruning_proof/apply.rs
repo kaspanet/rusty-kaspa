@@ -4,8 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use itertools::Itertools;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
     blockhash::{BlockHashes, ORIGIN},
     errors::pruning::{PruningImportError, PruningImportResult},
@@ -13,11 +12,12 @@ use kaspa_consensus_core::{
     pruning::PruningPointProof,
     trusted::TrustedBlock,
 };
-use kaspa_core::{debug, trace};
-use kaspa_database::prelude::StoreResultUnitExt;
-use kaspa_hashes::Hash;
-use kaspa_pow::calc_block_level;
-use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
+use aero_core::{debug, trace};
+use aero_database::prelude::StoreResultUnitExt;
+use aero_hashes::Hash;
+use aero_pow::calc_block_level;
+use aero_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
+use itertools::Itertools;
 use rocksdb::WriteBatch;
 
 use crate::{

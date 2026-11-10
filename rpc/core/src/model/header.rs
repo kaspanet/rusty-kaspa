@@ -1,10 +1,10 @@
 use crate::RpcError;
-use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlueWorkType,
     header::{CompressedParents, Header},
 };
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 

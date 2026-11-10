@@ -8,7 +8,7 @@ use super::tx::{
     RpcOptionalTransactionVerboseData,
 };
 use crate::{RpcHash, RpcTransactionId};
-use kaspa_consensus_core::{subnets::SubnetworkId, tx::TransactionId};
+use aero_consensus_core::{subnets::SubnetworkId, tx::TransactionId};
 use serde_json::json;
 
 fn hash32(b: u8) -> RpcHash {
@@ -135,7 +135,7 @@ fn verbose_data_json_none() {
     assert_eq!(json, r#"{"transactionId":null,"hash":null,"computeMass":null,"blockHash":null,"blockTime":null}"#);
 }
 
-// `Option<Vec<u8>>` fields use `kaspa_utils::serde_bytes_optional`, matching
+// `Option<Vec<u8>>` fields use `aero_utils::serde_bytes_optional`, matching
 // the non-optional `RpcTransaction` (`payload`, `signature_script`) which
 // serialize as hex strings. The previous `serde_nested_with` annotation was
 // a silent no-op and produced JSON arrays of bytes — that was wrong; the

@@ -1,7 +1,7 @@
 use crate::tasks::Task;
+use aero_core::{task::tick::TickService, warn};
+use aero_utils::triggers::SingleTrigger;
 use async_trait::async_trait;
-use kaspa_core::{task::tick::TickService, warn};
-use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 

@@ -1,0 +1,10 @@
+Aero is a fork of rusty-kaspa (https://github.com/kaspanet/rusty-kaspa), which is licensed under the ISC
+License. The original copyright notice is kept in LICENSE, as the license requires. Aero is not affiliated
+with or endorsed by the Kaspa project.
+
+Third-party code bundled in this repository:
+
+- RandomX (crypto/randomx/RandomX): BSD 3-Clause License.
+  Copyright (c) 2018-2019, tevador <tevador@gmail.com>
+  Copyright (c) 2014-2019, The Monero Project
+  See crypto/randomx/RandomX/LICENSE.

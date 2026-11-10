@@ -1,4 +1,4 @@
-use kaspa_hashes::{Hash, HasherBase};
+use aero_hashes::{Hash, HasherBase};
 
 use crate::{
     hashing::HasherExtensions,
@@ -17,7 +17,7 @@ pub fn covenant_id<'a>(
     outpoint: TransactionOutpoint,
     auth_outputs: impl ExactSizeIterator<Item = (u32, &'a TransactionOutput)>,
 ) -> Hash {
-    let mut hasher = kaspa_hashes::CovenantID::new();
+    let mut hasher = aero_hashes::CovenantID::new();
     hasher.update(outpoint.transaction_id).write_u32(outpoint.index).write_len(auth_outputs.len());
     for (index, output) in auth_outputs {
         hasher

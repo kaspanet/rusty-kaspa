@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-stratum-bridge"
-description = "Kaspa Stratum Bridge - Mining connectivity for Kaspa Stratum miners"
+name = "aero-stratum-bridge"
+description = "Aero Stratum Bridge - Mining connectivity for Aero Stratum miners"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,19 +10,19 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-# Kaspa dependencies - using workspace versions
-kaspa-consensus-core = { workspace = true }
-kaspa-hashes = { workspace = true }
-kaspa-pow = { workspace = true }
-kaspa-addresses = { workspace = true }
-kaspa-rpc-core = { workspace = true }
-kaspa-rpc-service = { workspace = true }
-kaspa-grpc-client = { workspace = true }
-kaspa-notify = { workspace = true }
-kaspa-core = { workspace = true }
-kaspa-utils = { workspace = true }
-kaspad = { workspace = true }
-kaspa-alloc = { workspace = true }
+# Aero dependencies - using workspace versions
+aero-consensus-core = { workspace = true }
+aero-hashes = { workspace = true }
+aero-pow = { workspace = true }
+aero-addresses = { workspace = true }
+aero-rpc-core = { workspace = true }
+aero-rpc-service = { workspace = true }
+aero-grpc-client = { workspace = true }
+aero-notify = { workspace = true }
+aero-core = { workspace = true }
+aero-utils = { workspace = true }
+aerod = { workspace = true }
+aero-alloc = { workspace = true }
 dirs = { workspace = true }
 
 # External dependencies - using workspace versions where available
@@ -59,7 +59,7 @@ include_dir = "0.7"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
 
-# For musl builds, we declare mimalloc without 'override' to override kaspa-alloc's version
+# For musl builds, we declare mimalloc without 'override' to override aero-alloc's version
 # The .cargo/config.toml linker flag handles any remaining conflicts
 [target.'cfg(all(not(target_os = "macos"), target_env = "musl"))'.dependencies]
 mimalloc = { version = "0.1.48", default-features = false }
@@ -72,9 +72,6 @@ tokio-test = "0.4"
 [[bin]]
 name = "stratum-bridge"
 path = "src/main.rs"
-
-[features]
-rkstratum_cpu_miner = []
 
 [lints]
 workspace = true

@@ -5,7 +5,7 @@
 //! but processes leaves one at a time with O(1) amortised work and
 //! O(log N) stack space, all without heap allocation.
 
-use kaspa_hashes::{Hash, Hasher, ZERO_HASH};
+use aero_hashes::{Hash, Hasher, ZERO_HASH};
 
 /// Maximum stack depth — supports up to 2^32 leaves.
 const MAX_STACK: usize = 32;
@@ -116,8 +116,8 @@ impl<H: Hasher> StreamingMerkleBuilder<H> {
 mod tests {
     use super::*;
     use crate::calc_merkle_root_with_hasher;
+    use aero_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
     use alloc::vec::Vec;
-    use kaspa_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
 
     type SeqStreamBuilder = StreamingMerkleBuilder<SeqCommitMerkleBranch>;
 

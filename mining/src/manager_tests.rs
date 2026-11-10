@@ -14,14 +14,13 @@ mod tests {
         model::{tx_insert::TransactionInsertion, tx_query::TransactionQuery},
         testutils::consensus_mock::ConsensusMock,
     };
-    use itertools::Itertools;
-    use kaspa_addresses::{Address, Prefix, Version};
-    use kaspa_consensus_core::{
+    use aero_addresses::{Address, Prefix, Version};
+    use aero_consensus_core::{
         api::ConsensusApi,
         block::TemplateBuildMode,
         coinbase::MinerData,
         config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_AERO, TX_VERSION},
         errors::tx::TxRuleError,
         mass::{BlockLaneLimits, BlockMassLimits, NonContextualMasses, transaction_estimated_serialized_size},
         subnets::SUBNETWORK_ID_NATIVE,
@@ -30,13 +29,14 @@ mod tests {
             UtxoEntry, scriptvec,
         },
     };
-    use kaspa_hashes::Hash;
-    use kaspa_mining_errors::mempool::RuleResult;
-    use kaspa_txscript::{
+    use aero_hashes::Hash;
+    use aero_mining_errors::mempool::RuleResult;
+    use aero_txscript::{
         pay_to_address_script, pay_to_script_hash_signature_script,
         test_helpers::{create_transaction, create_transaction_with_change, op_true_script},
     };
-    use kaspa_utils::mem_size::MemSizeEstimator;
+    use aero_utils::mem_size::MemSizeEstimator;
+    use itertools::Itertools;
     use std::{iter::once, sync::Arc};
     use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
 
@@ -349,7 +349,7 @@ mod tests {
 
         impl TxOp {
             fn change(&self) -> Option<u64> {
-                self.change.then_some(900 * SOMPI_PER_KASPA)
+                self.change.then_some(900 * SOMPI_PER_AERO)
             }
         }
 
@@ -1030,7 +1030,7 @@ mod tests {
         let mining_manager = default_mining_manager();
 
         // Create two valid transactions that double-spend each other (child_tx_1, child_tx_2)
-        let (parent_tx, child_tx_1) = create_parent_and_children_transactions(&consensus, vec![3000 * SOMPI_PER_KASPA]);
+        let (parent_tx, child_tx_1) = create_parent_and_children_transactions(&consensus, vec![3000 * SOMPI_PER_AERO]);
         consensus.add_transaction(parent_tx, 0);
 
         let mut child_tx_2 = child_tx_1.clone();
@@ -1377,8 +1377,8 @@ mod tests {
 
     fn generate_new_coinbase(address_prefix: Prefix, op: OpType) -> MinerData {
         match op {
-            OpType::Usual => get_miner_data(address_prefix), // TODO: use lib_kaspa_wallet.CreateKeyPair, util.NewAddressPublicKeyECDSA equivalents
-            OpType::Edcsa => get_miner_data(address_prefix), // TODO: use lib_kaspa_wallet.CreateKeyPair, util.NewAddressPublicKey equivalents
+            OpType::Usual => get_miner_data(address_prefix), // TODO: use lib_aero_wallet.CreateKeyPair, util.NewAddressPublicKeyECDSA equivalents
+            OpType::Edcsa => get_miner_data(address_prefix), // TODO: use lib_aero_wallet.CreateKeyPair, util.NewAddressPublicKey equivalents
             OpType::True => {
                 let (script, _) = op_true_script();
                 MinerData::new(script, vec![])
@@ -1393,8 +1393,8 @@ mod tests {
         let signature_script = pay_to_script_hash_signature_script(redeem_script, vec![]).expect("the redeem script is canonical");
 
         let input = TransactionInput::new(previous_outpoint, signature_script, MAX_TX_IN_SEQUENCE_NUM, 1);
-        let entry = UtxoEntry::new(SOMPI_PER_KASPA, script_public_key.clone(), block_daa_score, true, None);
-        let output = TransactionOutput::new(SOMPI_PER_KASPA - DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, script_public_key);
+        let entry = UtxoEntry::new(SOMPI_PER_AERO, script_public_key.clone(), block_daa_score, true, None);
+        let output = TransactionOutput::new(SOMPI_PER_AERO - DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, script_public_key);
         let transaction = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
 
         let mut mutable_tx = MutableTransaction::from_tx(transaction);
@@ -1412,7 +1412,7 @@ mod tests {
         // Make the funding amounts always different so that funding txs have different ids
         (0..count)
             .map(|i| {
-                let funding_tx = create_transaction_without_input(vec![1_000 * SOMPI_PER_KASPA, 2_500 * SOMPI_PER_KASPA + i as u64]);
+                let funding_tx = create_transaction_without_input(vec![1_000 * SOMPI_PER_AERO, 2_500 * SOMPI_PER_AERO + i as u64]);
                 consensus.add_transaction(funding_tx.clone(), 1);
                 funding_tx
             })
@@ -1476,9 +1476,7 @@ mod tests {
     ) -> (Vec<Transaction>, Vec<Transaction>) {
         // Make the funding amounts always different so that funding txs have different ids
         (0..count)
-            .map(|i| {
-                create_parent_and_children_transactions(consensus, vec![500 * SOMPI_PER_KASPA, 3_000 * SOMPI_PER_KASPA + i as u64])
-            })
+            .map(|i| create_parent_and_children_transactions(consensus, vec![500 * SOMPI_PER_AERO, 3_000 * SOMPI_PER_AERO + i as u64]))
             .unzip()
     }
 
@@ -1495,7 +1493,7 @@ mod tests {
     }
 
     fn create_child_and_parent_txs_and_add_parent_to_consensus(consensus: &Arc<ConsensusMock>) -> Transaction {
-        let parent_tx = create_transaction_without_input(vec![500 * SOMPI_PER_KASPA]);
+        let parent_tx = create_transaction_without_input(vec![500 * SOMPI_PER_AERO]);
         let child_tx = create_transaction(&parent_tx, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         consensus.add_transaction(parent_tx, 1);
         child_tx

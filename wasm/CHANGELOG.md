@@ -48,7 +48,7 @@ the maturity DAA periods for user and coinbase transactions.
 
 ### Release 2024-04-14
 
-- Merge with Rusty Kaspa master (0.13.6)
+- Merge with Rusty Aero master (0.13.6)
 
 ### Release 2024-04-13
 
@@ -60,7 +60,7 @@ the maturity DAA periods for user and coinbase transactions.
 
 ### Release 2024-03-31
 
-- Rename `kaspa-beacon` app to `kaspa-resolver`
+- Rename `aero-beacon` app to `aero-resolver`
 - Change RpcClient, UtxoProcessor and Wallet event handlers in typescript to receive typed event data
 - UtxoProcessor and Wallet event handlers now deliver TransactionRecord events (Discovery, Pending, etc.)
 as Rust or WASM objects, allowing user to call `hasAddress(<address>)` on the received `event.data.record` object.
@@ -117,7 +117,7 @@ as Rust or WASM objects, allowing user to call `hasAddress(<address>)` on the re
 - Fix event processing in UtxoContext
 - Renamed `XPrivateKey` to `PrivateKeyGenerator` and `XPublicKey` to `PublicKeyGenerator`
 - Simplify conversion between different key types (`XPrv->Keypair`, `XPrv->XPub->Pubkey`, etc)
-- Introduced `Beacon` class that provides connectivity to the community-operated public node infrastructure (backed by `kaspa-beacon` load balancer & node status monitor)
+- Introduced `Beacon` class that provides connectivity to the community-operated public node infrastructure (backed by `aero-beacon` load balancer & node status monitor)
 - Created TypeScript type definitions across the entire SDK and refactored `RpcClient` class (as well as many other components) to use TypeScript interfaces
 - Changed documentation structure to use `typedoc` available as a part of redistributables or online at https://kaspa.aspectron.org/docs/
 - Project-wide documentation updates

@@ -1,4 +1,4 @@
-use kaspa_core::error;
+use aero_core::error;
 use std::{panic, process, thread};
 
 /// Configures the panic hook to exit the program on every panic

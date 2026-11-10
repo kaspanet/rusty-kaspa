@@ -1,26 +1,26 @@
 use std::time::Duration;
 
-use crate::pb::{ReadyMessage, VerackMessage, VersionMessage, kaspad_message::Payload};
-use crate::{IncomingRoute, KaspadMessagePayloadType, Router};
+use crate::pb::{ReadyMessage, VerackMessage, VersionMessage, aerod_message::Payload};
+use crate::{AerodMessagePayloadType, IncomingRoute, Router};
 use crate::{common::ProtocolError, dequeue_with_timeout, make_message};
-use kaspa_core::debug;
+use aero_core::debug;
 
-/// Implements the Kaspa peer-to-peer handshake protocol
-pub struct KaspadHandshake<'a> {
+/// Implements the Aero peer-to-peer handshake protocol
+pub struct AerodHandshake<'a> {
     router: &'a Router,
     version_receiver: IncomingRoute,
     verack_receiver: IncomingRoute,
     ready_receiver: IncomingRoute,
 }
 
-impl<'a> KaspadHandshake<'a> {
+impl<'a> AerodHandshake<'a> {
     /// Builds the handshake object and subscribes to handshake messages
     pub fn new(router: &'a Router) -> Self {
         Self {
             router,
-            version_receiver: router.subscribe(vec![KaspadMessagePayloadType::Version]),
-            verack_receiver: router.subscribe(vec![KaspadMessagePayloadType::Verack]),
-            ready_receiver: router.subscribe(vec![KaspadMessagePayloadType::Ready]),
+            version_receiver: router.subscribe(vec![AerodMessagePayloadType::Version]),
+            verack_receiver: router.subscribe(vec![AerodMessagePayloadType::Verack]),
+            ready_receiver: router.subscribe(vec![AerodMessagePayloadType::Ready]),
         }
     }
 

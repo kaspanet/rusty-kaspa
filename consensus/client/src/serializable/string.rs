@@ -11,11 +11,11 @@ use crate::{
     CovenantBinding, Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutpointInner,
     TransactionOutput, UtxoEntry, UtxoEntryId, UtxoEntryReference,
 };
+use aero_addresses::Address;
+use aero_consensus_core::subnets::SubnetworkId;
+use aero_hashes::Hash;
 use ahash::AHashMap;
 use cctx::VerifiableTransaction;
-use kaspa_addresses::Address;
-use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_hashes::Hash;
 use workflow_wasm::serde::{from_value, to_value};
 
 pub type SignedTransactionIndexType = u32;

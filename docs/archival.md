@@ -1,6 +1,6 @@
-# Running Kaspa Archive Nodes
+# Running Aero Archive Nodes
 
-This guide explains how to run a Kaspa archive node with HDD-optimized RocksDB configuration.
+This guide explains how to run a Aero archive node with HDD-optimized RocksDB configuration.
 
 ## What is an Archive Node?
 
@@ -12,7 +12,7 @@ An **archive node** stores the complete blockchain history, including all pruned
 
 **Important**: Running archive nodes is resource-intensive and usually requires specific system optimization beyond standard node setup. Archive functionality is provided as-is for advanced users with specific requirements. Most users should run standard pruned nodes instead.
 
-Normal Kaspa nodes are **pruned** and only keep recent blocks (determined by pruning depth).
+Normal Aero nodes are **pruned** and only keep recent blocks (determined by pruning depth).
 
 ## Storage Requirements
 
@@ -24,13 +24,13 @@ Normal Kaspa nodes are **pruned** and only keep recent blocks (determined by pru
 
 ## RocksDB Presets
 
-Kaspad provides two RocksDB configuration presets optimized for different storage types:
+Aerod provides two RocksDB configuration presets optimized for different storage types:
 
 ### Default Preset (SSD/NVMe)
 ```bash
-kaspad --archival
+aerod --archival
 # or explicitly:
-kaspad --archival --rocksdb-preset=default
+aerod --archival --rocksdb-preset=default
 ```
 
 **Configuration:**
@@ -43,7 +43,7 @@ kaspad --archival --rocksdb-preset=default
 
 ### HDD Preset
 ```bash
-kaspad --archival --rocksdb-preset=hdd
+aerod --archival --rocksdb-preset=hdd
 ```
 
 **Configuration:**
@@ -68,7 +68,7 @@ kaspad --archival --rocksdb-preset=hdd
 ### Basic Archive Node (SSD/NVMe)
 ```bash
 # Default preset, suitable for SSD
-kaspad --archival \
+aerod --archival \
   --rpclisten-borsh=0.0.0.0:17110 \
   --rpclisten-json=0.0.0.0:18110
 ```
@@ -76,7 +76,7 @@ kaspad --archival \
 ### HDD-Optimized Archive Node
 ```bash
 # HDD preset with HDD optimizations
-kaspad --archival \
+aerod --archival \
   --rocksdb-preset=hdd \
   --ram-scale=1.0 \
   --rpclisten-borsh=0.0.0.0:17110 \
@@ -90,7 +90,7 @@ kaspad --archival \
 For optimal HDD performance, tune kernel parameters:
 
 ```bash
-# /etc/sysctl.d/90-kaspad-archive.conf
+# /etc/sysctl.d/90-aerod-archive.conf
 vm.dirty_ratio = 40
 vm.dirty_background_ratio = 20
 vm.dirty_expire_centisecs = 12000
@@ -99,7 +99,7 @@ vm.swappiness = 10
 vm.vfs_cache_pressure = 50
 ```
 
-Apply with: `sudo sysctl -p /etc/sysctl.d/90-kaspad-archive.conf`
+Apply with: `sudo sysctl -p /etc/sysctl.d/90-aerod-archive.conf`
 
 Configure I/O scheduler for HDD (mq-deadline):
 ```bash
@@ -113,13 +113,13 @@ Adjust memory allocation based on available RAM:
 
 ```bash
 # Limited RAM (4GB system)
-kaspad --archival --rocksdb-preset=hdd --ram-scale=0.2
+aerod --archival --rocksdb-preset=hdd --ram-scale=0.2
 
 # Normal RAM (8GB system)
-kaspad --archival --rocksdb-preset=hdd --ram-scale=0.5
+aerod --archival --rocksdb-preset=hdd --ram-scale=0.5
 
 # High RAM (16GB+ system)
-kaspad --archival --rocksdb-preset=hdd --ram-scale=1.0
+aerod --archival --rocksdb-preset=hdd --ram-scale=1.0
 ```
 
 **Note:** HDD preset requires ~4GB minimum even with `--ram-scale=0.2`. The cache size scales with `--ram-scale` (minimum 64MB).
@@ -130,13 +130,13 @@ The HDD preset uses a 256MB block cache by default, which automatically scales w
 
 ```bash
 # Default cache (256MB)
-kaspad --archival --rocksdb-preset=hdd
+aerod --archival --rocksdb-preset=hdd
 
 # Scaled cache with ram-scale=0.2 (~51MB cache)
-kaspad --archival --rocksdb-preset=hdd --ram-scale=0.2
+aerod --archival --rocksdb-preset=hdd --ram-scale=0.2
 
 # Custom cache size (useful for public RPC nodes)
-kaspad --archival --rocksdb-preset=hdd --rocksdb-cache-size=2048  # 2GB cache
+aerod --archival --rocksdb-preset=hdd --rocksdb-cache-size=2048  # 2GB cache
 ```
 
 **Cache Sizing Guidelines:**
@@ -150,7 +150,7 @@ kaspad --archival --rocksdb-preset=hdd --rocksdb-cache-size=2048  # 2GB cache
 
 **Memory Budget Example (8GB system):**
 - System: ~1GB
-- Kaspad core: ~2GB
+- Aerod core: ~2GB
 - RocksDB cache: 256MB (default)
 - RocksDB write buffers: 512MB (2x256MB)
 - Remaining: ~4GB (file cache, network buffers, etc.)
@@ -159,20 +159,20 @@ kaspad --archival --rocksdb-preset=hdd --rocksdb-cache-size=2048  # 2GB cache
 
 ### Check Archive Status
 ```bash
-# Using kaspa-cli (if installed)
-kaspa-cli getinfo
+# Using aero-cli (if installed)
+aero-cli getinfo
 
 # Check logs
-journalctl -u kaspad -f
+journalctl -u aerod -f
 
 # Check disk usage
-du -sh ~/.kaspa/kaspa-mainnet/datadir/
+du -sh ~/.aero/aero-mainnet/datadir/
 ```
 
 ### Performance Metrics
 ```bash
 # Enable performance metrics
-kaspad --archival --rocksdb-preset=hdd --perf-metrics --perf-metrics-interval-sec=60
+aerod --archival --rocksdb-preset=hdd --perf-metrics --perf-metrics-interval-sec=60
 ```
 
 ### Disk I/O Monitoring
@@ -193,9 +193,9 @@ iotop -o
 version: '3.8'
 
 services:
-  kaspad-archive:
-    image: kaspanet/kaspad:latest
-    container_name: kaspad-archive
+  aerod-archive:
+    image: aeronet/aerod:latest
+    container_name: aerod-archive
     restart: unless-stopped
     command:
       - --archival
@@ -205,13 +205,13 @@ services:
       - --rpclisten-json=0.0.0.0:18110
       - --utxoindex
     volumes:
-      - /mnt/hdd/kaspa-archive:/app/data
+      - /mnt/hdd/aero-archive:/app/data
     ports:
       - "16111:16111"  # P2P
       - "17110:17110"  # RPC Borsh
       - "18110:18110"  # RPC JSON
     environment:
-      - KASPAD_APPDIR=/app/data
+      - AEROD_APPDIR=/app/data
 ```
 
 Run with: `docker-compose up -d`
@@ -234,13 +234,13 @@ echo "mq-deadline" | sudo tee /sys/block/sda/queue/scheduler
 
 # Run container
 docker run -d \
-  --name kaspad-archive \
+  --name aerod-archive \
   --restart unless-stopped \
-  -v /mnt/hdd/kaspa-archive:/app/data \
+  -v /mnt/hdd/aero-archive:/app/data \
   -p 16111:16111 \
   -p 17110:17110 \
   -p 18110:18110 \
-  kaspanet/kaspad:latest \
+  aeronet/aerod:latest \
     --archival \
     --rocksdb-preset=hdd \
     --ram-scale=1.0 \
@@ -253,21 +253,21 @@ docker run -d \
 
 **Example systemd service for HDD archive node:**
 
-**/etc/systemd/system/kaspad-archive.service:**
+**/etc/systemd/system/aerod-archive.service:**
 ```ini
 [Unit]
-Description=Kaspa Archive Node (HDD-optimized)
+Description=Aero Archive Node (HDD-optimized)
 After=network.target
 
 [Service]
 Type=simple
-User=kaspa
-Group=kaspa
-ExecStart=/usr/local/bin/kaspad \
+User=aero
+Group=aero
+ExecStart=/usr/local/bin/aerod \
   --archival \
   --rocksdb-preset=hdd \
   --ram-scale=1.0 \
-  --appdir=/mnt/hdd/kaspa-archive \
+  --appdir=/mnt/hdd/aero-archive \
   --rpclisten-borsh=0.0.0.0:17110 \
   --rpclisten-json=0.0.0.0:18110 \
   --utxoindex
@@ -282,9 +282,9 @@ WantedBy=multi-user.target
 Enable and start:
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable kaspad-archive
-sudo systemctl start kaspad-archive
-sudo systemctl status kaspad-archive
+sudo systemctl enable aerod-archive
+sudo systemctl start aerod-archive
+sudo systemctl status aerod-archive
 ```
 
 ## Troubleshooting
@@ -295,7 +295,7 @@ sudo systemctl status kaspad-archive
 **Solutions:**
 1. Verify HDD preset is active:
    ```bash
-   journalctl -u kaspad-archive | grep "RocksDB preset"
+   journalctl -u aerod-archive | grep "RocksDB preset"
    # Should show: "Using RocksDB preset: hdd"
    ```
 2. Check I/O scheduler: `cat /sys/block/sda/queue/scheduler` (should be `mq-deadline`)
@@ -310,13 +310,13 @@ sudo systemctl status kaspad-archive
 2. Reduce `--ram-scale` and cache size:
    ```bash
    # 4GB system
-   kaspad --archival --rocksdb-preset=hdd --ram-scale=0.2
+   aerod --archival --rocksdb-preset=hdd --ram-scale=0.2
 
    # 8GB system
-   kaspad --archival --rocksdb-preset=hdd --ram-scale=0.5
+   aerod --archival --rocksdb-preset=hdd --ram-scale=0.5
 
    # Custom cache reduction (if needed)
-   kaspad --archival --rocksdb-preset=hdd --rocksdb-cache-size=64
+   aerod --archival --rocksdb-preset=hdd --rocksdb-cache-size=64
    ```
 3. Check swap: `free -h` (4GB+ swap recommended for low-RAM systems)
 4. Consider default preset on SSD instead
@@ -336,10 +336,10 @@ sudo systemctl status kaspad-archive
 **Check:**
 ```bash
 # Verify flag in service config
-systemctl cat kaspad-archive | grep rocksdb-preset
+systemctl cat aerod-archive | grep rocksdb-preset
 
 # Check startup logs
-journalctl -u kaspad-archive -n 100 | grep -i rocksdb
+journalctl -u aerod-archive -n 100 | grep -i rocksdb
 
 # Should see:
 # "Using RocksDB preset: hdd - HDD preset - optimized for HDD"
@@ -396,7 +396,7 @@ Based on real-world testing:
 
 For **HDD-based archive nodes**, use:
 ```bash
-kaspad --archival --rocksdb-preset=hdd
+aerod --archival --rocksdb-preset=hdd
 ```
 
 This enables HDD-optimized RocksDB configuration, providing:
@@ -413,4 +413,4 @@ For **SSD/NVMe**, the default preset is optimal.
 ---
 
 **Last updated:** January 2026
-**Applies to:** Kaspad v1.0.0+
+**Applies to:** Aerod v1.0.0+

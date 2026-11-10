@@ -1,6 +1,6 @@
-use kaspa_core::warn;
-use kaspa_p2p_lib::{Router, common::ProtocolError};
-use kaspa_utils::any::type_name_short;
+use aero_core::warn;
+use aero_p2p_lib::{Router, common::ProtocolError};
+use aero_utils::any::type_name_short;
 use std::sync::Arc;
 
 #[async_trait::async_trait]

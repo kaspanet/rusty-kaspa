@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use kaspa_p2p_lib::{
+use aero_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     dequeue_with_request_id, make_response,
-    pb::{PruningPointProofMessage, kaspad_message::Payload},
+    pb::{PruningPointProofMessage, aerod_message::Payload},
 };
 use log::debug;
 

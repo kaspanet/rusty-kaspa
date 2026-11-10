@@ -1,6 +1,6 @@
 :root {
-  --kaspa-primary: #70c7ba;
-  --kaspa-accent: #49eacb;
+  --aero-primary: #70c7ba;
+  --aero-accent: #49eacb;
   --surface-dark: rgba(15, 21, 30, 0.72);
   --surface-light: rgba(255, 255, 255, 0.92);
   --bg-gradient-start: #0f1319;
@@ -101,11 +101,11 @@ body::after {
 }
 
 .status-dot--loading {
-  background: var(--kaspa-primary);
+  background: var(--aero-primary);
   box-shadow: 0 0 0 3px rgba(112, 199, 186, 0.18);
 }
 
-.kaspa-primary { color: var(--kaspa-primary); }
+.aero-primary { color: var(--aero-primary); }
 .bg-surface-1,
 .bg-surface-2 {
   backdrop-filter: blur(18px);
@@ -132,9 +132,9 @@ body::after {
   border-color: var(--border-strong);
 }
 
-.border-kaspa-primary { border-color: var(--kaspa-primary); }
-.bg-kaspa-primary { background-color: var(--kaspa-primary); }
-.hover-bg-kaspa-primary:hover { background-color: var(--kaspa-accent); }
+.border-aero-primary { border-color: var(--aero-primary); }
+.bg-aero-primary { background-color: var(--aero-primary); }
+.hover-bg-aero-primary:hover { background-color: var(--aero-accent); }
 
 button,
 a {
@@ -217,7 +217,7 @@ pre#raw {
 
 .loader {
   border: 4px solid rgba(255, 255, 255, 0.1);
-  border-top: 4px solid var(--kaspa-primary);
+  border-top: 4px solid var(--aero-primary);
   border-radius: 50%;
   width: 22px;
   height: 22px;
@@ -248,5 +248,5 @@ pre#raw {
 
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg-1); }
-::-webkit-scrollbar-thumb { background: var(--kaspa-primary); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: var(--kaspa-accent); }
+::-webkit-scrollbar-thumb { background: var(--aero-primary); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--aero-accent); }

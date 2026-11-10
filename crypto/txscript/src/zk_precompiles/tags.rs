@@ -1,4 +1,4 @@
-use kaspa_consensus_core::mass::{Gram, ScriptUnits};
+use aero_consensus_core::mass::{Gram, ScriptUnits};
 
 use crate::zk_precompiles::error::ZkIntegrityError;
 
@@ -41,7 +41,7 @@ impl ZkTag {
 
 #[cfg(test)]
 mod tests {
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         config::params::MAINNET_PARAMS,
         mass::{SCRIPT_UNITS_PER_GRAM, ScriptUnits},
     };

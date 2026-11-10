@@ -1,5 +1,5 @@
-use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus_core::{
+use aero_addresses::{Address, Prefix, Version};
+use aero_consensus_core::{
     hashing::{
         sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::SIG_HASH_ALL,
@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
         TransactionOutput, UtxoEntry, VerifiableTransaction,
     },
 };
-use kaspa_txscript::{
+use aero_txscript::{
     EngineCtx, TxScriptEngine,
     caches::Cache,
     opcodes::codes::{
@@ -20,11 +20,11 @@ use kaspa_txscript::{
     pay_to_address_script, pay_to_script_hash_script,
     script_builder::{ScriptBuilder, ScriptBuilderResult},
 };
-use kaspa_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
+use aero_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
 use rand::thread_rng;
 use secp256k1::Keypair;
 
-/// Main function to execute all Kaspa transaction script scenarios.
+/// Main function to execute all Aero transaction script scenarios.
 ///
 /// # Returns
 ///
@@ -39,7 +39,7 @@ fn main() -> ScriptBuilderResult<()> {
 
 /// # Standard Threshold Scenario
 ///
-/// This scenario demonstrates the use of custom opcodes and script execution within the Kaspa blockchain ecosystem.
+/// This scenario demonstrates the use of custom opcodes and script execution within the Aero blockchain ecosystem.
 /// There are two main cases:
 ///
 /// 1. **Owner case:** The script checks if the input is used by the owner and verifies the owner's signature.
@@ -510,7 +510,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
 
 /// # Shared Secret Scenario
 ///
-/// This scenario demonstrates the use of a shared secret within the Kaspa blockchain ecosystem.
+/// This scenario demonstrates the use of a shared secret within the Aero blockchain ecosystem.
 /// Instead of using a threshold value, it checks the shared secret and the signature associated with it.
 ///
 /// ## Key Features:

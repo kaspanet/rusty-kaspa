@@ -2,21 +2,21 @@
 //! Logical stream abstractions used throughout the IBD negotiation protocols
 //!
 
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     errors::consensus::ConsensusError,
     header::Header,
     tx::{TransactionOutpoint, UtxoEntry},
 };
-use kaspa_core::{debug, info};
-use kaspa_hashes::Hash;
-use kaspa_p2p_lib::{
+use aero_core::{debug, info};
+use aero_hashes::Hash;
+use aero_p2p_lib::{
     IncomingRoute, Router,
     common::{DEFAULT_TIMEOUT, ProtocolError},
     convert::model::trusted::TrustedDataEntry,
     make_message,
     pb::{
         RequestNextHeadersMessage, RequestNextPruningPointAndItsAnticoneBlocksMessage, RequestNextPruningPointSmtChunkMessage,
-        RequestNextPruningPointUtxoSetChunkMessage, kaspad_message::Payload,
+        RequestNextPruningPointUtxoSetChunkMessage, aerod_message::Payload,
     },
 };
 use std::sync::Arc;
@@ -211,7 +211,7 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
     }
 }
 
-const SMT_PROOF_INTERVAL: usize = kaspa_consensus_core::api::SMT_PROOF_INTERVAL;
+const SMT_PROOF_INTERVAL: usize = aero_consensus_core::api::SMT_PROOF_INTERVAL;
 
 /// Stream of SMT lane chunks. Flow-controlled: after every [`SMT_FLOW_CONTROL_WINDOW`]
 /// chunks received the stream enqueues a [`RequestNextPruningPointSmtChunkMessage`]
@@ -233,11 +233,11 @@ impl<'a, 'b> SmtStream<'a, 'b> {
         Self { router, incoming_route, expected_count: 0, lane_count: 0, chunks_received: 0 }
     }
 
-    pub async fn recv_metadata(&mut self) -> Result<kaspa_consensus_core::api::SmtExportMetadata, ProtocolError> {
+    pub async fn recv_metadata(&mut self) -> Result<aero_consensus_core::api::SmtExportMetadata, ProtocolError> {
         match timeout(DEFAULT_TIMEOUT, self.incoming_route.recv()).await {
             Ok(Some(msg)) => match msg.payload {
                 Some(Payload::SmtMetadata(payload)) => {
-                    use kaspa_consensus_core::api::SmtExportMetadata;
+                    use aero_consensus_core::api::SmtExportMetadata;
                     // Wire: 96 bytes = lanes_root || payload_and_ctx_digest || parent_seq_commit.
                     let (chunks, rem) = payload.data.as_chunks::<32>();
                     if !rem.is_empty() {
@@ -269,7 +269,7 @@ impl<'a, 'b> SmtStream<'a, 'b> {
 
     /// Receives the next chunk of lanes from the peer. Returns `Ok(None)` once
     /// `active_lanes_count` lanes have been consumed.
-    pub async fn next_chunk(&mut self) -> Result<Option<Vec<kaspa_consensus_core::api::ImportLane>>, ProtocolError> {
+    pub async fn next_chunk(&mut self) -> Result<Option<Vec<aero_consensus_core::api::ImportLane>>, ProtocolError> {
         if self.lane_count >= self.expected_count {
             return Ok(None);
         }
@@ -320,14 +320,14 @@ impl<'a, 'b> SmtStream<'a, 'b> {
 
             let proof = if (self.lane_count as usize).is_multiple_of(SMT_PROOF_INTERVAL) {
                 Some(
-                    kaspa_smt::proof::OwnedSmtProof::from_bytes(&entry.proof)
+                    aero_smt::proof::OwnedSmtProof::from_bytes(&entry.proof)
                         .map_err(|e| ProtocolError::OtherOwned(format!("invalid SMT proof: {e}")))?,
                 )
             } else {
                 None
             };
 
-            lanes.push(kaspa_consensus_core::api::ImportLane { lane_key, lane_tip, blue_score: entry.blue_score, proof });
+            lanes.push(aero_consensus_core::api::ImportLane { lane_key, lane_tip, blue_score: entry.blue_score, proof });
             self.lane_count += 1;
         }
 

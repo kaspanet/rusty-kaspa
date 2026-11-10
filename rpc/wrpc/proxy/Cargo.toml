@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-wrpc-proxy"
-description = "Kaspa wRPC to gRPC proxy"
+name = "aero-wrpc-proxy"
+description = "Aero wRPC to gRPC proxy"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -12,11 +12,11 @@ repository.workspace = true
 [dependencies]
 async-trait.workspace = true
 clap.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-grpc-client.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-rpc-macros.workspace = true
-kaspa-wrpc-server.workspace = true
+aero-consensus-core.workspace = true
+aero-grpc-client.workspace = true
+aero-rpc-core.workspace = true
+aero-rpc-macros.workspace = true
+aero-wrpc-server.workspace = true
 num_cpus.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

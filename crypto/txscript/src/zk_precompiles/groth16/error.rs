@@ -14,8 +14,8 @@ pub enum Groth16Error {
     TrailingVerifyingKeyBytes,
     #[error("Groth16 proof has trailing bytes")]
     TrailingProofBytes,
-    #[error("Kaspa txscript error: {0}")]
-    FromTxScript(#[from] kaspa_txscript_errors::TxScriptError),
+    #[error("Aero txscript error: {0}")]
+    FromTxScript(#[from] aero_txscript_errors::TxScriptError),
     #[error("ARK serialization error: {0}")]
     ArkSerialization(#[from] ark_serialize::SerializationError),
     #[error("Byte conversion error: {0}")]

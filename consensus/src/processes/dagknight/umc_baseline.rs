@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
-use kaspa_consensus_core::BlueWorkType;
-use kaspa_hashes::Hash;
+use aero_consensus_core::BlueWorkType;
+use aero_hashes::Hash;
 use num_traits::Zero;
 
 use crate::{

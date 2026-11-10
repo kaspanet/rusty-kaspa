@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use kaspa_smt_store::processor::SmtReadBounds;
+use aero_smt_store::processor::SmtReadBounds;
 
 /// Score bounds for the selected-parent -> current-block transition.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,7 +60,7 @@ impl SeqCommitBounds {
 #[cfg(test)]
 mod tests {
     use super::SeqCommitBounds;
-    use kaspa_smt_store::processor::SmtReadBounds;
+    use aero_smt_store::processor::SmtReadBounds;
 
     #[test]
     fn active_ranges_are_inclusive() {

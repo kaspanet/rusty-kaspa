@@ -1,9 +1,9 @@
 use crate::{signals::Shutdown, task::service::AsyncServiceResult};
+use aero_core::core::Core;
+use aero_core::service::Service;
+use aero_core::task::service::AsyncService;
+use aero_core::trace;
 use futures_util::future::{select_all, try_join_all};
-use kaspa_core::core::Core;
-use kaspa_core::service::Service;
-use kaspa_core::task::service::AsyncService;
-use kaspa_core::trace;
 use std::{
     sync::{Arc, Mutex},
     thread::{self, JoinHandle as ThreadJoinHandle},

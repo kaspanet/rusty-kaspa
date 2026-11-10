@@ -2,11 +2,11 @@ use crate::mempool::{
     Mempool,
     errors::{NonStandardError, NonStandardResult},
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     constants::{MAX_SCRIPT_PUBLIC_KEY_VERSION, MAX_SOMPI},
     tx::MutableTransaction,
 };
-use kaspa_txscript::{p2sh_sig_scanner, script_class::ScriptClass};
+use aero_txscript::{p2sh_sig_scanner, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
@@ -115,16 +115,16 @@ mod tests {
         MiningCounters,
         mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
     };
-    use kaspa_addresses::{Address, Prefix, Version};
-    use kaspa_consensus_core::{
+    use aero_addresses::{Address, Prefix, Version};
+    use aero_consensus_core::{
         config::params::Params,
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_AERO, TRANSIENT_BYTE_TO_MASS_FACTOR, TX_VERSION},
         mass::NonContextualMasses,
         network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
     };
-    use kaspa_txscript::{
+    use aero_txscript::{
         opcodes::codes::{OpReturn, OpTrue},
         script_builder::ScriptBuilder,
     };
@@ -194,14 +194,14 @@ mod tests {
     #[test]
     fn test_check_transaction_standard_in_isolation() {
         // Create some dummy, but otherwise standard, data for transactions.
-        let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+        let dummy_prev_out = TransactionOutpoint::new(aero_hashes::Hash::from_u64_word(1), 1);
         let dummy_sig_script = vec![0u8; 65];
         let dummy_tx_input = TransactionInput::new(dummy_prev_out, dummy_sig_script, MAX_TX_IN_SEQUENCE_NUM, 1);
         let addr_hash = vec![1u8; 32];
 
         let addr = Address::new(Prefix::Testnet, Version::PubKey, &addr_hash);
-        let dummy_script_public_key = kaspa_txscript::pay_to_address_script(&addr);
-        let dummy_tx_out = TransactionOutput::new(SOMPI_PER_KASPA, dummy_script_public_key);
+        let dummy_script_public_key = aero_txscript::pay_to_address_script(&addr);
+        let dummy_tx_out = TransactionOutput::new(SOMPI_PER_AERO, dummy_script_public_key);
 
         struct Test {
             name: &'static str,
@@ -255,7 +255,7 @@ mod tests {
                         TX_VERSION,
                         vec![dummy_tx_input.clone()],
                         vec![TransactionOutput::new(
-                            SOMPI_PER_KASPA,
+                            SOMPI_PER_AERO,
                             ScriptPublicKey::new(
                                 MAX_SCRIPT_PUBLIC_KEY_VERSION,
                                 ScriptBuilder::new().add_op(OpTrue).unwrap().script().into(),
@@ -277,7 +277,7 @@ mod tests {
                         TX_VERSION,
                         vec![dummy_tx_input],
                         vec![TransactionOutput::new(
-                            SOMPI_PER_KASPA,
+                            SOMPI_PER_AERO,
                             ScriptPublicKey::new(
                                 MAX_SCRIPT_PUBLIC_KEY_VERSION,
                                 ScriptBuilder::new().add_op(OpReturn).unwrap().script().into(),
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn test_check_transaction_standard_in_context() {
         let addr = Address::new(Prefix::Testnet, Version::PubKey, &[1u8; 32]);
-        let standard_script_public_key = kaspa_txscript::pay_to_address_script(&addr);
+        let standard_script_public_key = aero_txscript::pay_to_address_script(&addr);
         let non_standard_script_public_key =
             ScriptPublicKey::new(MAX_SCRIPT_PUBLIC_KEY_VERSION, ScriptBuilder::new().add_op(OpTrue).unwrap().script().into());
 
@@ -345,12 +345,12 @@ mod tests {
         }
 
         fn new_mtx(script_public_key: ScriptPublicKey, masses: NonContextualMasses, fee: u64) -> MutableTransaction {
-            let prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+            let prev_out = TransactionOutpoint::new(aero_hashes::Hash::from_u64_word(1), 1);
             let input = TransactionInput::new(prev_out, vec![], MAX_TX_IN_SEQUENCE_NUM, 1);
             let tx = Transaction::new(
                 TX_VERSION,
                 vec![input],
-                vec![TransactionOutput::new(SOMPI_PER_KASPA, script_public_key.clone())],
+                vec![TransactionOutput::new(SOMPI_PER_AERO, script_public_key.clone())],
                 0,
                 SUBNETWORK_ID_NATIVE,
                 0,
@@ -358,7 +358,7 @@ mod tests {
             );
             let mut mtx = MutableTransaction::with_entries(
                 tx.into(),
-                vec![UtxoEntry::new(2 * SOMPI_PER_KASPA, script_public_key, 0, false, None)],
+                vec![UtxoEntry::new(2 * SOMPI_PER_AERO, script_public_key, 0, false, None)],
             );
             mtx.calculated_non_contextual_masses = Some(masses);
             mtx.calculated_fee = Some(fee);

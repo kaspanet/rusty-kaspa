@@ -12,7 +12,7 @@ if [ $status -ne 0 ]; then
 fi
 
 declare -a crates=(
-    "kaspa-wasm"
+    "aero-wasm"
 )
 
 for crate in "${crates[@]}"
@@ -28,11 +28,11 @@ do
 done
 
 declare -a crates=(
-    "kaspa-wrpc-wasm"
-    "kaspa-wallet-cli-wasm"
-    "kaspa-wasm"
-    "kaspa-cli"
-    "kaspa-daemon"
+    "aero-wrpc-wasm"
+    "aero-wallet-cli-wasm"
+    "aero-wasm"
+    "aero-cli"
+    "aero-daemon"
 )
 
 for crate in "${crates[@]}"
@@ -55,11 +55,11 @@ declare -a features=(
 
 for feature in "${features[@]}"
 do
-    cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown --features $feature
+    cargo clippy -p aero-wasm --target wasm32-unknown-unknown --features $feature
     status=$?
     if [ $status -ne 0 ]; then
         echo
-        echo "--> wasm32 check of kaspa-wasm --features $feature has failed"
+        echo "--> wasm32 check of aero-wasm --features $feature has failed"
         echo
         exit $status
     fi

@@ -1,7 +1,7 @@
 const { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
   payToScriptHashScript, addressFromScriptPublicKey,
   createTransaction, signTransaction,
-  Encoding } = require('../../../../nodejs/kaspa');
+  Encoding } = require('../../../../nodejs/aero');
 const fs = require('fs');
 const path = require('path');
 

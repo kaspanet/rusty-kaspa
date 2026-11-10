@@ -1,11 +1,11 @@
+use aero_consensus_core::block::Block;
+use aero_consensus_core::trusted::TrustedBlock;
+use aero_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 use itertools::Itertools;
-use kaspa_consensus_core::block::Block;
-use kaspa_consensus_core::trusted::TrustedBlock;
-use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 use serde::{Deserialize, Serialize};
 
-pub use kaspa_consensus_core::trusted::ExternalGhostdagData as JtfGhostdagData;
-pub use kaspa_rpc_core::{
+pub use aero_consensus_core::trusted::ExternalGhostdagData as JtfGhostdagData;
+pub use aero_rpc_core::{
     RpcBlock as JtfBlock, RpcHeader as JtfHeader, RpcTransactionOutpoint as JtfOutpoint, RpcUtxoEntry as JtfUtxoEntry,
 };
 

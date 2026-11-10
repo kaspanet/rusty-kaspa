@@ -125,7 +125,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn test_wasm_serde_constructor() {
-        let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
+        let str = "aero:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjshrc8ycg";
         let a = Address::constructor(str);
         let value = to_value(&a).unwrap();
 
@@ -136,11 +136,11 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn test_wasm_js_serde_object() {
-        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+        let expected = Address::constructor("aero:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjshrc8ycg");
 
         let obj = Object::new();
         obj.set("version", &JsValue::from_str("PubKey")).unwrap();
-        obj.set("prefix", &JsValue::from_str("kaspa")).unwrap();
+        obj.set("prefix", &JsValue::from_str("aero")).unwrap();
         obj.set("payload", &JsValue::from_str("qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j")).unwrap();
 
         assert_eq!(JsValue::from_str("object"), obj.js_typeof());
@@ -152,7 +152,7 @@ mod tests {
 
     #[wasm_bindgen_test]
     fn test_wasm_serde_object() {
-        let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+        let expected = Address::constructor("aero:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjshrc8ycg");
         let wasm_js_value: JsValue = expected.clone().into_abi().into();
 
         let actual = from_value(wasm_js_value).unwrap();

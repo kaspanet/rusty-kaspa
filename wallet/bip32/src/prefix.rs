@@ -1,12 +1,12 @@
 //! Extended key prefixes.
 
 use crate::{Error, ExtendedKey, Result, Version};
+use aero_consensus_core::network::{NetworkId, NetworkType};
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::{
     fmt::{self, Debug, Display},
     str,
 };
-use kaspa_consensus_core::network::{NetworkId, NetworkType};
 
 /// BIP32 extended key prefixes a.k.a. "versions" (e.g. `xpub`, `xprv`)
 ///

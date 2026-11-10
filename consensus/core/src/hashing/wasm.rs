@@ -1,7 +1,7 @@
 use super::sighash_type::{self, SigHashType as SigHashTypeNative};
 use wasm_bindgen::prelude::*;
 
-/// Kaspa Sighash types allowed by consensus
+/// Aero Sighash types allowed by consensus
 /// @category Consensus
 #[wasm_bindgen]
 pub enum SighashType {

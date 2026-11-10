@@ -6,8 +6,8 @@ use crate::{
     subnets::SubnetworkId,
     tx::{TransactionId, TransactionOutpoint},
 };
+use aero_hashes::Hash;
 use itertools::Itertools;
-use kaspa_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Clone, Debug)]

@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-notify"
-description = "Kaspa notification subsystem"
+name = "aero-notify"
+description = "Aero notification subsystem"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -18,13 +18,13 @@ futures-util.workspace = true
 futures.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils = { workspace = true, features = ["triggers"] }
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-core.workspace = true
+aero-hashes.workspace = true
+aero-txscript-errors.workspace = true
+aero-txscript.workspace = true
+aero-utils = { workspace = true, features = ["triggers"] }
 log.workspace = true
 parking_lot.workspace = true
 paste.workspace = true
@@ -38,8 +38,8 @@ workflow-serializer.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-kaspa-alloc.workspace = true
-kaspa-math.workspace = true
+aero-alloc.workspace = true
+aero-math.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 workflow-perf-monitor.workspace = true
 

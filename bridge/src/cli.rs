@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use kaspa_stratum_bridge::{BridgeConfig, InstanceConfig, net_utils::normalize_port};
+use aero_stratum_bridge::{BridgeConfig, InstanceConfig, net_utils::normalize_port};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum NodeMode {
@@ -118,11 +118,11 @@ pub struct Cli {
     #[arg(long)]
     pub appdir: Option<PathBuf>,
 
-    #[arg(last = true, help = "Kaspad arguments (use '--' separator if kaspad args start with hyphens)")]
-    pub kaspad_args: Vec<String>,
+    #[arg(last = true, help = "Aerod arguments (use '--' separator if aerod args start with hyphens)")]
+    pub aerod_args: Vec<String>,
 
     #[arg(long)]
-    pub kaspad_address: Option<String>,
+    pub aerod_address: Option<String>,
 
     #[arg(long)]
     pub block_wait_time: Option<u64>,
@@ -184,34 +184,6 @@ pub struct Cli {
 
     #[arg(long, value_parser = BoolishValueParser::new())]
     pub instance_pow2_clamp: Option<bool>,
-
-    // ---------------------------
-    // Internal CPU miner (feature-gated)
-    // ---------------------------
-    /// Enable the built-in CPU miner (solo mining). Requires `--internal-cpu-miner-address`.
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    #[arg(long, default_value_t = false)]
-    pub internal_cpu_miner: bool,
-
-    /// Mining address (reward address) used by the internal CPU miner.
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    #[arg(long)]
-    pub internal_cpu_miner_address: Option<String>,
-
-    /// Number of CPU mining threads.
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    #[arg(long)]
-    pub internal_cpu_miner_threads: Option<usize>,
-
-    /// Optional per-hash sleep (throttle) in milliseconds.
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    #[arg(long)]
-    pub internal_cpu_miner_throttle_ms: Option<u64>,
-
-    /// Block template poll interval in milliseconds (how often to refresh work).
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    #[arg(long)]
-    pub internal_cpu_miner_template_poll_ms: Option<u64>,
 }
 
 impl Cli {
@@ -221,8 +193,8 @@ impl Cli {
 }
 
 pub fn apply_cli_overrides(config: &mut BridgeConfig, cli: &Cli) -> Result<(), anyhow::Error> {
-    if let Some(addr) = cli.kaspad_address.as_deref() {
-        config.global.kaspad_address = addr.to_string();
+    if let Some(addr) = cli.aerod_address.as_deref() {
+        config.global.aerod_address = addr.to_string();
     }
     if let Some(dur) = cli.block_wait_duration() {
         config.global.block_wait_time = dur;

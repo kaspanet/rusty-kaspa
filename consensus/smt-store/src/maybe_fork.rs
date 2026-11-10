@@ -1,4 +1,4 @@
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 /// Wrapper for data retrieved via historical seek that may be from a fork.
 ///

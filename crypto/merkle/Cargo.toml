@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-merkle"
-description = "Kaspa merkle tree library"
+name = "aero-merkle"
+description = "Aero merkle tree library"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,7 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-hashes.workspace = true
+aero-hashes.workspace = true
 
 [lints]
 workspace = true

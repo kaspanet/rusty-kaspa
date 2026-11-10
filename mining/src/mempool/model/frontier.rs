@@ -3,15 +3,15 @@ use crate::{
     feerate::{FeerateEstimator, FeerateEstimatorArgs},
 };
 
-use feerate_key::FeerateTransactionKey;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     block::TemplateTransactionSelector,
     config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
     mass::BlockLaneLimits,
     subnets::SubnetworkId,
     tx::{Transaction, TransactionId},
 };
-use kaspa_core::trace;
+use aero_core::trace;
+use feerate_key::FeerateTransactionKey;
 use rand::{Rng, distributions::Uniform, prelude::Distribution};
 use search_tree::SearchTree;
 use selectors::{MutatingTreeSelector, SequenceSelector, SequenceSelectorInput, TakeAllSelector};
@@ -224,7 +224,7 @@ impl Frontier {
     ///     5. Q. Why not just use u64 weights?
     ///        A. The current weight calculation is `feerate^alpha` with `alpha=3`. Using u64 would mean that the feerate space
     ///           is limited to a range of size `(2^64)^(1/3) = ~2^21 = ~2M`. Already with current usages, the feerate can vary
-    ///           from `~1/50` (2000 sompi for a transaction with 100K storage mass), to `5M` (100 KAS fee for a transaction with
+    ///           from `~1/50` (2000 sompi for a transaction with 100K storage mass), to `5M` (100 ARO fee for a transaction with
     ///           2000 mass = 100·100_000_000/2000), resulting in a range of size 250M (`5M/(1/50)`).
     ///           By using floating point arithmetics we gain the adjustment of the probability space to the accuracy level required for
     ///           current samples. And if the space is highly biased, the repeated elimination of top items and the prefix weight computation
@@ -436,14 +436,14 @@ impl Frontier {
 mod tests {
     use super::*;
     use crate::mempool::config::Config;
-    use feerate_key::tests::build_feerate_key;
-    use itertools::Itertools;
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         mass::BlockMassLimits,
         subnets::SubnetworkId,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
-    use kaspa_hashes::{HasherBase, TransactionID};
+    use aero_hashes::{HasherBase, TransactionID};
+    use feerate_key::tests::build_feerate_key;
+    use itertools::Itertools;
     use rand::{SeedableRng, rngs::StdRng, thread_rng};
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -465,7 +465,7 @@ mod tests {
             let mut fee: u64 = if i % (cap as u64 / 100) == 0 { 1000000 } else { rng.gen_range(1..10000) };
             if i == 0 {
                 // Add an extremely large fee in order to create extremely high variance
-                fee = 100_000_000 * 1_000_000; // 1M KAS
+                fee = 100_000_000 * 1_000_000; // 1M ARO
             }
             let mass: u64 = 1650;
             let key = build_feerate_key(fee, mass, i);

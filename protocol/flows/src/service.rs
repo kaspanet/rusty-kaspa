@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use kaspa_addressmanager::NetAddress;
-use kaspa_connectionmanager::ConnectionManager;
-use kaspa_core::{
+use aero_addressmanager::NetAddress;
+use aero_connectionmanager::ConnectionManager;
+use aero_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace,
 };
-use kaspa_p2p_lib::Adaptor;
-use kaspa_utils::triggers::SingleTrigger;
-use kaspa_utils_tower::counters::TowerConnectionCounters;
+use aero_p2p_lib::Adaptor;
+use aero_utils::triggers::SingleTrigger;
+use aero_utils_tower::counters::TowerConnectionCounters;
 
 use crate::flow_context::FlowContext;
 

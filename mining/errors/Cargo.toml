@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-mining-errors"
-description = "Kaspa mining error definitions"
+name = "aero-mining-errors"
+description = "Aero mining error definitions"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -13,7 +13,7 @@ repository.workspace = true
 
 [dependencies]
 thiserror.workspace = true
-kaspa-consensus-core.workspace = true
+aero-consensus-core.workspace = true
 
 [lints]
 workspace = true

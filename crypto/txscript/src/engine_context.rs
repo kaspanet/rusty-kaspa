@@ -1,7 +1,7 @@
 use crate::caches::Cache;
 use crate::covenants::{CovenantsContext, EMPTY_COV_CONTEXT};
 use crate::{SeqCommitAccessor, SigCacheKey};
-use kaspa_consensus_core::hashing::sighash::{SigHashReusedValues, SigHashReusedValuesSync, SigHashReusedValuesUnsync};
+use aero_consensus_core::hashing::sighash::{SigHashReusedValues, SigHashReusedValuesSync, SigHashReusedValuesUnsync};
 
 /// Marker type indicating that sig-hash reused values have not been bound yet.
 #[derive(Default)]

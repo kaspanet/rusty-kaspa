@@ -1,6 +1,6 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     mass::{ComputeBudget, SigopCount},
     subnets::SubnetworkId,
     tx::{
@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
         TransactionOutput, UtxoEntry,
     },
 };
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire

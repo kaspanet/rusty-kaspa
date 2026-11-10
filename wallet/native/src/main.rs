@@ -1,8 +1,8 @@
-use kaspa_cli_lib::{TerminalOptions, kaspa_cli};
+use aero_cli_lib::{TerminalOptions, aero_cli};
 
 #[tokio::main]
 async fn main() {
-    let result = kaspa_cli(TerminalOptions::new().with_prompt("$ "), None).await;
+    let result = aero_cli(TerminalOptions::new().with_prompt("$ "), None).await;
     if let Err(err) = result {
         println!("{err}");
     }

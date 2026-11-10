@@ -2,8 +2,8 @@
 //! General-purpose Id traits used by storage data collections.
 //!
 
-use kaspa_consensus_core::tx::TransactionId;
-use kaspa_utils::hex::ToHex;
+use aero_consensus_core::tx::TransactionId;
+use aero_utils::hex::ToHex;
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;

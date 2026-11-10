@@ -1,10 +1,10 @@
 use super::{error::Result, notification::Notification};
 use crate::{converter::Converter, notifier::DynNotify};
+use aero_core::{debug, trace};
+use aero_utils::{channel::Channel, triggers::SingleTrigger};
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
 use core::fmt::Debug;
-use kaspa_core::{debug, trace};
-use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},

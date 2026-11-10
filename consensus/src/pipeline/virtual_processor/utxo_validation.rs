@@ -21,7 +21,7 @@ use crate::{
         },
     },
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
     acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
     api::args::TransactionValidationArgs,
@@ -35,10 +35,10 @@ use kaspa_consensus_core::{
         utxo_view::{UtxoView, UtxoViewComposition},
     },
 };
-use kaspa_core::{info, trace};
-use kaspa_hashes::Hash;
-use kaspa_muhash::MuHash;
-use kaspa_utils::refs::Refs;
+use aero_core::{info, trace};
+use aero_hashes::Hash;
+use aero_muhash::MuHash;
+use aero_utils::refs::Refs;
 
 use crate::model::services::seq_commit_accessor::SeqCommitAccessor;
 use rayon::prelude::*;
@@ -56,7 +56,7 @@ pub(super) struct MergesetSeqData {
 
 /// A resolved lane update ready for SMT processing.
 pub(super) struct ResolvedLaneUpdate {
-    pub lane_key: kaspa_smt_store::LaneKey,
+    pub lane_key: aero_smt_store::LaneKey,
     pub new_tip: Hash,
     /// True if this lane had no active canonical version (new or reactivated).
     pub is_new: bool,
@@ -190,7 +190,7 @@ impl VirtualStateProcessor {
         ctx: &mut UtxoProcessingContext,
         selected_parent_utxo_view: &V,
         header: &Header,
-    ) -> BlockProcessResult<Option<kaspa_smt_store::processor::SmtBuild>> {
+    ) -> BlockProcessResult<Option<aero_smt_store::processor::SmtBuild>> {
         // Verify header UTXO commitment
         let expected_commitment = ctx.multiset_hash.finalize();
         if expected_commitment != header.utxo_commitment {
@@ -437,7 +437,7 @@ impl VirtualStateProcessor {
 
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
         let mass_and_feerate_threshold = args.feerate_threshold.map(|threshold| {
-            let mass = kaspa_consensus_core::mass::Mass::new(mutable_tx.calculated_non_contextual_masses.unwrap(), contextual_mass);
+            let mass = aero_consensus_core::mass::Mass::new(mutable_tx.calculated_non_contextual_masses.unwrap(), contextual_mass);
             (mass.normalized_max(&self.mempool_mass_cofactors), threshold)
         });
 
@@ -462,8 +462,8 @@ impl VirtualStateProcessor {
 
     /// Collect per-lane activity leaves and miner payload leaves from the mergeset.
     pub(super) fn collect_mergeset_seq_data(&self, ctx: &UtxoProcessingContext) -> MergesetSeqData {
-        use kaspa_seq_commit::hashing::{activity_leaf, miner_payload_leaf};
-        use kaspa_seq_commit::types::MinerPayloadLeafInput;
+        use aero_seq_commit::hashing::{activity_leaf, miner_payload_leaf};
+        use aero_seq_commit::types::MinerPayloadLeafInput;
 
         let mut lane_activities: std::collections::BTreeMap<[u8; 20], Vec<Hash>> = std::collections::BTreeMap::new();
         let mut miner_payload_leaves = Vec::new();
@@ -505,8 +505,8 @@ impl VirtualStateProcessor {
         selected_parent: Hash,
         parent_seq_commit: Hash,
     ) -> Vec<ResolvedLaneUpdate> {
-        use kaspa_seq_commit::hashing::{activity_digest_lane, lane_key, lane_tip_next};
-        use kaspa_seq_commit::types::LaneTipInput;
+        use aero_seq_commit::hashing::{activity_digest_lane, lane_key, lane_tip_next};
+        use aero_seq_commit::types::LaneTipInput;
         let mut updates = Vec::with_capacity(data.lane_activities.len());
         let bounds = SeqCommitBounds::new(parent_blue_score, current_blue_score, self.finality_depth);
         let read_bounds = bounds.selected_parent_read_bounds(); // -> [current - F, parent]
@@ -551,10 +551,10 @@ impl VirtualStateProcessor {
         selected_parent: Hash,
         inactivity_shortcut_block: Hash,
         inactivity_shortcut: Hash,
-    ) -> (Hash, kaspa_smt_store::processor::SmtBuild) {
-        use kaspa_seq_commit::hashing::{activity_root_hash, miner_payload_root, seq_commit, seq_state_root};
-        use kaspa_seq_commit::types::{SeqCommitInput, SeqState};
-        use kaspa_smt_store::processor::SmtProcessor;
+    ) -> (Hash, aero_smt_store::processor::SmtBuild) {
+        use aero_seq_commit::hashing::{activity_root_hash, miner_payload_root, seq_commit, seq_state_root};
+        use aero_seq_commit::types::{SeqCommitInput, SeqState};
+        use aero_smt_store::processor::SmtProcessor;
 
         let bounds = SeqCommitBounds::new(parent.blue_score, current_blue_score, self.finality_depth);
         // 1. Create processor starting from the parent's lanes root
@@ -582,7 +582,7 @@ impl VirtualStateProcessor {
 
         // 5. Compute final hash: activity_root -> state_root -> seq_commit.
         let payload_root = miner_payload_root(miner_payload_leaves.into_iter());
-        let pd = kaspa_seq_commit::hashing::payload_and_context_digest(&context_hash, &payload_root);
+        let pd = aero_seq_commit::hashing::payload_and_context_digest(&context_hash, &payload_root);
         let activity_root = activity_root_hash(&inactivity_shortcut, &build.root);
         let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
         let commit = seq_commit(&SeqCommitInput { parent_seq_commit: &parent.seq_commit, state_root: &state_root });
@@ -602,9 +602,9 @@ impl VirtualStateProcessor {
         &self,
         ctx: &UtxoProcessingContext,
         header: &Header,
-    ) -> BlockProcessResult<(Hash, kaspa_smt_store::processor::SmtBuild)> {
-        use kaspa_seq_commit::hashing::mergeset_context_hash;
-        use kaspa_seq_commit::types::MergesetContext;
+    ) -> BlockProcessResult<(Hash, aero_smt_store::processor::SmtBuild)> {
+        use aero_seq_commit::hashing::mergeset_context_hash;
+        use aero_seq_commit::types::MergesetContext;
 
         let selected_parent = ctx.selected_parent();
         let parent_header = self.headers_store.get_header(selected_parent).unwrap();

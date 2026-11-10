@@ -1,6 +1,6 @@
-use crate::hasher::KaspaDiff;
-use kaspa_consensus_core::block::Block;
-use kaspa_hashes::Hash;
+use crate::hasher::AeroDiff;
+use aero_consensus_core::block::Block;
+use aero_hashes::Hash;
 use num_bigint::BigUint;
 use num_traits::Zero;
 use parking_lot::Mutex;
@@ -29,9 +29,9 @@ pub struct MiningState {
     initialized: Arc<Mutex<bool>>,
     use_big_job: Arc<Mutex<bool>>,
     connect_time: SystemTime,
-    stratum_diff: Arc<Mutex<Option<KaspaDiff>>>,
+    stratum_diff: Arc<Mutex<Option<AeroDiff>>>,
     max_jobs: u16,
-    last_header: Arc<Mutex<Option<kaspa_consensus_core::header::Header>>>, // Track previous header for change logging
+    last_header: Arc<Mutex<Option<aero_consensus_core::header::Header>>>, // Track previous header for change logging
 }
 
 impl MiningState {
@@ -126,12 +126,12 @@ impl MiningState {
     }
 
     /// Get stratum difficulty
-    pub fn stratum_diff(&self) -> Option<KaspaDiff> {
+    pub fn stratum_diff(&self) -> Option<AeroDiff> {
         self.stratum_diff.lock().clone()
     }
 
     /// Set stratum difficulty
-    pub fn set_stratum_diff(&self, diff: KaspaDiff) {
+    pub fn set_stratum_diff(&self, diff: AeroDiff) {
         *self.stratum_diff.lock() = Some(diff);
     }
 
@@ -152,12 +152,12 @@ impl MiningState {
     }
 
     /// Get last header
-    pub fn get_last_header(&self) -> Option<kaspa_consensus_core::header::Header> {
+    pub fn get_last_header(&self) -> Option<aero_consensus_core::header::Header> {
         self.last_header.lock().clone()
     }
 
     /// Set last header
-    pub fn set_last_header(&self, header: kaspa_consensus_core::header::Header) {
+    pub fn set_last_header(&self, header: aero_consensus_core::header::Header) {
         *self.last_header.lock() = Some(header);
     }
 }

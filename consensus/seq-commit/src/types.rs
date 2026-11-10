@@ -1,6 +1,6 @@
 //! Core types for sequencing commitments.
 
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 /// Lane ID — 20-byte subnetwork identifier.
 pub type LaneId = [u8; 20];

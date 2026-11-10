@@ -1,3 +1,3 @@
 // Re-exports constants from consensus core for internal crate usage
-pub use kaspa_consensus_core::config::constants::*;
-pub(crate) use kaspa_consensus_core::constants::*;
+pub use aero_consensus_core::config::constants::*;
+pub(crate) use aero_consensus_core::constants::*;

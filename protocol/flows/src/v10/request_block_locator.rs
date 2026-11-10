@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use kaspa_p2p_lib::{
+use aero_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     dequeue_with_request_id, make_response,
-    pb::{BlockLocatorMessage, kaspad_message::Payload},
+    pb::{BlockLocatorMessage, aerod_message::Payload},
 };
 
 use crate::{flow_context::FlowContext, flow_trait::Flow};

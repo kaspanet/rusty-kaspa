@@ -5,8 +5,8 @@ pub mod result;
 pub use data::{Metric, MetricGroup, MetricsData, MetricsSnapshot};
 
 use crate::result::Result;
+use aero_rpc_core::api::rpc::RpcApi;
 use futures::{FutureExt, StreamExt, pin_mut, select};
-use kaspa_rpc_core::api::rpc::RpcApi;
 use std::{
     future::Future,
     pin::Pin,

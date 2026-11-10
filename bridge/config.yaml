@@ -1,13 +1,13 @@
 # RKStratum Multi-Instance Test Configuration
 # This configuration runs 4 instances for testing the multi-instance feature
-# All instances share the same Kaspa node (kaspad_address)
+# All instances share the same Aero node (aerod_address)
 #
 # NOTE: Comments in this file will be lost if you update the configuration
 # through the web dashboard. The web UI uses serde_yaml which does not
 # preserve comments. For production, consider keeping a backup or using
 # version control.
 
-kaspad_address: "127.0.0.1:16110"
+aerod_address: "127.0.0.1:16110"
 block_wait_time: 1000
 print_stats: true
 log_to_file: true

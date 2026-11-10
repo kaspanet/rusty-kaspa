@@ -1,15 +1,15 @@
 use super::rpc_core_mock::RpcCoreMock;
 use crate::{adaptor::Adaptor, manager::Manager};
-use kaspa_core::info;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::scope::{NewBlockTemplateScope, Scope};
-use kaspa_rpc_core::api::rpc::RpcApi;
-use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
+use aero_core::info;
+use aero_grpc_client::GrpcClient;
+use aero_notify::scope::{NewBlockTemplateScope, Scope};
+use aero_rpc_core::api::rpc::RpcApi;
+use aero_utils::networking::{ContextualNetAddress, NetAddress};
 use std::sync::Arc;
 
 #[tokio::test]
 async fn test_client_server_sanity_check() {
-    kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
+    aero_core::log::try_init_logger("info, aero_grpc_core=trace, aero_grpc_server=trace, aero_grpc_client=trace");
 
     // Create and start a fake core service
     let rpc_core_service = Arc::new(RpcCoreMock::new());
@@ -139,7 +139,7 @@ async fn test_client_server_connections() {
         },
     ];
 
-    kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
+    aero_core::log::try_init_logger("info, aero_grpc_core=trace, aero_grpc_server=trace, aero_grpc_client=trace");
     for test in tests {
         test.execute().await;
     }
@@ -150,7 +150,7 @@ async fn test_client_server_connections() {
 
 #[tokio::test]
 async fn test_client_server_notifications() {
-    kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
+    aero_core::log::try_init_logger("info, aero_grpc_core=trace, aero_grpc_server=trace, aero_grpc_client=trace");
 
     // Create and start a fake core service
     let rpc_core_service = Arc::new(RpcCoreMock::new());

@@ -18,11 +18,11 @@ use crate::{
     hashing,
     subnets::{self, SubnetworkId},
 };
+use aero_hashes::Hash;
+use aero_utils::hex::ToHex;
+use aero_utils::mem_size::MemSizeEstimator;
+use aero_utils::serde_bytes_fixed_ref;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_hashes::Hash;
-use kaspa_utils::hex::ToHex;
-use kaspa_utils::mem_size::MemSizeEstimator;
-use kaspa_utils::serde_bytes_fixed_ref;
 pub use script_public_key::{
     SCRIPT_VECTOR_SIZE, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, scriptvec,
 };
@@ -39,12 +39,12 @@ use std::{
 
 /// COINBASE_TRANSACTION_INDEX is the index of the coinbase transaction in every block
 pub const COINBASE_TRANSACTION_INDEX: usize = 0;
-/// A 32-byte Kaspa transaction identifier.
-pub type TransactionId = kaspa_hashes::Hash;
+/// A 32-byte Aero transaction identifier.
+pub type TransactionId = aero_hashes::Hash;
 
 pub type TransactionIndexType = u32;
 
-/// Represents a Kaspa transaction outpoint
+/// Represents a Aero transaction outpoint
 #[derive(Eq, Default, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
@@ -124,7 +124,7 @@ impl From<ComputeCommit> for ScriptUnits {
     }
 }
 
-/// Represents a Kaspa transaction input
+/// Represents a Aero transaction input
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct TransactionInput {
     pub previous_outpoint: TransactionOutpoint,
@@ -169,7 +169,7 @@ impl std::fmt::Debug for TransactionInput {
     }
 }
 
-/// Represents a Kaspad transaction output
+/// Represents a Aerod transaction output
 #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
 pub struct TransactionOutput {
     pub value: u64,
@@ -249,7 +249,7 @@ impl BorshSerialize for TransactionMass {
     }
 }
 
-/// Represents a Kaspa transaction
+/// Represents a Aero transaction
 #[derive(Debug, Clone, PartialEq, Eq, Default, BorshSerialize, BorshDeserialize)]
 pub struct Transaction {
     pub version: u16,
@@ -1201,7 +1201,7 @@ version = 1
     // use wasm_bindgen_test::wasm_bindgen_test;
     // #[wasm_bindgen_test]
     // pub fn test_wasm_serde_spk_constructor() {
-    //     let str = "kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j";
+    //     let str = "aero:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjshrc8ycg";
     //     let a = Address::constructor(str);
     //     let value = to_value(&a).unwrap();
     //
@@ -1212,14 +1212,14 @@ version = 1
     //
     // #[wasm_bindgen_test]
     // pub fn test_wasm_js_serde_spk_object() {
-    //     let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+    //     let expected = Address::constructor("aero:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjshrc8ycg");
     //
     //     use web_sys::console;
     //     console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
     //
     //     let obj = Object::new();
     //     obj.set("version", &JsValue::from_str("PubKey")).unwrap();
-    //     obj.set("prefix", &JsValue::from_str("kaspa")).unwrap();
+    //     obj.set("prefix", &JsValue::from_str("aero")).unwrap();
     //     obj.set("payload", &JsValue::from_str("qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j")).unwrap();
     //
     //     assert_eq!(JsValue::from_str("object"), obj.js_typeof());
@@ -1233,7 +1233,7 @@ version = 1
     // pub fn test_wasm_serde_spk_object() {
     //     use wasm_bindgen::convert::IntoWasmAbi;
     //
-    //     let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
+    //     let expected = Address::constructor("aero:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjshrc8ycg");
     //     let wasm_js_value: JsValue = expected.clone().into_abi().into();
     //
     //     // use web_sys::console;

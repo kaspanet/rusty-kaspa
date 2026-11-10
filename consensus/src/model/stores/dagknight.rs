@@ -1,14 +1,14 @@
 use std::{cell::RefCell, collections::HashMap, fmt, sync::Arc};
 
-use kaspa_consensus_core::KType;
-use kaspa_database::{
+use aero_consensus_core::KType;
+use aero_database::{
     prelude::{DbKey, StoreError},
     registry::DatabaseStorePrefixes,
 };
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 use crate::model::stores::ghostdag::GhostdagData;
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB};
+use aero_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB};
 use rocksdb::WriteBatch;
 
 pub struct MemoryDagknightStore {
@@ -28,15 +28,15 @@ pub struct DagknightKey {
     pub k: KType,
     pub free_search: bool,
     // Precomputed bytes in order: root_hash || k(u16 BE) || pov_hash || free_search
-    bytes: [u8; kaspa_hashes::HASH_SIZE * 2 + 3],
+    bytes: [u8; aero_hashes::HASH_SIZE * 2 + 3],
 }
 
 impl DagknightKey {
     pub fn new(root_hash: Hash, pov_hash: Hash, k: KType, free_search: bool) -> Self {
         // Layout must match DB-level expectations where `k` is encoded as a u16
         // (two bytes). Allocate enough space: root_hash + k(2) + pov_hash + free_search(1).
-        let mut bytes = [0u8; kaspa_hashes::HASH_SIZE * 2 + 3];
-        let hash_size = kaspa_hashes::HASH_SIZE;
+        let mut bytes = [0u8; aero_hashes::HASH_SIZE * 2 + 3];
+        let hash_size = aero_hashes::HASH_SIZE;
         bytes[..hash_size].copy_from_slice(root_hash.as_ref());
 
         // Encode k as big-endian u16 to match other code paths that construct
@@ -194,20 +194,20 @@ impl DagknightStore for DbDagknightStore {
     fn delete_rooted_range(&self, batch: &mut WriteBatch, hash: Hash) -> Result<u32, StoreError> {
         // delete records that have a prefix rooted at this DK store key + hash
         let root_bytes_prefix = {
-            let mut bytes = Vec::with_capacity(kaspa_hashes::HASH_SIZE + 1);
+            let mut bytes = Vec::with_capacity(aero_hashes::HASH_SIZE + 1);
             bytes.extend(DatabaseStorePrefixes::DagKnight.as_ref());
             bytes.extend_from_slice(hash.as_ref());
             bytes
         };
         let start_conflict_genesis_bytes = {
-            let mut bytes = Vec::with_capacity(kaspa_hashes::HASH_SIZE + 2);
+            let mut bytes = Vec::with_capacity(aero_hashes::HASH_SIZE + 2);
             bytes.extend_from_slice(&root_bytes_prefix);
             bytes.push(0); // k = 0 u16 first byte
             bytes.push(0); // k = 0 u16 second byte
             bytes
         };
         let end_conflict_genesis_bytes = {
-            let mut bytes = Vec::with_capacity(kaspa_hashes::HASH_SIZE + 2);
+            let mut bytes = Vec::with_capacity(aero_hashes::HASH_SIZE + 2);
             bytes.extend_from_slice(&root_bytes_prefix);
             // TODO[DK]: This range check misses entries where k = u16::MAX. However, we don't expect k to reach that value anyway
             // in practice so we don't expect records to exist here as well. In the DK implementation, k may be clamped to max out
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn test_dagknight_key_encodes_free_search_flag() {
-        use kaspa_hashes::Hash;
+        use aero_hashes::Hash;
 
         let root: Hash = 0xAA_u64.into();
         let pov: Hash = 0xBB_u64.into();
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn test_dagknight_key_encodes_k() {
         use crate::model::stores::dagknight::DagknightKey;
-        use kaspa_hashes::Hash;
+        use aero_hashes::Hash;
 
         let root: Hash = 0xAA_u64.into();
         let pov: Hash = 0xBB_u64.into();
@@ -277,7 +277,7 @@ mod tests {
         assert_ne!(key1.as_ref(), key2.as_ref(), "DagknightKey DB bytes must encode k uniquely");
 
         // Also assert that the differing two-byte `k` slot differs (sanity check on layout)
-        let hash_size = kaspa_hashes::HASH_SIZE;
+        let hash_size = aero_hashes::HASH_SIZE;
         // k is encoded as two bytes after root_hash
         assert_ne!(
             &key1.as_ref()[hash_size..hash_size + 2],
@@ -290,13 +290,13 @@ mod tests {
     fn test_db_dagknight_store_isolates_by_k() {
         use crate::model::stores::dagknight::DbDagknightStore;
         use crate::model::stores::ghostdag::GhostdagData;
-        use kaspa_database::prelude::CachePolicy;
-        use kaspa_database::prelude::ConnBuilder;
-        use kaspa_hashes::Hash;
+        use aero_database::prelude::CachePolicy;
+        use aero_database::prelude::ConnBuilder;
+        use aero_hashes::Hash;
         use std::sync::Arc;
 
         // Create a temporary RocksDB
-        let (_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_lifetime, db) = aero_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
 
         let store = DbDagknightStore::new(db.clone(), CachePolicy::Count(16));
 

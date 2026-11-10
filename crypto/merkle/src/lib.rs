@@ -5,8 +5,8 @@ extern crate core;
 
 pub mod streaming;
 
+use aero_hashes::{Hash, Hasher, MerkleBranchHash, ZERO_HASH};
 use alloc::vec;
-use kaspa_hashes::{Hash, Hasher, MerkleBranchHash, ZERO_HASH};
 
 pub use streaming::StreamingMerkleBuilder;
 
@@ -59,9 +59,9 @@ fn cold_path_empty() -> Hash {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aero_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
     use alloc::vec::Vec;
     use core::iter;
-    use kaspa_hashes::{HasherBase, SeqCommitMerkleBranch, TransactionHash};
     fn seq_comm_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
         calc_merkle_root_with_hasher::<SeqCommitMerkleBranch>(hashes)
     }

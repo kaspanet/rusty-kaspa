@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
+use aero_consensus_core::BlockHashSet;
+use aero_consensus_core::BlockHasher;
+use aero_database::prelude::CachedDbSetItem;
+use aero_database::prelude::DB;
+use aero_database::prelude::DbWriter;
+use aero_database::prelude::ReadLock;
+use aero_database::prelude::StoreResult;
+use aero_database::prelude::StoreResultExt;
+use aero_database::prelude::{BatchDbWriter, DirectDbWriter};
+use aero_database::registry::DatabaseStorePrefixes;
+use aero_hashes::Hash;
 use itertools::Itertools;
-use kaspa_consensus_core::BlockHashSet;
-use kaspa_consensus_core::BlockHasher;
-use kaspa_database::prelude::CachedDbSetItem;
-use kaspa_database::prelude::DB;
-use kaspa_database::prelude::DbWriter;
-use kaspa_database::prelude::ReadLock;
-use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_database::prelude::{BatchDbWriter, DirectDbWriter};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 
 /// Reader API for `TipsStore`.
@@ -106,7 +106,7 @@ impl TipsStore for DbTipsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_database::{create_temp_db, prelude::ConnBuilder};
+    use aero_database::{create_temp_db, prelude::ConnBuilder};
 
     #[test]
     fn test_update_tips() {

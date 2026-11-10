@@ -46,7 +46,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 /// Trait bound for entity key types used in the versioned cache.
 pub trait EntityKey: Ord + Copy + Debug {
@@ -239,7 +239,7 @@ impl<E: EntityKey, V: Copy> VersionedCache<E, V> {
 }
 
 use crate::values::LaneTipHash;
-use kaspa_smt::store::Node;
+use aero_smt::store::Node;
 
 pub type BranchVersionCache = VersionedCache<BranchEntity, Option<Node>>;
 pub type LaneVersionCache = VersionedCache<Hash, LaneTipHash>;

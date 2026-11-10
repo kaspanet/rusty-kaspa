@@ -1,9 +1,9 @@
 use std::{cell::Cell, collections::HashMap, sync::Arc};
 
+use aero_consensus_core::{BlockHashMap, BlockHashSet, KType};
+use aero_core::debug;
+use aero_hashes::Hash;
 use itertools::Itertools;
-use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
-use kaspa_core::debug;
-use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
 #[cfg(feature = "baseline-debugging")]
@@ -639,10 +639,10 @@ mod tests {
     use std::str::FromStr;
     use std::{cell::RefCell, fs::File};
 
-    use kaspa_consensus_core::HashMapCustomHasher;
-    use kaspa_consensus_core::blockhash::ORIGIN;
-    use kaspa_consensus_core::header::Header;
-    use kaspa_math::Uint192;
+    use aero_consensus_core::HashMapCustomHasher;
+    use aero_consensus_core::blockhash::ORIGIN;
+    use aero_consensus_core::header::Header;
+    use aero_math::Uint192;
     use parking_lot::lock_api::RwLock;
 
     use super::*;

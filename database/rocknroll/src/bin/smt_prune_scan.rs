@@ -3,19 +3,19 @@ use std::{
     process::ExitCode,
 };
 
-use clap::Parser;
-use kaspa_consensus::model::stores::{
+use aero_consensus::model::stores::{
     headers::{DbHeadersStore, HeaderStoreReader},
     pruning::{DbPruningStore, PruningStoreReader},
 };
-use kaspa_consensus::{config::ConfigBuilder, params::Params};
-use kaspa_database::prelude::CachePolicy;
-use kaspa_rocknroll::{
+use aero_consensus::{config::ConfigBuilder, params::Params};
+use aero_database::prelude::CachePolicy;
+use aero_rocknroll::{
     Result,
     args::DbSourceArgs,
     db::{ResolvedConsensusDb, resolve_consensus_db},
 };
-use kaspa_smt_store::processor::{SmtStores, StaleSmtEntriesCount};
+use aero_smt_store::processor::{SmtStores, StaleSmtEntriesCount};
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(about = "Scan a consensus DB for stale SMT pruning entries")]

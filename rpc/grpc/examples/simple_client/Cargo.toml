@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-grpc-simple-client-example"
-description = "Kaspa GRPC simple client example"
+name = "aero-grpc-simple-client-example"
+description = "Aero GRPC simple client example"
 publish = false
 rust-version.workspace = true
 version.workspace = true
@@ -12,8 +12,8 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-grpc-client.workspace = true
+aero-rpc-core.workspace = true
+aero-grpc-client.workspace = true
 tokio.workspace = true
 
 

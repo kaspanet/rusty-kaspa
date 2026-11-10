@@ -9,7 +9,7 @@ impl Reload {
         // #[cfg(target_arch = "wasm32")]
         // workflow_dom::utils::window().location().reload().ok();
 
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
 
         let guard = ctx.wallet().guard();
         let guard = guard.lock().await;

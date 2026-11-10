@@ -1,10 +1,10 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use kaspa_consensus_core::hashing::tx::{id_v0, id_v1};
-use kaspa_consensus_core::{
+use aero_consensus_core::hashing::tx::{id_v0, id_v1};
+use aero_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use smallvec::SmallVec;
 
 fn create_test_transaction(version: u16) -> Transaction {
@@ -34,12 +34,12 @@ fn create_test_transaction(version: u16) -> Transaction {
 
     let outputs = vec![
         TransactionOutput {
-            value: 100_000_000, // 1 KAS
+            value: 100_000_000, // 1 ARO
             script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
             covenant: None,
         },
         TransactionOutput {
-            value: 50_000_000, // 0.5 KAS (change)
+            value: 50_000_000, // 0.5 ARO (change)
             script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
             covenant: None,
         },

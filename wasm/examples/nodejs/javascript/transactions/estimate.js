@@ -6,9 +6,9 @@ const {
     PrivateKey,
     Generator,
     RpcClient,
-    kaspaToSompi,
+    aeroToSompi,
     initConsolePanicHook
-} = require('../../../../nodejs/kaspa');
+} = require('../../../../nodejs/aero');
 
 initConsolePanicHook();
 
@@ -22,7 +22,7 @@ const { encoding, networkId } = require("../utils").parseArgs();
     const privateKey = new PrivateKey('b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef');
 
     const sourceAddress = privateKey.toKeypair().toAddress(networkId);
-    console.info(`Full kaspa address: ${sourceAddress}`);
+    console.info(`Full aero address: ${sourceAddress}`);
 
     const rpc = new RpcClient({
         url : "127.0.0.1",
@@ -63,7 +63,7 @@ const { encoding, networkId } = require("../utils").parseArgs();
         // is reached. The remaining amount will be sent 
         // to the change address.
         //
-        // If the requested amount is greater than the Kaspa
+        // If the requested amount is greater than the Aero
         // transaction mass, the Generator will create multiple
         // transactions where each transaction will forward
         // UTXOs to the change address, until the requested
@@ -71,8 +71,8 @@ const { encoding, networkId } = require("../utils").parseArgs();
         // transaction according to the supplied outputs.
         let generator = new Generator({
             entries,
-            outputs: [{ address : sourceAddress, amount : kaspaToSompi(0.2)}],
-            priorityFee: kaspaToSompi(0.0001),
+            outputs: [{ address : sourceAddress, amount : aeroToSompi(0.2)}],
+            priorityFee: aeroToSompi(0.0001),
             changeAddress: sourceAddress,
         });
 

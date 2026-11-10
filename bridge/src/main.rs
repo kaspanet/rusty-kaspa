@@ -1,22 +1,20 @@
+use aero_alloc::init_allocator_with_default_settings;
+use aero_stratum_bridge::log_colors::LogColors;
+use aero_stratum_bridge::{AeroApi, StratumServerBridgeConfig as StratumBridgeConfig, listen_and_serve_with_shutdown, prom};
 use clap::Parser;
 use futures_util::future::try_join_all;
-use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_stratum_bridge::log_colors::LogColors;
-use kaspa_stratum_bridge::{KaspaApi, StratumServerBridgeConfig as StratumBridgeConfig, listen_and_serve_with_shutdown, prom};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
-#[cfg(feature = "rkstratum_cpu_miner")]
-use std::time::Duration;
 use tokio::sync::watch;
 use tracing_subscriber::EnvFilter;
 
 #[cfg(windows)]
 use windows_sys::Win32::System::Console::{CTRL_C_EVENT, SetConsoleCtrlHandler};
 
-use kaspad_lib::args as kaspad_args;
+use aerod_lib::args as aerod_args;
 
 mod app_dirs;
 mod cli;
@@ -27,9 +25,9 @@ mod tracing_setup;
 #[cfg(test)]
 mod tests;
 
+use aero_stratum_bridge::BridgeConfig;
 use cli::{Cli, NodeMode, apply_cli_overrides};
 use inprocess_node::InProcessNode;
-use kaspa_stratum_bridge::BridgeConfig;
 
 static CONFIG_LOADED_FROM: OnceLock<Option<PathBuf>> = OnceLock::new();
 static REQUESTED_CONFIG_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -151,7 +149,7 @@ fn log_bridge_configuration(config: &BridgeConfig) {
     let instance_count = config.instances.len();
     tracing::info!("----------------------------------");
     tracing::info!("initializing bridge ({} instance{})", instance_count, if instance_count > 1 { "s" } else { "" });
-    tracing::info!("\tkaspad:          {} (shared)", config.global.kaspad_address);
+    tracing::info!("\taerod:          {} (shared)", config.global.aerod_address);
     tracing::info!("\tblock wait:      {:?}", config.global.block_wait_time);
     tracing::info!("\tprint stats:     {}", config.global.print_stats);
     tracing::info!("\tvar diff:        {}", config.global.var_diff);
@@ -200,7 +198,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Provide web/prom status endpoints with the *actual* effective config (after CLI overrides),
     // instead of having the server re-read `config.yaml` from disk.
     // This is best-effort and does not affect any mining logic.
-    prom::set_web_status_config(config.global.kaspad_address.clone(), config.instances.len());
+    prom::set_web_status_config(config.global.aerod_address.clone(), config.instances.len());
     // Point the web config endpoint at the actual config file path the bridge is using.
     let loaded_config_path = CONFIG_LOADED_FROM.get().and_then(|p| p.as_ref()).cloned().unwrap_or_else(|| requested_config.clone());
     prom::set_web_config_path(loaded_config_path);
@@ -212,9 +210,9 @@ async fn main() -> Result<(), anyhow::Error> {
         // Default: warn level, but allow info from the bridge. In inprocess mode we also
         // enable info-level logs from the embedded node (which uses the `log` crate).
         if node_mode == NodeMode::Inprocess {
-            EnvFilter::new("warn,kaspa_stratum_bridge=info,kaspa=info,kaspad=info,kaspad_lib=info,log=info")
+            EnvFilter::new("warn,aero_stratum_bridge=info,aero=info,aerod=info,aerod_lib=info,log=info")
         } else {
-            EnvFilter::new("warn,kaspa_stratum_bridge=info")
+            EnvFilter::new("warn,aero_stratum_bridge=info")
         }
     });
 
@@ -229,18 +227,18 @@ async fn main() -> Result<(), anyhow::Error> {
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // Start in-process node after tracing is initialized so bridge logs (including the stats table)
-    // are not filtered out by a tracing subscriber installed by kaspad.
+    // are not filtered out by a tracing subscriber installed by aerod.
     let mut inprocess_node: Option<InProcessNode> = None;
     if node_mode == NodeMode::Inprocess {
-        let mut node_args: Vec<String> = cli.kaspad_args;
+        let mut node_args: Vec<String> = cli.aerod_args;
 
         if cli.testnet && !node_args.iter().any(|arg| arg == "--testnet") {
             node_args.push("--testnet".to_string());
         }
 
-        // Add appdir if not provided in kaspad_args
+        // Add appdir if not provided in aerod_args
         if !node_args.iter().any(|arg| arg.starts_with("--appdir")) {
-            let default_appdir = app_dirs::default_inprocess_kaspad_appdir();
+            let default_appdir = app_dirs::default_inprocess_aerod_appdir();
             let appdir_to_use = cli.appdir.as_ref().cloned().unwrap_or(default_appdir);
 
             // Create the directory if it doesn't exist
@@ -249,13 +247,13 @@ async fn main() -> Result<(), anyhow::Error> {
             node_args.push("--appdir".to_string());
             node_args.push(appdir_to_use.to_string_lossy().to_string());
         } else {
-            assert!(cli.appdir.is_none(), "appdir should not be specified both in bridge args and kaspad args");
+            assert!(cli.appdir.is_none(), "appdir should not be specified both in bridge args and aerod args");
         }
 
         let mut argv: Vec<OsString> = Vec::with_capacity(node_args.len() + 1);
-        argv.push(OsString::from("kaspad"));
+        argv.push(OsString::from("aerod"));
         argv.extend(node_args.iter().map(OsString::from));
-        let args = kaspad_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
+        let args = aerod_args::Args::parse(argv).map_err(|e| anyhow::anyhow!("{}", e))?;
         inprocess_node = Some(InProcessNode::start_from_args(args)?);
     }
 
@@ -279,11 +277,10 @@ async fn main() -> Result<(), anyhow::Error> {
         health_check::spawn_health_check_server(health_port);
     }
 
-    // Create shared kaspa API client (all instances use the same node)
-    let kaspa_api =
-        KaspaApi::new(config.global.kaspad_address.clone(), config.global.coinbase_tag_suffix.clone(), shutdown_rx.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to create Kaspa API client: {}", e))?;
+    // Create shared aero API client (all instances use the same node)
+    let aero_api = AeroApi::new(config.global.aerod_address.clone(), config.global.coinbase_tag_suffix.clone(), shutdown_rx.clone())
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create Aero API client: {}", e))?;
 
     if !config.global.web_dashboard_port.is_empty() {
         let web_dashboard_port = config.global.web_dashboard_port.clone();
@@ -295,100 +292,18 @@ async fn main() -> Result<(), anyhow::Error> {
     }
 
     tracing::info!("Waiting for node to fully sync before starting stratum listeners");
-    kaspa_api
+    aero_api
         .wait_for_sync_with_shutdown(shutdown_rx.clone())
         .await
         .map_err(|e| anyhow::anyhow!("Failed while waiting for node sync: {}", e))?;
     tracing::info!("Node is synced, starting stratum listeners");
-
-    // Optional: internal CPU miner (feature-gated)
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    #[cfg(feature = "rkstratum_cpu_miner")]
-    {
-        if cli.internal_cpu_miner {
-            let mining_address = cli
-                .internal_cpu_miner_address
-                .clone()
-                .ok_or_else(|| anyhow::anyhow!("--internal-cpu-miner requires --internal-cpu-miner-address <kaspa:...>"))?;
-
-            let threads = cli.internal_cpu_miner_threads.unwrap_or(1);
-            let throttle = cli.internal_cpu_miner_throttle_ms.map(Duration::from_millis);
-            let template_poll_interval = Duration::from_millis(cli.internal_cpu_miner_template_poll_ms.unwrap_or(250));
-
-            let cfg = kaspa_stratum_bridge::InternalCpuMinerConfig {
-                enabled: true,
-                mining_address,
-                threads,
-                throttle,
-                template_poll_interval,
-            };
-
-            tracing::info!(
-                "[InternalMiner] enabled: threads={}, throttle_ms={:?}, template_poll_ms={}",
-                cfg.threads,
-                cli.internal_cpu_miner_throttle_ms,
-                cfg.template_poll_interval.as_millis()
-            );
-
-            kaspa_stratum_bridge::prom::set_internal_cpu_mining_address(cfg.mining_address.clone());
-
-            let metrics = kaspa_stratum_bridge::spawn_internal_cpu_miner(Arc::clone(&kaspa_api), cfg, shutdown_rx.clone())?;
-            kaspa_stratum_bridge::set_rkstratum_cpu_miner_metrics(metrics);
-
-            // Periodically export internal miner stats to Prometheus (if a /metrics server is running).
-            // This is best-effort and does not affect mining.
-            {
-                let mut prom_shutdown_rx = shutdown_rx.clone();
-                let internal_metrics = kaspa_stratum_bridge::RKSTRATUM_CPU_MINER_METRICS.lock().as_ref().cloned();
-
-                tokio::spawn(async move {
-                    let Some(internal_metrics) = internal_metrics else { return };
-
-                    let mut last_hashes: u64 = 0;
-                    let mut last_ts = tokio::time::Instant::now();
-                    let mut interval = tokio::time::interval(Duration::from_secs(5));
-                    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-                    loop {
-                        tokio::select! {
-                            _ = prom_shutdown_rx.changed() => {
-                                if *prom_shutdown_rx.borrow() { break; }
-                            }
-                            _ = interval.tick() => {}
-                        }
-
-                        let now = tokio::time::Instant::now();
-                        let dt = (now - last_ts).as_secs_f64().max(0.001);
-                        last_ts = now;
-
-                        let hashes_tried = internal_metrics.hashes_tried.load(std::sync::atomic::Ordering::Relaxed);
-                        let blocks_submitted = internal_metrics.blocks_submitted.load(std::sync::atomic::Ordering::Relaxed);
-                        let blocks_accepted = internal_metrics.blocks_accepted.load(std::sync::atomic::Ordering::Relaxed);
-
-                        let dh = hashes_tried.saturating_sub(last_hashes);
-                        last_hashes = hashes_tried;
-
-                        // Hashrate as GH/s
-                        let hashrate_ghs = (dh as f64 / dt) / 1e9;
-
-                        kaspa_stratum_bridge::prom::record_internal_cpu_miner_snapshot(
-                            hashes_tried,
-                            blocks_submitted,
-                            blocks_accepted,
-                            hashrate_ghs,
-                        );
-                    }
-                });
-            }
-        }
-    }
 
     let mut instance_handles = Vec::new();
     for (idx, instance_config) in config.instances.iter().enumerate() {
         let instance_num = idx + 1;
         let instance = instance_config.clone();
         let global = config.global.clone();
-        let kaspa_api_clone = Arc::clone(&kaspa_api);
+        let aero_api_clone = Arc::clone(&aero_api);
         let instance_shutdown_rx = shutdown_rx.clone();
 
         let is_first_instance = idx == 0;
@@ -415,7 +330,7 @@ async fn main() -> Result<(), anyhow::Error> {
             let bridge_config = StratumBridgeConfig {
                 instance_id: instance_id_str.clone(),
                 stratum_port: instance.stratum_port.clone(),
-                kaspad_address: global.kaspad_address.clone(),
+                aerod_address: global.aerod_address.clone(),
                 prom_port: String::new(),
                 print_stats: global.print_stats,
                 log_to_file: instance.log_to_file.unwrap_or(global.log_to_file),
@@ -432,8 +347,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
             listen_and_serve_with_shutdown(
                 bridge_config,
-                Arc::clone(&kaspa_api_clone),
-                if is_first_instance { Some(kaspa_api_clone) } else { None },
+                Arc::clone(&aero_api_clone),
+                if is_first_instance { Some(aero_api_clone) } else { None },
                 instance_shutdown_rx,
             )
             .await

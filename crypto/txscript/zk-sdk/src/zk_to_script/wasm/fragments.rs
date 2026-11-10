@@ -4,9 +4,9 @@ use crate::zk_to_script::{
     append_r0_succinct_verifier, append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof,
     prepare_r0_succinct_witness, push_r0_groth16_proof, push_r0_succinct_witness,
 };
-use kaspa_txscript::error::Error;
-use kaspa_txscript::result::Result;
-use kaspa_wasm_core::types::{BinaryT, HexString};
+use aero_txscript::error::Error;
+use aero_txscript::result::Result;
+use aero_wasm_core::types::{BinaryT, HexString};
 use risc0_zkvm::{Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 use wasm_bindgen::prelude::wasm_bindgen;
 use workflow_wasm::prelude::*;
@@ -34,7 +34,7 @@ impl ZkScriptBuilder {
     }
 
     /// Converts an R0 Groth16 receipt into the compressed proof bytes expected
-    /// by the Kaspa Groth16 verifier and pushes them. Typically called while
+    /// by the Aero Groth16 verifier and pushes them. Typically called while
     /// building a signature script; the script that invokes
     /// `appendR0Groth16Verifier` is responsible for placing `journalHash` under
     /// this proof before the verifier runs (so it sees

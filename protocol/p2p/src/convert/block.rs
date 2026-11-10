@@ -1,6 +1,6 @@
 use super::error::ConversionError;
 use crate::pb as protowire;
-use kaspa_consensus_core::{block::Block, tx::Transaction};
+use aero_consensus_core::{block::Block, tx::Transaction};
 type BlockBody = Vec<Transaction>;
 // ----------------------------------------------------------------------------
 // consensus_core to protowire

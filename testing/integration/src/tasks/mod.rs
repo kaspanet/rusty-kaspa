@@ -1,8 +1,8 @@
 use self::stop::StopTask;
+use aero_utils::triggers::SingleTrigger;
 use async_trait::async_trait;
 use futures_util::future::join_all;
 use itertools::Itertools;
-use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 

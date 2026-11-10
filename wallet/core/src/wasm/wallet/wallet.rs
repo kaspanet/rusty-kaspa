@@ -3,10 +3,10 @@ use crate::storage::WalletDescriptor;
 use crate::storage::local::interface::LocalStore;
 use crate::wallet as native;
 use crate::wasm::notify::{WalletEventTarget, WalletNotificationCallback, WalletNotificationTypeOrCallback};
-use kaspa_consensus_core::network::NetworkIdT;
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
-use kaspa_wasm_core::events::{Sink, get_event_targets};
-use kaspa_wrpc_wasm::{IConnectOptions, Resolver, RpcClient, RpcConfig, WrpcEncoding};
+use aero_consensus_core::network::NetworkIdT;
+use aero_wallet_macros::declare_typescript_wasm_interface as declare;
+use aero_wasm_core::events::{Sink, get_event_targets};
+use aero_wrpc_wasm::{IConnectOptions, Resolver, RpcClient, RpcConfig, WrpcEncoding};
 
 declare! {
     IWalletConfig,
@@ -88,7 +88,7 @@ impl Inner {
 /// between the integrated Wallet subsystem providing a high-level interface
 /// for wallet key and account management.
 ///
-/// The Rusty Kaspa is developed in Rust, and the Wallet class is a Rust implementation
+/// The Rusty Aero is developed in Rust, and the Wallet class is a Rust implementation
 /// exposed to the JavaScript/TypeScript environment using the WebAssembly (WASM32) interface.
 /// As such, the Wallet implementation can be powered up using native Rust or built
 /// as a WebAssembly module and used in the browser or Node.js environment.

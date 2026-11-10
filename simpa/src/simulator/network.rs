@@ -1,25 +1,25 @@
+use aero_consensus_core::mining_rules::MiningRules;
+use aero_consensus_notify::root::ConsensusNotificationRoot;
+use aero_core::time::unix_now;
 use async_channel::unbounded;
-use kaspa_consensus_core::mining_rules::MiningRules;
-use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::time::unix_now;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use super::miner::{LaneProducer, Miner, MinerOptions, NativeLaneProducer};
 
-use kaspa_consensus::config::Config;
-use kaspa_consensus::consensus::Consensus;
-use kaspa_consensus_core::block::Block;
-use kaspa_database::prelude::ConnBuilder;
-use kaspa_database::utils::DbLifetime;
-use kaspa_database::{create_permanent_db, create_temp_db};
-use kaspa_utils::fd_budget;
-use kaspa_utils::sim::Simulation;
+use aero_consensus::config::Config;
+use aero_consensus::consensus::Consensus;
+use aero_consensus_core::block::Block;
+use aero_database::prelude::ConnBuilder;
+use aero_database::utils::DbLifetime;
+use aero_database::{create_permanent_db, create_temp_db};
+use aero_utils::fd_budget;
+use aero_utils::sim::Simulation;
 use rand::{RngCore, SeedableRng, rngs::StdRng};
 
 type ConsensusWrapper = (Arc<Consensus>, Vec<JoinHandle<()>>, DbLifetime);
 
-pub struct KaspaNetworkSimulator {
+pub struct AeroNetworkSimulator {
     // Internal simulation env
     pub(super) simulation: Simulation<Block>,
 
@@ -33,7 +33,7 @@ pub struct KaspaNetworkSimulator {
     seed: Option<u64>,          // Optional deterministic simulation seed
 }
 
-impl KaspaNetworkSimulator {
+impl AeroNetworkSimulator {
     pub fn new(delay: f64, bps: f64, target_blocks: Option<u64>, config: Arc<Config>, output_dir: Option<String>) -> Self {
         Self::new_with_seed(delay, bps, target_blocks, config, output_dir, None)
     }

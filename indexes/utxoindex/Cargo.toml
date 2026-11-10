@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-utxoindex"
-description = "Kaspa UTXO index"
+name = "aero-utxoindex"
+description = "Aero UTXO index"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -11,13 +11,13 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes.workspace = true
-kaspa-index-core.workspace = true
-kaspa-utils = { workspace = true, features = ["hashmap"] }
+aero-consensus-core.workspace = true
+aero-consensusmanager.workspace = true
+aero-core.workspace = true
+aero-database.workspace = true
+aero-hashes.workspace = true
+aero-index-core.workspace = true
+aero-utils = { workspace = true, features = ["hashmap"] }
 log.workspace = true
 parking_lot.workspace = true
 rocksdb.workspace = true
@@ -25,7 +25,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-kaspa-consensus.workspace = true
+aero-consensus.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 
 [lints]

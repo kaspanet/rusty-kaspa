@@ -8,7 +8,12 @@ use workflow_core::task::dispatch;
 use workflow_dom::{clipboard, link};
 use workflow_wasm::jserror::*;
 
-pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
+/// Base URL of the block explorer, fixed at build time via `AERO_EXPLORER_URL` (no explorer links are opened if unset).
+fn explorer_url(path: &str) -> Option<String> {
+    option_env!("AERO_EXPLORER_URL").map(|base| format!("{}/{path}", base.trim_end_matches('/')))
+}
+
+pub fn register_link_matchers(cli: &Arc<AeroCli>) -> Result<()> {
     if !is_wasm() {
         return Ok(());
     }
@@ -25,20 +30,19 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
         })),
     )?;
 
-    // addresses (open,copy) https://explorer.kaspa.org/addresses/
+    // addresses (open,copy) {explorer}/addresses/
     let cli_ = cli.clone();
     cli.term().register_link_matcher(
-        &js_sys::RegExp::new(r"(kaspa|kaspatest):\S+", "i"),
+        &js_sys::RegExp::new(r"(aero|aerotest):\S+", "i"),
         Arc::new(Box::new(move |modifiers, uri| {
             if modifiers.ctrl || modifiers.meta {
-                if uri.starts_with("kaspatest") {
+                if uri.starts_with("aerotest") {
                     cli_.term().writeln("testnet addresses can not be currently looked up with the block explorer");
                 } else {
-                    let url = format!("https://explorer.kaspa.org/addresses/{uri}");
-                    if is_nw() {
-                        nw_sys::shell::open_external(&url);
-                    } else {
-                        link::open(&url);
+                    match explorer_url(&format!("addresses/{uri}")) {
+                        Some(url) if is_nw() => nw_sys::shell::open_external(&url),
+                        Some(url) => link::open(&url),
+                        None => cli_.term().writeln("no block explorer configured (set AERO_EXPLORER_URL at build time)"),
                     }
                 }
             } else {
@@ -47,7 +51,7 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
         })),
     )?;
 
-    // blocks (open,copy) https://explorer.kaspa.org/blocks/
+    // blocks (open,copy) {explorer}/blocks/
     let cli_ = cli.clone();
     cli.term().register_link_matcher(
         &js_sys::RegExp::new(r"(block|pool):?\s+[0-9a-fA-F]{64}", "i"),
@@ -56,7 +60,9 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
             let uri = re.replace(text, "");
 
             if modifiers.ctrl || modifiers.meta {
-                nw_sys::shell::open_external(&format!("https://explorer.kaspa.org/blocks/{uri}"));
+                if let Some(url) = explorer_url(&format!("blocks/{uri}")) {
+                    nw_sys::shell::open_external(&url);
+                }
             } else {
                 write_to_clipboard(&cli_, uri.to_string().as_str());
             }
@@ -72,7 +78,9 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
             let uri = re.replace(text, "");
 
             if modifiers.ctrl || modifiers.meta {
-                nw_sys::shell::open_external(&format!("https://explorer.kaspa.org/txs/{uri}"));
+                if let Some(url) = explorer_url(&format!("txs/{uri}")) {
+                    nw_sys::shell::open_external(&url);
+                }
             } else {
                 write_to_clipboard(&cli_, uri.to_string().as_str());
             }
@@ -93,7 +101,7 @@ pub fn register_link_matchers(cli: &Arc<KaspaCli>) -> Result<()> {
     Ok(())
 }
 
-fn write_to_clipboard(cli: &Arc<KaspaCli>, text: &str) {
+fn write_to_clipboard(cli: &Arc<AeroCli>, text: &str) {
     if is_nw() {
         let clipboard = nw_sys::clipboard::get();
         clipboard.set(text);

@@ -1,4 +1,4 @@
-use kaspa_consensus_core::errors::{block::RuleError, coinbase::CoinbaseError};
+use aero_consensus_core::errors::{block::RuleError, coinbase::CoinbaseError};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]

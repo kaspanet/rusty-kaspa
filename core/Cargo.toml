@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-core"
-description = "Kaspa core"
+name = "aero-core"
+description = "Aero core"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true

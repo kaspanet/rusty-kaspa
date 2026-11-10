@@ -1,8 +1,8 @@
 use crate::{EngineFlags, error::Error, result::Result, script_builder as native, standard};
-use kaspa_consensus_core::{mass::ScriptUnits, tx::ScriptPublicKey};
-use kaspa_utils::hex::ToHex;
-use kaspa_wasm_core::hex::{HexViewConfig, HexViewConfigT};
-use kaspa_wasm_core::types::{BinaryT, HexString};
+use aero_consensus_core::{mass::ScriptUnits, tx::ScriptPublicKey};
+use aero_utils::hex::ToHex;
+use aero_wasm_core::hex::{HexViewConfig, HexViewConfigT};
+use aero_wasm_core::types::{BinaryT, HexString};
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -251,8 +251,8 @@ impl ScriptBuilder {
 mod tests {
     use super::{ScriptBuilder, ScriptBuilderOptions};
     use crate::wasm::Opcodes;
+    use aero_wasm_core::types::BinaryT;
     use js_sys::{Object, Reflect, Uint8Array};
-    use kaspa_wasm_core::types::BinaryT;
     use wasm_bindgen::{JsCast, JsValue};
     use wasm_bindgen_test::wasm_bindgen_test;
 

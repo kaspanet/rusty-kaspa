@@ -1,8 +1,8 @@
 use crate::imports::*;
 use crate::message::*;
-use kaspa_wallet_keys::privatekey::PrivateKey;
-use kaspa_wallet_keys::publickey::PublicKey;
-use kaspa_wasm_core::types::HexString;
+use aero_wallet_keys::privatekey::PrivateKey;
+use aero_wallet_keys::publickey::PublicKey;
+use aero_wasm_core::types::HexString;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_MESSAGE_TYPES: &'static str = r#"

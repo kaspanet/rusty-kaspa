@@ -1,6 +1,6 @@
+use aero_core::{debug, trace};
 use async_trait::async_trait;
 use core::fmt::Debug;
-use kaspa_core::{debug, trace};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},

@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-pow"
-description = "Kaspa proof-of-work"
+name = "aero-pow"
+description = "Aero proof-of-work"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -14,14 +14,17 @@ wasm32-sdk = []
 
 [dependencies]
 js-sys.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-client.workspace = true
-kaspa-hashes.workspace = true
-kaspa-math.workspace = true
-kaspa-utils.workspace = true
+aero-consensus-core.workspace = true
+aero-consensus-client.workspace = true
+aero-hashes.workspace = true
+aero-math.workspace = true
+aero-utils.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 num.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+aero-randomx.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

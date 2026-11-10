@@ -10,7 +10,7 @@ use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 use core::convert::Infallible;
 
-use kaspa_hashes::{Hash, ZERO_HASH};
+use aero_hashes::{Hash, ZERO_HASH};
 
 /// Key for a branch node in the sparse Merkle tree.
 ///

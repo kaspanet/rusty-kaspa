@@ -21,7 +21,7 @@
 
 use super::{ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use crate::mass::{ComputeBudget, SigopCount};
-use kaspa_utils::serde_bytes::{self, ByteBuf, Bytes};
+use aero_utils::serde_bytes::{self, ByteBuf, Bytes};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, DeserializeSeed, IntoDeserializer, MapAccess, SeqAccess, Visitor},

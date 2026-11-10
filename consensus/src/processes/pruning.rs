@@ -11,12 +11,12 @@ use crate::model::{
         reachability::ReachabilityStoreReader,
     },
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     blockhash::BlockHashExtensions,
     errors::pruning::{PruningImportError, PruningImportResult},
 };
-use kaspa_database::prelude::StoreResultUnitExt;
-use kaspa_hashes::Hash;
+use aero_database::prelude::StoreResultUnitExt;
+use aero_hashes::Hash;
 use parking_lot::RwLock;
 
 pub struct PruningPointReply {
@@ -333,7 +333,7 @@ impl<
 
 #[cfg(test)]
 mod tests {
-    use kaspa_consensus_core::{config::params::Params, network::NetworkType};
+    use aero_consensus_core::{config::params::Params, network::NetworkType};
 
     #[test]
     fn assert_pruning_depth_consistency() {

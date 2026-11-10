@@ -1,6 +1,6 @@
+use aero_consensus_core::{BlueWorkType, header::Header};
+use aero_hashes::Hash;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_consensus_core::{BlueWorkType, header::Header};
-use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 

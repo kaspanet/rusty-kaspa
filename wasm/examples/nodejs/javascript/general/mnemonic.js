@@ -1,9 +1,9 @@
-const kaspa = require('../../../../nodejs/kaspa');
+const aero = require('../../../../nodejs/aero');
 const {
     Mnemonic,
-} = kaspa;
+} = aero;
 
-kaspa.initConsolePanicHook();
+aero.initConsolePanicHook();
 
 (async () => {
 

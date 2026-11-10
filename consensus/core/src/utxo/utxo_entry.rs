@@ -1,8 +1,8 @@
 use std::fmt;
 
+use aero_hashes::Hash;
+use aero_utils::mem_size::MemSizeEstimator;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::de::{Error as DeError, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use wasm_bindgen::prelude::*;

@@ -1,9 +1,9 @@
 use crate::model::*;
+use aero_consensus_core::api::stats::BlockCount;
+use aero_core::debug;
+use aero_notify::subscription::{Command, context::SubscriptionContext, single::UtxosChangedSubscription};
+use aero_utils::hex::ToHex;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_consensus_core::api::stats::BlockCount;
-use kaspa_core::debug;
-use kaspa_notify::subscription::{Command, context::SubscriptionContext, single::UtxosChangedSubscription};
-use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{
@@ -119,7 +119,7 @@ impl Deserializer for SubmitBlockResponse {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockTemplateRequest {
-    /// Which kaspa address should the coinbase block reward transaction pay into
+    /// Which aero address should the coinbase block reward transaction pay into
     pub pay_address: RpcAddress,
     // TODO: replace with hex serialization
     pub extra_data: RpcExtraData,
@@ -155,9 +155,9 @@ impl Deserializer for GetBlockTemplateRequest {
 pub struct GetBlockTemplateResponse {
     pub block: RpcRawBlock,
 
-    /// Whether kaspad thinks that it's synced.
-    /// Callers are discouraged (but not forbidden) from solving blocks when kaspad is not synced.
-    /// That is because when kaspad isn't in sync with the rest of the network there's a high
+    /// Whether aerod thinks that it's synced.
+    /// Callers are discouraged (but not forbidden) from solving blocks when aerod is not synced.
+    /// That is because when aerod isn't in sync with the rest of the network there's a high
     /// chance the block will never be accepted, thus the solving effort would have been wasted.
     pub is_synced: bool,
 }
@@ -3247,7 +3247,7 @@ impl Deserializer for FinalityConflictResolvedNotification {
 //
 // If `addresses` is empty, the notifications will start or stop for all addresses.
 //
-// This call is only available when this kaspad was started with `--utxoindex`
+// This call is only available when this aerod was started with `--utxoindex`
 //
 // See: UtxosChangedNotification
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -3745,7 +3745,7 @@ impl Deserializer for GetSeqCommitLaneProofRequest {
 /// `seq_commit` (= `accepted_id_merkle_root`).
 ///
 /// `smt_proof` is the `OwnedSmtProof` wire format (`bitmap || terminal || siblings`),
-/// parsed via `kaspa_smt::proof::OwnedSmtProof::from_bytes`.
+/// parsed via `aero_smt::proof::OwnedSmtProof::from_bytes`.
 ///
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

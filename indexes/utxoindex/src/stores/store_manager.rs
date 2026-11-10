@@ -1,12 +1,12 @@
 use std::{collections::HashSet, sync::Arc};
 
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet,
     tx::{ScriptPublicKeys, TransactionOutpoint},
 };
-use kaspa_core::trace;
-use kaspa_database::prelude::{CachePolicy, DB, StoreResult};
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use aero_core::trace;
+use aero_database::prelude::{CachePolicy, DB, StoreResult};
+use aero_index_core::indexed_utxos::BalanceByScriptPublicKey;
 
 use crate::{
     IDENT,

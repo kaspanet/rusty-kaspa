@@ -1,6 +1,6 @@
 use crate::jsonrpc_event::{JsonRpcEvent, JsonRpcResponse};
 use crate::stratum_context::StratumContext;
-use kaspa_addresses::Address;
+use aero_addresses::Address;
 use regex::Regex;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use std::sync::{Arc, LazyLock};
 static BIG_JOB_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r".*(BzMiner|IceRiverMiner).*").unwrap());
 
 /// Regex for matching wallet addresses
-static WALLET_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"kaspa(test|dev)?:([a-z0-9]{61}|[a-z0-9]{63})").unwrap());
+static WALLET_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"aero(test|dev)?:([a-z0-9]{61}|[a-z0-9]{63})").unwrap());
 
 /// Default logger configuration
 pub fn default_logger() {
@@ -49,7 +49,7 @@ pub fn default_handlers() -> HashMap<String, crate::stratum_listener::EventHandl
             let ctx = ctx.clone();
             let event = event.clone();
             Box::pin(async move {
-                // Default handler - no client_handler/kaspa_api (will use polling fallback)
+                // Default handler - no client_handler/aero_api (will use polling fallback)
                 handle_authorize(ctx, event, None, None).await
             })
                 as std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), Box<dyn std::error::Error + Send + Sync>>> + Send>>
@@ -175,12 +175,12 @@ async fn handle_extranonce_subscribe(
 }
 
 /// Handle authorize request
-/// If client_handler and kaspa_api are provided, sends immediate job after authorization
+/// If client_handler and aero_api are provided, sends immediate job after authorization
 pub async fn handle_authorize(
     ctx: Arc<StratumContext>,
     event: JsonRpcEvent,
     client_handler: Option<Arc<crate::client_handler::ClientHandler>>,
-    kaspa_api: Option<Arc<dyn crate::share_handler::KaspaApiTrait + Send + Sync>>,
+    aero_api: Option<Arc<dyn crate::share_handler::AeroApiTrait + Send + Sync>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::debug!("[AUTHORIZE] ===== AUTHORIZE REQUEST FROM {} =====", ctx.remote_addr);
     tracing::debug!("[AUTHORIZE] Event ID: {:?}", event.id);
@@ -273,16 +273,16 @@ pub async fn handle_authorize(
     // CRITICAL: Send immediate job after authorization (IceRiver KS2L expects this)
     // Don't wait for polling loop - send job immediately
     // Difficulty will be sent inside send_immediate_job_to_client
-    if let (Some(client_handler), Some(kaspa_api)) = (client_handler, kaspa_api) {
+    if let (Some(client_handler), Some(aero_api)) = (client_handler, aero_api) {
         tracing::debug!(
             "[AUTHORIZE] Step 3-4: Triggering immediate job send for client {} (extranonce already sent)",
             ctx.remote_addr
         );
-        client_handler.send_immediate_job_to_client(ctx.clone(), kaspa_api).await;
+        client_handler.send_immediate_job_to_client(ctx.clone(), aero_api).await;
     } else {
         // Fallback: let polling loop handle it (may cause disconnects for IceRiver)
         tracing::warn!(
-            "[AUTHORIZE] WARNING: No client_handler/kaspa_api available - job will be sent by polling loop (may cause IceRiver disconnect)"
+            "[AUTHORIZE] WARNING: No client_handler/aero_api available - job will be sent by polling loop (may cause IceRiver disconnect)"
         );
     }
 
@@ -324,14 +324,14 @@ fn process_canxium_address(address: &str) -> String {
 
 /// Clean and validate wallet address
 fn clean_wallet(input: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    // Try to decode as Kaspa address (supports kaspa:, kaspatest:, kaspadev:)
+    // Try to decode as Aero address (supports aero:, aerotest:, aerodev:)
     if Address::try_from(input).is_ok() {
         return Ok(input.to_string());
     }
 
-    // Try with kaspa: prefix if no recognized prefix
-    if !input.starts_with("kaspa:") && !input.starts_with("kaspatest:") && !input.starts_with("kaspadev:") {
-        return clean_wallet(&format!("kaspa:{}", input));
+    // Try with aero: prefix if no recognized prefix
+    if !input.starts_with("aero:") && !input.starts_with("aerotest:") && !input.starts_with("aerodev:") {
+        return clean_wallet(&format!("aero:{}", input));
     }
 
     // Try regex match
@@ -339,7 +339,7 @@ fn clean_wallet(input: &str) -> Result<String, Box<dyn std::error::Error + Send 
         return Ok(captures.as_str().to_string());
     }
 
-    Err("unable to coerce wallet to valid kaspa address".into())
+    Err("unable to coerce wallet to valid aero address".into())
 }
 
 /// Send extranonce to client

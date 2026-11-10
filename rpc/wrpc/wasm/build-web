@@ -1,3 +1,3 @@
 #!/bin/bash
 
-wasm-pack build --target web --out-name kaspa-rpc --out-dir web/kaspa-rpc --features wasm32-sdk
+wasm-pack build --target web --out-name aero-rpc --out-dir web/aero-rpc --features wasm32-sdk

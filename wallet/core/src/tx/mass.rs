@@ -4,12 +4,12 @@
 
 use crate::error::Error;
 use crate::result::Result;
-use kaspa_consensus_client as kcc;
-use kaspa_consensus_client::UtxoEntryReference;
-use kaspa_consensus_core::mass::calc_storage_mass as consensus_calc_storage_mass;
-use kaspa_consensus_core::tx::{SCRIPT_VECTOR_SIZE, Transaction, TransactionInput, TransactionOutput};
-use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
-use kaspa_hashes::HASH_SIZE;
+use aero_consensus_client as kcc;
+use aero_consensus_client::UtxoEntryReference;
+use aero_consensus_core::mass::calc_storage_mass as consensus_calc_storage_mass;
+use aero_consensus_core::tx::{SCRIPT_VECTOR_SIZE, Transaction, TransactionInput, TransactionOutput};
+use aero_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
+use aero_hashes::HASH_SIZE;
 
 // pub const ECDSA_SIGNATURE_SIZE: u64 = 64;
 // pub const SCHNORR_SIGNATURE_SIZE: u64 = 64;

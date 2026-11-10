@@ -3,7 +3,7 @@ use crate::{
     jsonrpc_event::JsonRpcEvent,
     mining_state::{GetMiningState, Job, MiningState},
     prom::*,
-    share_handler::{KaspaApiTrait, ShareHandler},
+    share_handler::{AeroApiTrait, ShareHandler},
     stratum_context::StratumContext,
 };
 use num_bigint::BigUint;
@@ -172,10 +172,10 @@ impl ClientHandler {
 
     /// Send an immediate job to a specific client (for use after authorization)
     /// This ensures IceRiver and other ASICs get a job immediately, not waiting for polling
-    pub async fn send_immediate_job_to_client<T: KaspaApiTrait + Send + Sync + ?Sized + 'static>(
+    pub async fn send_immediate_job_to_client<T: AeroApiTrait + Send + Sync + ?Sized + 'static>(
         &self,
         client: Arc<StratumContext>,
-        kaspa_api: Arc<T>,
+        aero_api: Arc<T>,
     ) {
         // Check if client has wallet address
         let _wallet_addr_str = {
@@ -193,7 +193,7 @@ impl ClientHandler {
         }
 
         let client_clone = Arc::clone(&client);
-        let kaspa_api_clone = Arc::clone(&kaspa_api);
+        let aero_api_clone = Arc::clone(&aero_api);
         let share_handler = Arc::clone(&self.share_handler);
         let min_diff = self.min_share_diff;
         let instance_id = self.instance_id.clone();
@@ -213,7 +213,7 @@ impl ClientHandler {
             debug!("send_immediate_job: fetching block template for client {} (wallet: {})", client_clone.remote_addr, wallet_addr);
 
             // Get block template
-            let template_result = kaspa_api_clone.get_block_template(&wallet_addr, &remote_app, &canxium_addr).await;
+            let template_result = aero_api_clone.get_block_template(&wallet_addr, &remote_app, &canxium_addr).await;
 
             let block = match template_result {
                 Ok(block) => {
@@ -304,8 +304,8 @@ impl ClientHandler {
                 state.set_use_big_job(use_big_job);
 
                 // Initialize stratum diff
-                use crate::hasher::KaspaDiff;
-                let mut stratum_diff = KaspaDiff::new();
+                use crate::hasher::AeroDiff;
+                let mut stratum_diff = AeroDiff::new();
                 let remote_app_clone = remote_app.clone();
                 stratum_diff.set_diff_value_for_miner(min_diff, &remote_app_clone);
                 state.set_stratum_diff(stratum_diff);
@@ -458,7 +458,7 @@ impl ClientHandler {
         });
     }
 
-    pub async fn new_block_available<T: KaspaApiTrait + Send + Sync + 'static>(&self, kaspa_api: Arc<T>) {
+    pub async fn new_block_available<T: AeroApiTrait + Send + Sync + 'static>(&self, aero_api: Arc<T>) {
         // Rate limit templates (250ms minimum between sends)
         {
             let mut last_time = self.last_template_time.lock();
@@ -496,7 +496,7 @@ impl ClientHandler {
             }
 
             let client_clone = Arc::clone(&client);
-            let kaspa_api_clone = Arc::clone(&kaspa_api);
+            let aero_api_clone = Arc::clone(&aero_api);
             let share_handler = Arc::clone(&self.share_handler);
             let min_diff = self.min_share_diff;
             let instance_id = self.instance_id.clone();
@@ -538,7 +538,7 @@ impl ClientHandler {
                     (wallet, app, canx)
                 };
 
-                let template_result = kaspa_api_clone.get_block_template(&wallet_addr, &remote_app, &canxium_addr).await;
+                let template_result = aero_api_clone.get_block_template(&wallet_addr, &remote_app, &canxium_addr).await;
 
                 let block = match template_result {
                     Ok(block) => {
@@ -548,11 +548,11 @@ impl ClientHandler {
                     Err(e) => {
                         if e.to_string().contains("Could not decode address") {
                             record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::InvalidAddressFmt.as_str());
-                            error!("failed fetching new block template from kaspa, malformed address: {}", e);
+                            error!("failed fetching new block template from aero, malformed address: {}", e);
                             client_clone.disconnect();
                         } else {
                             record_worker_error(&instance_id, &wallet_addr, crate::errors::ErrorShortCode::FailedBlockFetch.as_str());
-                            error!("failed fetching new block template from kaspa: {}", e);
+                            error!("failed fetching new block template from aero: {}", e);
                         }
                         return;
                     }
@@ -605,8 +605,8 @@ impl ClientHandler {
                     state.set_use_big_job(use_big_job);
 
                     // Send initial difficulty
-                    use crate::hasher::KaspaDiff;
-                    let mut stratum_diff = KaspaDiff::new();
+                    use crate::hasher::AeroDiff;
+                    let mut stratum_diff = AeroDiff::new();
                     // Use miner-specific calculation (IceRiver uses different formula)
                     let remote_app = client_clone.remote_app.lock().clone();
                     stratum_diff.set_diff_value_for_miner(min_diff, &remote_app);
@@ -761,18 +761,18 @@ impl ClientHandler {
                 *last_check = Instant::now();
                 drop(last_check);
 
-                // Fetch balances via kaspa_api
+                // Fetch balances via aero_api
                 let addresses_clone = addresses.clone();
-                let kaspa_api_clone = Arc::clone(&kaspa_api);
+                let aero_api_clone = Arc::clone(&aero_api);
                 let instance_id = self.instance_id.clone();
                 tokio::spawn(async move {
-                    match kaspa_api_clone.get_balances_by_addresses(&addresses_clone).await {
+                    match aero_api_clone.get_balances_by_addresses(&addresses_clone).await {
                         Ok(balances) => {
                             // Record balances
                             crate::prom::record_balances(&instance_id, &balances);
                         }
                         Err(e) => {
-                            warn!("failed to get balances from kaspa, prom stats will be out of date: {}", e);
+                            warn!("failed to get balances from aero, prom stats will be out of date: {}", e);
                         }
                     }
                 });

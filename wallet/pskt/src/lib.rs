@@ -1,8 +1,8 @@
 //!
-//! PSKT is a crate for working with Partially Signed Kaspa Transactions (PSKTs).
+//! PSKT is a crate for working with Partially Signed Aero Transactions (PSKTs).
 //! This crate provides following primitives: `PSKT`, `PSKTBuilder` and `Bundle`.
 //! The `Bundle` struct is used for PSKT exchange payload serialization and carries
-//! multiple `PSKT` instances allowing for exchange of Kaspa sweep transactions.
+//! multiple `PSKT` instances allowing for exchange of Aero sweep transactions.
 //!
 
 pub mod bundle;

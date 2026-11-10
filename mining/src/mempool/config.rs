@@ -1,4 +1,4 @@
-use kaspa_consensus_core::mass::{BlockLaneLimits, BlockMassLimits, MassCofactors};
+use aero_consensus_core::mass::{BlockLaneLimits, BlockMassLimits, MassCofactors};
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
 pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 1_000_000_000;
@@ -89,7 +89,7 @@ impl Config {
     }
 
     /// Build a default config.
-    /// The mass limits should be obtained from [`kaspa_consensus_core::config::params::Params::block_mass_limits`].
+    /// The mass limits should be obtained from [`aero_consensus_core::config::params::Params::block_mass_limits`].
     pub fn build_default(
         target_milliseconds_per_block: u64,
         relay_non_std_transactions: bool,

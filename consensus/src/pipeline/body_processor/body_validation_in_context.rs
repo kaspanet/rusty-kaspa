@@ -10,9 +10,9 @@ use crate::{
         window::WindowManager,
     },
 };
-use kaspa_consensus_core::block::Block;
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_hashes::Hash;
+use aero_consensus_core::block::Block;
+use aero_database::prelude::StoreResultExt;
+use aero_hashes::Hash;
 use once_cell::unsync::Lazy;
 use std::sync::Arc;
 
@@ -95,15 +95,15 @@ mod tests {
         model::stores::ghostdag::GhostdagStoreReader,
         processes::{transaction_validator::errors::TxRuleError, window::WindowManager},
     };
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         api::ConsensusApi,
         config::params::MAINNET_PARAMS,
         merkle::calc_hash_merkle_root,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
-    use kaspa_core::assert_match;
-    use kaspa_hashes::Hash;
+    use aero_core::assert_match;
+    use aero_hashes::Hash;
 
     #[tokio::test]
     async fn validate_body_in_context_test() {
@@ -131,7 +131,7 @@ mod tests {
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
 
             assert_match!(
-                consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 50000000000);
+                consensus.validate_and_insert_block(block.clone().to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == MAINNET_PARAMS.pre_deflationary_phase_base_subsidy);
 
             // The second time we send an invalid block we expect it to be a known invalid.
             assert_match!(
@@ -165,11 +165,12 @@ mod tests {
         let valid_block_child = consensus.build_block_with_parents_and_transactions(6.into(), vec![3.into()], vec![]);
         consensus.validate_and_insert_block(valid_block_child.clone().to_immutable()).virtual_state_task.await.unwrap();
         {
-            // The block DAA score is 2, so the subsidy should be calculated according to the deflationary stage.
+            // The block DAA score is 2. Mainnet uses halving emission, so the subsidy is still the initial one
+            // (the old pre-/post-deflationary stage split no longer applies).
             let mut block = consensus.build_block_with_parents_and_transactions(7.into(), vec![6.into()], vec![]);
             block.transactions[0].payload[8..16].copy_from_slice(&(5_u64).to_le_bytes());
             block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter());
-            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == 44000000000);
+            assert_match!(consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await, Err(RuleError::WrongSubsidy(expected,_)) if expected == MAINNET_PARAMS.pre_deflationary_phase_base_subsidy);
         }
 
         {

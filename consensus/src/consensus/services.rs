@@ -19,8 +19,8 @@ use crate::{
         traversal_manager::DagTraversalManager, window::SampledWindowManager,
     },
 };
-use kaspa_consensus_core::mass::MassCalculator;
-use kaspa_txscript::caches::TxScriptCacheCounters;
+use aero_consensus_core::mass::MassCalculator;
+use aero_txscript::caches::TxScriptCacheCounters;
 use parking_lot::RwLock;
 use std::sync::{Arc, atomic::AtomicBool};
 
@@ -156,6 +156,7 @@ impl ConsensusServices {
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
+            params.halving_interval,
             params.bps_history(),
         );
 

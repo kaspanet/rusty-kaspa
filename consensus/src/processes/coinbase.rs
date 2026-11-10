@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlockHashSet,
     coinbase::*,
     config::params::ForkedParam,
@@ -31,6 +31,8 @@ pub struct CoinbaseManager {
     max_coinbase_payload_len: usize,
     deflationary_phase_daa_score: u64,
     pre_deflationary_phase_base_subsidy: u64,
+    /// Bitcoin-style emission: when set, the subsidy is `pre_deflationary_phase_base_subsidy >> (daa_score / interval)`
+    halving_interval: Option<u64>,
     bps_history: ForkedParam<u64>,
 
     /// Precomputed subsidy by month tables (for before and after the Crescendo hardfork)
@@ -67,11 +69,12 @@ impl CoinbaseManager {
         max_coinbase_payload_len: usize,
         deflationary_phase_daa_score: u64,
         pre_deflationary_phase_base_subsidy: u64,
+        halving_interval: Option<u64>,
         bps_history: ForkedParam<u64>,
     ) -> Self {
         // Precomputed subsidy by month table for the actual block per second rate
         // Here values are rounded up so that we keep the same number of rewarding months as in the original 1 BPS table.
-        // In a 10 BPS network, the induced increase in total rewards is 51 KAS (see tests::calc_high_bps_total_rewards_delta())
+        // In a 10 BPS network, the induced increase in total rewards is 51 ARO (see tests::calc_high_bps_total_rewards_delta())
         let subsidy_by_month_table_before: SubsidyByMonthTable =
             core::array::from_fn(|i| SUBSIDY_BY_MONTH_TABLE[i].div_ceil(bps_history.before()));
         let subsidy_by_month_table_after: SubsidyByMonthTable =
@@ -81,6 +84,7 @@ impl CoinbaseManager {
             max_coinbase_payload_len,
             deflationary_phase_daa_score,
             pre_deflationary_phase_base_subsidy,
+            halving_interval,
             bps_history,
             subsidy_by_month_table_before,
             subsidy_by_month_table_after,
@@ -220,6 +224,9 @@ impl CoinbaseManager {
     }
 
     pub fn calc_block_subsidy(&self, daa_score: u64) -> u64 {
+        if let Some(halving_interval) = self.halving_interval {
+            return Self::halved_subsidy(self.pre_deflationary_phase_base_subsidy, daa_score / halving_interval);
+        }
         if daa_score < self.deflationary_phase_daa_score {
             return self.pre_deflationary_phase_base_subsidy;
         }
@@ -231,6 +238,11 @@ impl CoinbaseManager {
             &self.subsidy_by_month_table_before
         };
         subsidy_table[subsidy_month.min(subsidy_table.len() - 1)]
+    }
+
+    /// Bitcoin-style subsidy: `initial >> halvings`, which is zero once every bit has been shifted out.
+    pub fn halved_subsidy(initial_subsidy: u64, halvings: u64) -> u64 {
+        if halvings >= u64::BITS as u64 { 0 } else { initial_subsidy >> halvings }
     }
 
     /// Get the subsidy month as function of the current DAA score.
@@ -272,7 +284,7 @@ impl CoinbaseManager {
 }
 
 /*
-    This table was pre-calculated by calling `calcDeflationaryPeriodBlockSubsidyFloatCalc` (in kaspad-go) for all months until reaching 0 subsidy.
+    This table was pre-calculated by calling `calcDeflationaryPeriodBlockSubsidyFloatCalc` (in aerod-go) for all months until reaching 0 subsidy.
     To regenerate this table, run `TestBuildSubsidyTable` in coinbasemanager_test.go (note the `deflationaryPhaseBaseSubsidy` therein).
     These values represent the reward per second for each month (= reward per block for 1 BPS).
 */
@@ -302,9 +314,9 @@ const SUBSIDY_BY_MONTH_TABLE: [u64; 426] = [
 mod tests {
     use super::*;
     use crate::params::MAINNET_PARAMS;
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         config::params::{ForkActivation, Params, SIMNET_PARAMS},
-        constants::SOMPI_PER_KASPA,
+        constants::{MAX_SOMPI, SOMPI_PER_AERO},
         network::{NetworkId, NetworkType},
         tx::scriptvec,
     };
@@ -325,9 +337,9 @@ mod tests {
 
         let delta = total_high_bps_rewards as i64 - total_rewards as i64;
 
-        println!("Total rewards: {} sompi => {} KAS", total_rewards, total_rewards / SOMPI_PER_KASPA);
-        println!("Total high bps rewards: {} sompi => {} KAS", total_high_bps_rewards, total_high_bps_rewards / SOMPI_PER_KASPA);
-        println!("Delta: {} sompi => {} KAS", delta, delta / SOMPI_PER_KASPA as i64);
+        println!("Total rewards: {} sompi => {} ARO", total_rewards, total_rewards / SOMPI_PER_AERO);
+        println!("Total high bps rewards: {} sompi => {} ARO", total_high_bps_rewards, total_high_bps_rewards / SOMPI_PER_AERO);
+        println!("Delta: {} sompi => {} ARO", delta, delta / SOMPI_PER_AERO as i64);
     }
 
     #[test]
@@ -359,7 +371,7 @@ mod tests {
     }
 
     /// Takes over 60 seconds, run with the following command line:
-    /// `cargo test --release --package kaspa-consensus --lib -- processes::coinbase::tests::verify_crescendo_emission_schedule --exact --nocapture --ignored`
+    /// `cargo test --release --package aero-consensus --lib -- processes::coinbase::tests::verify_crescendo_emission_schedule --exact --nocapture --ignored`
     #[test]
     #[ignore = "long"]
     fn verify_crescendo_emission_schedule() {
@@ -389,9 +401,9 @@ mod tests {
                 println!("BASELINE:\t{}\tepochs, total emission: {}", baseline_epochs, baseline_total);
                 println!("CRESCENDO:\t{}\tepochs, total emission: {}, activation: {}", new_epochs, new_total, activation);
 
-                let diff = (new_total as i64 - baseline_total as i64) / SOMPI_PER_KASPA as i64;
+                let diff = (new_total as i64 - baseline_total as i64) / SOMPI_PER_AERO as i64;
                 assert!(diff.abs() <= 51, "activation: {}", activation);
-                println!("DIFF (KAS): {}", diff);
+                println!("DIFF (ARO): {}", diff);
             }
         }
     }
@@ -432,6 +444,10 @@ mod tests {
 
         for network_id in NetworkId::iter() {
             let mut params: Params = network_id.into();
+            if params.halving_interval.is_some() {
+                // Halving networks (mainnet) follow a Bitcoin-style schedule; see `halving_schedule_respects_hard_cap`.
+                continue;
+            }
             if params.crescendo_activation != ForkActivation::always() {
                 // We test activation scenarios in verify_crescendo_emission_schedule
                 params.crescendo_activation = ForkActivation::never();
@@ -603,18 +619,42 @@ mod tests {
         assert_eq!(tx.tx.version, constants::TX_VERSION_TOCCATA);
     }
 
+    #[test]
+    fn halving_schedule_respects_hard_cap() {
+        let params = MAINNET_PARAMS;
+        let interval = params.halving_interval.expect("mainnet uses halving emission");
+        let initial = params.pre_deflationary_phase_base_subsidy;
+        let cbm = create_manager(&params);
+
+        // Spot checks through the real subsidy function: Bitcoin-style halving by block count.
+        assert_eq!(cbm.calc_block_subsidy(0), initial);
+        assert_eq!(cbm.calc_block_subsidy(interval - 1), initial);
+        assert_eq!(cbm.calc_block_subsidy(interval), initial / 2);
+        assert_eq!(cbm.calc_block_subsidy(2 * interval), initial / 4);
+        assert_eq!(cbm.calc_block_subsidy(64 * interval), 0);
+        assert_eq!(cbm.calc_block_subsidy(u64::MAX), 0);
+
+        // Total emission over every epoch is at most the 100M ARO cap and loses only the integer rounding of the
+        // halvings. Since sum(floor(n / 2^k)) == 2n - popcount(n), the total is exactly (2n - popcount(n)) * interval.
+        let total: u128 = (0..64u64).map(|h| CoinbaseManager::halved_subsidy(initial, h) as u128 * interval as u128).sum();
+        assert_eq!(total, (2 * initial as u128 - initial.count_ones() as u128) * interval as u128);
+        assert!(total <= MAX_SOMPI as u128, "emission must never exceed the hard cap");
+        assert!(total > MAX_SOMPI as u128 - 100 * SOMPI_PER_AERO as u128, "rounding must lose less than 100 ARO");
+    }
+
     fn create_manager(params: &Params) -> CoinbaseManager {
         CoinbaseManager::new(
             params.coinbase_payload_script_public_key_max_len,
             params.max_coinbase_payload_len,
             params.deflationary_phase_daa_score,
             params.pre_deflationary_phase_base_subsidy,
+            params.halving_interval,
             params.bps_history(),
         )
     }
 
     /// Return a CoinbaseManager with legacy golang 1 BPS properties
     fn create_legacy_manager() -> CoinbaseManager {
-        CoinbaseManager::new(150, 204, 15778800 - 259200, 50000000000, ForkedParam::new_const(1))
+        CoinbaseManager::new(150, 204, 15778800 - 259200, 50000000000, None, ForkedParam::new_const(1))
     }
 }

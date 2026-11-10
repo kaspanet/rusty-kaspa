@@ -1,21 +1,21 @@
 use crate::{IDENT, processor::Processor};
-use kaspa_consensus_notify::{
+use aero_consensus_notify::{
     connection::ConsensusChannelConnection, notification::Notification as ConsensusNotification, notifier::ConsensusNotifier,
 };
-use kaspa_core::{
+use aero_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace, warn,
 };
-use kaspa_index_core::notifier::IndexNotifier;
-use kaspa_notify::{
+use aero_index_core::notifier::IndexNotifier;
+use aero_notify::{
     connection::ChannelType,
     events::{EventSwitches, EventType},
     listener::ListenerLifespan,
     scope::{PruningPointUtxoSetOverrideScope, UtxosChangedScope},
     subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
-use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
-use kaspa_utxoindex::api::UtxoIndexProxy;
+use aero_utils::{channel::Channel, triggers::SingleTrigger};
+use aero_utxoindex::api::UtxoIndexProxy;
 use std::sync::Arc;
 
 const INDEX_SERVICE: &str = IDENT;

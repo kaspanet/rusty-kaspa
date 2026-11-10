@@ -1,7 +1,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Mnemonic, XPrv, PublicKeyGenerator } = require('../nodejs/kaspa');
+const { Mnemonic, XPrv, PublicKeyGenerator } = require('../nodejs/aero');
 const { parseArgs } = require('node:util');
 const { create } = require('domain');
 

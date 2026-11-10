@@ -52,17 +52,17 @@ const TS_BALANCE: &'static str = r#"
  */
 export interface IBalance {
     /**
-     * Total amount of Kaspa (in SOMPI) available for 
+     * Total amount of Aero (in SOMPI) available for 
      * spending.
      */
     mature: bigint;
     /**
-     * Total amount of Kaspa (in SOMPI) that has been 
+     * Total amount of Aero (in SOMPI) that has been 
      * received and is pending confirmation.
      */
     pending: bigint;
     /**
-     * Total amount of Kaspa (in SOMPI) currently 
+     * Total amount of Aero (in SOMPI) currently 
      * being sent as a part of the outgoing transaction
      * but has not yet been accepted by the network.
      */
@@ -188,10 +188,10 @@ pub struct BalanceStrings {
 
 impl From<(Option<&Balance>, &NetworkType, Option<usize>)> for BalanceStrings {
     fn from((balance, network_type, padding): (Option<&Balance>, &NetworkType, Option<usize>)) -> Self {
-        let suffix = utils::kaspa_suffix(network_type);
+        let suffix = utils::aero_suffix(network_type);
         if let Some(balance) = balance {
-            let mut mature = utils::sompi_to_kaspa_string(balance.mature);
-            let mut pending = if balance.pending > 0 { Some(utils::sompi_to_kaspa_string(balance.pending)) } else { None };
+            let mut mature = utils::sompi_to_aero_string(balance.mature);
+            let mut pending = if balance.pending > 0 { Some(utils::sompi_to_aero_string(balance.pending)) } else { None };
             if let Some(padding) = padding {
                 mature = mature.pad_to_width(padding);
                 pending = pending.map(|pending| pending.pad_to_width(padding));

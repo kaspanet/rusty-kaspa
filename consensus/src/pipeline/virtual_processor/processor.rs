@@ -48,7 +48,7 @@ use crate::{
         window::WindowManager,
     },
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet, ChainPath,
     acceptance_data::AcceptanceData,
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -66,28 +66,28 @@ use kaspa_consensus_core::{
         utxo_view::{UtxoView, UtxoViewComposition},
     },
 };
-use kaspa_consensus_notify::{
+use aero_consensus_notify::{
     notification::{
         NewBlockTemplateNotification, Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification,
         VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
     },
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, time::unix_now, trace, warn};
-use kaspa_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
-use kaspa_hashes::{Hash, ZERO_HASH};
-use kaspa_muhash::MuHash;
-use kaspa_notify::{events::EventType, notifier::Notify};
-use kaspa_smt_store::processor::SmtReadBounds;
+use aero_consensusmanager::SessionLock;
+use aero_core::{debug, info, time::unix_now, trace, warn};
+use aero_database::prelude::{StoreError, StoreResultExt, StoreResultUnitExt};
+use aero_hashes::{Hash, ZERO_HASH};
+use aero_muhash::MuHash;
+use aero_notify::{events::EventType, notifier::Notify};
+use aero_smt_store::processor::SmtReadBounds;
 use once_cell::unsync::Lazy;
 
 use super::bounds::SeqCommitBounds;
 use super::errors::{PruningImportError, PruningImportResult};
+use aero_consensus_core::tx::ValidatedTransaction;
+use aero_utils::binary_heap::BinaryHeapExtensions;
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
-use kaspa_consensus_core::tx::ValidatedTransaction;
-use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use rand::{Rng, seq::SliceRandom};
 use rayon::{
@@ -119,7 +119,7 @@ pub struct VirtualStateProcessor {
     pub(super) max_block_parents: u8,
     pub(super) mergeset_size_limit: u64,
     pub(super) finality_depth: u64,
-    pub(super) mempool_mass_cofactors: kaspa_consensus_core::mass::MassCofactors,
+    pub(super) mempool_mass_cofactors: aero_consensus_core::mass::MassCofactors,
     pub(super) block_version: u16,
 
     // Stores
@@ -174,7 +174,7 @@ pub struct VirtualStateProcessor {
     pub(super) counters: Arc<ProcessingCounters>,
 
     // SMT stores
-    pub(super) smt_stores: Arc<kaspa_smt_store::processor::SmtStores>,
+    pub(super) smt_stores: Arc<aero_smt_store::processor::SmtStores>,
     pub(super) smt_metadata_store: Arc<crate::model::stores::smt_metadata::DbSmtMetadataStore>,
 
     // Mining Rule
@@ -548,7 +548,7 @@ impl VirtualStateProcessor {
         multiset: MuHash,
         acceptance_data: AcceptanceData,
         pruning_sample_from_pov: Hash,
-        smt_build: Option<kaspa_smt_store::processor::SmtBuild>,
+        smt_build: Option<aero_smt_store::processor::SmtBuild>,
         blue_score: u64,
     ) {
         let mut batch = WriteBatch::default();
@@ -645,8 +645,8 @@ impl VirtualStateProcessor {
 
     /// KIP-21: Compute the sequencing commitment for the virtual block.
     fn compute_seq_commit(&self, ctx: &UtxoProcessingContext, virtual_ghostdag_data: &GhostdagData, daa_score: u64) -> Hash {
-        use kaspa_seq_commit::hashing::mergeset_context_hash;
-        use kaspa_seq_commit::types::MergesetContext;
+        use aero_seq_commit::hashing::mergeset_context_hash;
+        use aero_seq_commit::types::MergesetContext;
 
         let selected_parent = ctx.selected_parent();
         let parent_header = self.headers_store.get_header(selected_parent).unwrap();
@@ -703,14 +703,14 @@ impl VirtualStateProcessor {
     pub(super) fn compute_genesis_accepted_id_digests(&self, ghostdag_data: &GhostdagData) -> Vec<Hash> {
         let txs = self.genesis.build_genesis_transactions();
 
-        use kaspa_consensus_core::BlueWorkType;
-        use kaspa_hashes::SeqCommitActiveNode;
-        use kaspa_seq_commit::hashing::{
+        use aero_consensus_core::BlueWorkType;
+        use aero_hashes::SeqCommitActiveNode;
+        use aero_seq_commit::hashing::{
             activity_digest_lane, activity_leaf, activity_root_hash, lane_key, lane_tip_next, mergeset_context_hash,
             miner_payload_leaf, miner_payload_root, payload_and_context_digest, seq_commit, seq_state_root, smt_leaf_hash,
         };
-        use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, MinerPayloadLeafInput, SeqCommitInput, SeqState, SmtLeafInput};
-        use kaspa_smt::SmtHasher;
+        use aero_seq_commit::types::{LaneTipInput, MergesetContext, MinerPayloadLeafInput, SeqCommitInput, SeqState, SmtLeafInput};
+        use aero_smt::SmtHasher;
 
         let blue_score = ghostdag_data.blue_score;
         let context_hash = mergeset_context_hash(&MergesetContext {
@@ -735,7 +735,7 @@ impl VirtualStateProcessor {
 
         // Build SMT over an in-memory store - new lanes anchor at ZERO_HASH.
         let parent_seq_commit = ZERO_HASH;
-        let leaf_updates = kaspa_smt::store::SortedLeafUpdates::from_unsorted(lane_activities.iter().map(|(lane_id, leaves)| {
+        let leaf_updates = aero_smt::store::SortedLeafUpdates::from_unsorted(lane_activities.iter().map(|(lane_id, leaves)| {
             let lk = lane_key(lane_id);
             let ad = activity_digest_lane(leaves.iter().copied());
             let tip = lane_tip_next(&LaneTipInput {
@@ -744,10 +744,10 @@ impl VirtualStateProcessor {
                 activity_digest: &ad,
                 context_hash: &context_hash,
             });
-            kaspa_smt::store::LeafUpdate { key: lk, leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_tip: &tip, blue_score }) }
+            aero_smt::store::LeafUpdate { key: lk, leaf_hash: smt_leaf_hash(&SmtLeafInput { lane_tip: &tip, blue_score }) }
         }));
-        let empty_store = kaspa_smt::store::BTreeSmtStore::new();
-        let (lanes_root, _) = kaspa_smt::tree::compute_root_update::<SeqCommitActiveNode, _>(
+        let empty_store = aero_smt::store::BTreeSmtStore::new();
+        let (lanes_root, _) = aero_smt::tree::compute_root_update::<SeqCommitActiveNode, _>(
             &empty_store,
             SeqCommitActiveNode::empty_root(),
             leaf_updates,
@@ -769,9 +769,9 @@ impl VirtualStateProcessor {
     pub fn get_pruning_point_smt_metadata(
         &self,
         expected_pruning_point: Hash,
-    ) -> kaspa_consensus_core::errors::consensus::ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
-        use kaspa_consensus_core::api::SmtExportMetadata;
-        use kaspa_consensus_core::errors::consensus::ConsensusError;
+    ) -> aero_consensus_core::errors::consensus::ConsensusResult<aero_consensus_core::api::SmtExportMetadata> {
+        use aero_consensus_core::api::SmtExportMetadata;
+        use aero_consensus_core::errors::consensus::ConsensusError;
 
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if pp != expected_pruning_point {
@@ -836,7 +836,7 @@ impl VirtualStateProcessor {
 
         match self
             .smt_stores
-            .get_lane(kaspa_seq_commit::hashing::COINBASE_LANE_KEY, bounds, |bh| self.is_smt_canonical(bh, selected_parent))
+            .get_lane(aero_seq_commit::hashing::COINBASE_LANE_KEY, bounds, |bh| self.is_smt_canonical(bh, selected_parent))
             .map(|l| l.block_hash())
         {
             // Live: the latest canonical coinbase touch already pins the highest
@@ -897,11 +897,8 @@ impl VirtualStateProcessor {
     /// Algorithm: walks `pov_block`'s selected-chain ancestors backward by blue_score
     /// until `bs <= pov.bs - finality_depth - 1`. Folds to genesis on shallow chains,
     /// matching [`Self::compute_inactivity_shortcut_block`]'s shallow-chain rule.
-    pub fn inactivity_shortcut_block_for_pov(
-        &self,
-        pov_block: Hash,
-    ) -> kaspa_consensus_core::errors::consensus::ConsensusResult<Hash> {
-        use kaspa_consensus_core::errors::consensus::ConsensusError;
+    pub fn inactivity_shortcut_block_for_pov(&self, pov_block: Hash) -> aero_consensus_core::errors::consensus::ConsensusResult<Hash> {
+        use aero_consensus_core::errors::consensus::ConsensusError;
 
         let pov_header = self
             .headers_store
@@ -938,7 +935,7 @@ impl VirtualStateProcessor {
     /// Returns the number of lanes expired.
     pub(super) fn expire_stale_lanes(
         &self,
-        proc: &mut kaspa_smt_store::processor::SmtProcessor,
+        proc: &mut aero_smt_store::processor::SmtProcessor,
         bounds: SeqCommitBounds,
         selected_parent: Hash,
     ) -> u64 {

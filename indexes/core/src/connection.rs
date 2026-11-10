@@ -1,3 +1,3 @@
 use crate::notification::Notification;
 
-pub type IndexChannelConnection = kaspa_notify::connection::ChannelConnection<Notification>;
+pub type IndexChannelConnection = aero_notify::connection::ChannelConnection<Notification>;

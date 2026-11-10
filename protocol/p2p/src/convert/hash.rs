@@ -1,6 +1,6 @@
 use super::error::ConversionError;
 use crate::pb as protowire;
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire

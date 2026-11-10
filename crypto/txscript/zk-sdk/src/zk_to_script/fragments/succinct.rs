@@ -3,7 +3,7 @@ use risc0_zkvm::SuccinctReceipt;
 
 use super::prepare::prepare_r0_succinct_witness;
 use crate::result::Result;
-use kaspa_txscript::{
+use aero_txscript::{
     opcodes::codes::OpZkPrecompile,
     script_builder::ScriptBuilder,
     zk_precompiles::{risc0::rcpt::HashFnId, tags::ZkTag},

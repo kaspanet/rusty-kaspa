@@ -1,9 +1,9 @@
 use crate::{
+    aeroapi::AeroApi,
     client_handler::ClientHandler,
     default_client::{default_handlers, handle_authorize, handle_subscribe},
     jsonrpc_event::JsonRpcEvent,
-    kaspaapi::KaspaApi,
-    share_handler::{KaspaApiTrait, ShareHandler},
+    share_handler::{AeroApiTrait, ShareHandler},
     stratum_context::StratumContext,
     stratum_listener::{StratumListener, StratumListenerConfig},
 };
@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 pub struct BridgeConfig {
     pub instance_id: String, // Instance identifier for logging (e.g., "Instance 1", "Instance 2")
     pub stratum_port: String,
-    pub kaspad_address: String,
+    pub aerod_address: String,
     pub prom_port: String,
     pub print_stats: bool,
     pub log_to_file: bool,
@@ -30,52 +30,52 @@ pub struct BridgeConfig {
     pub coinbase_tag_suffix: Option<String>,
 }
 
-/// Start block template listener with concrete KaspaApi
+/// Start block template listener with concrete AeroApi
 /// This should be called from main.rs where we have concrete type
 pub async fn start_block_template_listener_with_api(
-    kaspa_api: Arc<KaspaApi>,
+    aero_api: Arc<AeroApi>,
     block_wait_time: Duration,
     client_handler: Arc<ClientHandler>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let client_handler_cb = Arc::clone(&client_handler);
-    let kaspa_api_cb = Arc::clone(&kaspa_api);
+    let aero_api_cb = Arc::clone(&aero_api);
 
     let block_cb = move || {
         let client_handler = Arc::clone(&client_handler_cb);
-        let kaspa_api = Arc::clone(&kaspa_api_cb);
+        let aero_api = Arc::clone(&aero_api_cb);
         tokio::spawn(async move {
-            client_handler.new_block_available(kaspa_api).await;
+            client_handler.new_block_available(aero_api).await;
         });
     };
 
-    kaspa_api
+    aero_api
         .start_block_template_listener(block_wait_time, block_cb)
         .await
         .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
 }
 
-pub async fn listen_and_serve<T: KaspaApiTrait + Send + Sync + 'static>(
+pub async fn listen_and_serve<T: AeroApiTrait + Send + Sync + 'static>(
     config: BridgeConfig,
-    kaspa_api: Arc<T>,
-    // Optional: if concrete KaspaApi is provided, use notification-based listener
-    concrete_kaspa_api: Option<Arc<KaspaApi>>,
+    aero_api: Arc<T>,
+    // Optional: if concrete AeroApi is provided, use notification-based listener
+    concrete_aero_api: Option<Arc<AeroApi>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    listen_and_serve_impl(config, kaspa_api, concrete_kaspa_api, None).await
+    listen_and_serve_impl(config, aero_api, concrete_aero_api, None).await
 }
 
-pub async fn listen_and_serve_with_shutdown<T: KaspaApiTrait + Send + Sync + 'static>(
+pub async fn listen_and_serve_with_shutdown<T: AeroApiTrait + Send + Sync + 'static>(
     config: BridgeConfig,
-    kaspa_api: Arc<T>,
-    concrete_kaspa_api: Option<Arc<KaspaApi>>,
+    aero_api: Arc<T>,
+    concrete_aero_api: Option<Arc<AeroApi>>,
     shutdown_rx: watch::Receiver<bool>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    listen_and_serve_impl(config, kaspa_api, concrete_kaspa_api, Some(shutdown_rx)).await
+    listen_and_serve_impl(config, aero_api, concrete_aero_api, Some(shutdown_rx)).await
 }
 
-async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
+async fn listen_and_serve_impl<T: AeroApiTrait + Send + Sync + 'static>(
     config: BridgeConfig,
-    kaspa_api: Arc<T>,
-    concrete_kaspa_api: Option<Arc<KaspaApi>>,
+    aero_api: Arc<T>,
+    concrete_aero_api: Option<Arc<AeroApi>>,
     shutdown_rx: Option<watch::Receiver<bool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Calculate min diff with pow2 clamp if needed
@@ -131,14 +131,14 @@ async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
     // Override authorize handler to send immediate job (critical for IceRiver KS2L)
     let authorize_handler = {
         let client_handler = Arc::clone(&client_handler);
-        let kaspa_api = Arc::clone(&kaspa_api);
+        let aero_api = Arc::clone(&aero_api);
         Arc::new(move |ctx: Arc<StratumContext>, event: JsonRpcEvent| {
             let client_handler = Arc::clone(&client_handler);
-            let kaspa_api = Arc::clone(&kaspa_api);
+            let aero_api = Arc::clone(&aero_api);
             let ctx_clone = Arc::clone(&ctx);
             let event_clone = event.clone();
             Box::pin(async move {
-                handle_authorize(ctx_clone, event_clone, Some(client_handler), Some(kaspa_api))
+                handle_authorize(ctx_clone, event_clone, Some(client_handler), Some(aero_api))
                     .await
                     .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
             })
@@ -150,14 +150,14 @@ async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
     // Override submit handler
     let submit_handler = {
         let share_handler = Arc::clone(&share_handler);
-        let kaspa_api = Arc::clone(&kaspa_api);
+        let aero_api = Arc::clone(&aero_api);
         Arc::new(move |ctx: Arc<StratumContext>, event: JsonRpcEvent| {
             let share_handler = Arc::clone(&share_handler);
-            let kaspa_api = Arc::clone(&kaspa_api);
+            let aero_api = Arc::clone(&aero_api);
             let ctx_clone = Arc::clone(&ctx);
             Box::pin(async move {
                 share_handler
-                    .handle_submit(ctx_clone, event, kaspa_api)
+                    .handle_submit(ctx_clone, event, aero_api)
                     .await
                     .map_err(|e| Box::new(std::io::Error::other(e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
             })
@@ -216,24 +216,24 @@ async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
     // Start block template listener with notifications + ticker fallback
     // This provides immediate notifications when new blocks are available, with polling as fallback
 
-    // If concrete KaspaApi is provided, use notification-based listener
+    // If concrete AeroApi is provided, use notification-based listener
     // Otherwise, use polling only (fallback for trait objects)
-    if let Some(concrete_api) = concrete_kaspa_api {
-        // We have concrete KaspaApi - use notification-based listener
+    if let Some(concrete_api) = concrete_aero_api {
+        // We have concrete AeroApi - use notification-based listener
         let client_handler_cb = Arc::clone(&client_handler);
-        let kaspa_api_cb = Arc::clone(&kaspa_api);
+        let aero_api_cb = Arc::clone(&aero_api);
 
         let block_cb = move || {
             let client_handler = Arc::clone(&client_handler_cb);
-            let kaspa_api = Arc::clone(&kaspa_api_cb);
+            let aero_api = Arc::clone(&aero_api_cb);
             tokio::spawn(async move {
-                client_handler.new_block_available(kaspa_api).await;
+                client_handler.new_block_available(aero_api).await;
             });
         };
 
         // Start notification-based listener with ticker fallback
         // Method signature: start_block_template_listener(self: Arc<Self>, ...)
-        // Call the method directly on Arc<KaspaApi> (it's an instance method taking Arc<Self>)
+        // Call the method directly on Arc<AeroApi> (it's an instance method taking Arc<Self>)
         let listener_result = if let Some(rx) = shutdown_rx_for_bg.as_ref().cloned() {
             concrete_api.start_block_template_listener_with_shutdown(config.block_wait_time, rx, block_cb).await
         } else {
@@ -248,11 +248,11 @@ async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
             debug!("Started notification-based block template listener");
         }
     } else {
-        // No concrete KaspaApi provided - use polling only
-        warn!("Using polling-based block template listener (concrete KaspaApi not provided, notifications not available)");
+        // No concrete AeroApi provided - use polling only
+        warn!("Using polling-based block template listener (concrete AeroApi not provided, notifications not available)");
 
         let client_handler_poll = Arc::clone(&client_handler);
-        let kaspa_api_poll = Arc::clone(&kaspa_api);
+        let aero_api_poll = Arc::clone(&aero_api);
         let mut shutdown_rx_poll = shutdown_rx_for_bg;
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(config.block_wait_time);
@@ -266,12 +266,12 @@ async fn listen_and_serve_impl<T: KaspaApiTrait + Send + Sync + 'static>(
                             }
                         }
                         _ = interval.tick() => {
-                            client_handler_poll.new_block_available(Arc::clone(&kaspa_api_poll)).await;
+                            client_handler_poll.new_block_available(Arc::clone(&aero_api_poll)).await;
                         }
                     }
                 } else {
                     interval.tick().await;
-                    client_handler_poll.new_block_available(Arc::clone(&kaspa_api_poll)).await;
+                    client_handler_poll.new_block_available(Arc::clone(&aero_api_poll)).await;
                 }
             }
         });

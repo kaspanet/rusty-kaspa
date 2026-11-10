@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-txscript-zk-sdk"
-description = "Kaspa txscript ZK SDK"
+name = "aero-txscript-zk-sdk"
+description = "Aero txscript ZK SDK"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -13,10 +13,10 @@ repository.workspace = true
 wasm32-core = [
     "dep:borsh",
     "dep:js-sys",
-    "dep:kaspa-wasm-core",
+    "dep:aero-wasm-core",
     "dep:wasm-bindgen",
     "dep:workflow-wasm",
-    "kaspa-txscript/wasm32-sdk",
+    "aero-txscript/wasm32-sdk",
 ]
 wasm32-sdk = ["wasm32-core"]
 default = []
@@ -28,8 +28,8 @@ ark-groth16.workspace = true
 ark-serialize.workspace = true
 borsh = { workspace = true, optional = true }
 js-sys = { workspace = true, optional = true }
-kaspa-txscript.workspace = true
-kaspa-wasm-core = { workspace = true, optional = true }
+aero-txscript.workspace = true
+aero-wasm-core = { workspace = true, optional = true }
 risc0-binfmt.workspace = true
 risc0-groth16.workspace = true
 risc0-zkvm.workspace = true
@@ -41,9 +41,9 @@ workflow-wasm = { workspace = true, optional = true }
 [dev-dependencies]
 bincode.workspace = true
 borsh.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-txscript-errors.workspace = true
+aero-consensus-core.workspace = true
+aero-hashes.workspace = true
+aero-txscript-errors.workspace = true
 
 [lints]
 workspace = true

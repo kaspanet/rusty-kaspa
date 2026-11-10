@@ -1,0 +1,32 @@
+[package]
+name = "aero-miner"
+description = "Aero RandomX solo miner"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "aero-miner"
+path = "src/main.rs"
+
+[dependencies]
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-core.workspace = true
+aero-grpc-client.workspace = true
+aero-notify.workspace = true
+aero-pow.workspace = true
+aero-rpc-core.workspace = true
+
+clap.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time", "signal", "sync"] }
+
+[lints]
+workspace = true

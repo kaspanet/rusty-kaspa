@@ -2,19 +2,19 @@ use crate::{
     RpcOptionalHeader, RpcOptionalTransaction,
     prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::{
+use aero_addresses::Address;
+use aero_consensus_core::tx::{
     CovenantBinding, ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint,
     TransactionOutput, UtxoEntry,
 };
-use kaspa_hashes::Hash;
-use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
+use aero_hashes::Hash;
+use aero_utils::{hex::ToHex, serde_bytes_fixed_ref};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use workflow_serializer::prelude::*;
 
-/// Represents the ID of a Kaspa transaction
+/// Represents the ID of a Aero transaction
 pub type RpcTransactionId = TransactionId;
 
 pub type RpcScriptVec = ScriptVec;
@@ -92,7 +92,7 @@ impl Deserializer for RpcUtxoEntry {
     }
 }
 
-/// Represents a Kaspa transaction outpoint
+/// Represents a Aero transaction outpoint
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutpoint {
@@ -113,13 +113,13 @@ impl From<RpcTransactionOutpoint> for TransactionOutpoint {
     }
 }
 
-impl From<kaspa_consensus_client::TransactionOutpoint> for RpcTransactionOutpoint {
-    fn from(outpoint: kaspa_consensus_client::TransactionOutpoint) -> Self {
+impl From<aero_consensus_client::TransactionOutpoint> for RpcTransactionOutpoint {
+    fn from(outpoint: aero_consensus_client::TransactionOutpoint) -> Self {
         TransactionOutpoint::from(outpoint).into()
     }
 }
 
-impl From<RpcTransactionOutpoint> for kaspa_consensus_client::TransactionOutpoint {
+impl From<RpcTransactionOutpoint> for aero_consensus_client::TransactionOutpoint {
     fn from(outpoint: RpcTransactionOutpoint) -> Self {
         TransactionOutpoint::from(outpoint).into()
     }
@@ -145,7 +145,7 @@ impl Deserializer for RpcTransactionOutpoint {
     }
 }
 
-/// Represents a Kaspa transaction input
+/// Represents a Aero transaction input
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionInput {
@@ -219,7 +219,7 @@ impl Deserializer for RpcTransactionInput {
     }
 }
 
-/// Represent Kaspa transaction input verbose data
+/// Represent Aero transaction input verbose data
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionInputVerboseData {}
@@ -238,7 +238,7 @@ impl Deserializer for RpcTransactionInputVerboseData {
     }
 }
 
-/// Represents a Kaspad transaction output
+/// Represents a Aerod transaction output
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutput {
@@ -310,8 +310,8 @@ impl From<RpcCovenantBinding> for CovenantBinding {
     }
 }
 
-impl From<kaspa_consensus_client::CovenantBinding> for RpcCovenantBinding {
-    fn from(covenant: kaspa_consensus_client::CovenantBinding) -> Self {
+impl From<aero_consensus_client::CovenantBinding> for RpcCovenantBinding {
+    fn from(covenant: aero_consensus_client::CovenantBinding) -> Self {
         CovenantBinding::from(covenant).into()
     }
 }
@@ -334,7 +334,7 @@ impl Deserializer for RpcCovenantBinding {
     }
 }
 
-/// Represent Kaspa transaction output verbose data
+/// Represent Aero transaction output verbose data
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutputVerboseData {
@@ -362,7 +362,7 @@ impl Deserializer for RpcTransactionOutputVerboseData {
     }
 }
 
-/// Represents a Kaspa transaction
+/// Represents a Aero transaction
 #[derive(Clone)]
 pub struct RpcTransaction {
     pub version: u16,
@@ -512,7 +512,7 @@ impl Deserializer for RpcTransaction {
 #[cfg(test)]
 mod rpc_transaction_json_tests {
     use super::*;
-    use kaspa_consensus_core::subnets::SubnetworkId;
+    use aero_consensus_core::subnets::SubnetworkId;
     use serde_json::json;
 
     fn transaction() -> RpcTransaction {
@@ -609,7 +609,7 @@ mod rpc_transaction_json_tests {
     }
 }
 
-/// Represent Kaspa transaction verbose data
+/// Represent Aero transaction verbose data
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionVerboseData {

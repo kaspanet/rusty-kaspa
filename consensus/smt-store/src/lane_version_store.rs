@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
-use kaspa_hashes::Hash;
+use aero_database::prelude::{DB, DbWriter, StoreError, StoreResult};
+use aero_hashes::Hash;
 use self_cell::self_cell;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -35,11 +35,11 @@ pub struct DbLaneVersionStore {
 
 impl DbLaneVersionStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db, prefix: kaspa_database::registry::DatabaseStorePrefixes::SmtLaneVersions.into() }
+        Self { db, prefix: aero_database::registry::DatabaseStorePrefixes::SmtLaneVersions.into() }
     }
 
     pub fn delete_all(&self) {
-        use kaspa_database::prelude::DirectDbWriter;
+        use aero_database::prelude::DirectDbWriter;
         DirectDbWriter::new(&self.db).delete_range(vec![self.prefix], vec![self.prefix + 1]).unwrap();
     }
 
@@ -395,10 +395,10 @@ fn next_lane_seek_key(prefix: u8, lane_key: Hash, target_blue_score: u64) -> Opt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_database::create_temp_db;
-    use kaspa_database::prelude::{ConnBuilder, DirectDbWriter};
+    use aero_database::create_temp_db;
+    use aero_database::prelude::{ConnBuilder, DirectDbWriter};
 
-    fn make_store() -> (kaspa_database::utils::DbLifetime, DbLaneVersionStore) {
+    fn make_store() -> (aero_database::utils::DbLifetime, DbLaneVersionStore) {
         let (lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         (lifetime, DbLaneVersionStore::new(db))
     }

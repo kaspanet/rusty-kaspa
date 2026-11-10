@@ -1,7 +1,7 @@
 use super::{daemon::Daemon, listener::Listener};
-use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{events::EventType, notification::Notification as _, scope::Scope, subscription::Command};
-use kaspa_rpc_core::{Notification, RpcResult};
+use aero_grpc_client::GrpcClient;
+use aero_notify::{events::EventType, notification::Notification as _, scope::Scope, subscription::Command};
+use aero_rpc_core::{Notification, RpcResult};
 use std::{
     collections::{HashMap, hash_map::Entry},
     ops::Deref,
@@ -15,8 +15,8 @@ pub struct ListeningClient {
 }
 
 impl ListeningClient {
-    pub async fn connect(kaspad: &Daemon) -> Self {
-        let client = kaspad.new_multi_listener_client().await;
+    pub async fn connect(aerod: &Daemon) -> Self {
+        let client = aerod.new_multi_listener_client().await;
         client.start(None).await;
         let listeners = Default::default();
         ListeningClient { client, listeners }

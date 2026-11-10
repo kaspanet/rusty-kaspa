@@ -1,5 +1,5 @@
 //!
-//! Kaspa core wallet account variant implementations.
+//! Aero core wallet account variant implementations.
 //!
 
 pub mod bip32;

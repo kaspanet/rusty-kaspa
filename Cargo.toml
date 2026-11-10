@@ -19,12 +19,13 @@ members = [
     "consensus/seq-commit",
     "consensus/smt-store",
     "consensus/wasm",
-    "kaspad",
+    "aerod",
     "simpa",
     "wasm",
     "wasm/core",
     "math",
     "crypto/hashes",
+    "crypto/randomx",
     "crypto/muhash",
     "crypto/addresses",
     "crypto/merkle",
@@ -66,6 +67,8 @@ members = [
     "system-info",
     "build-info",
     "rothschild",
+    "miner",
+    "gui",
     "metrics/core",
     "metrics/perf_monitor",
     "utils/alloc",
@@ -74,7 +77,7 @@ members = [
 [workspace.package]
 rust-version = "1.91.0"
 version = "2.0.1"
-authors = ["Kaspa developers"]
+authors = ["Aero developers"]
 license = "ISC"
 repository = "https://github.com/kaspanet/rusty-kaspa"
 edition = "2024"
@@ -90,68 +93,69 @@ include = [
 ]
 
 [workspace.dependencies]
-kaspa-testing-integration = { version = "2.0.1", path = "testing/integration" }
-kaspa-addresses = { version = "2.0.1", path = "crypto/addresses" }
-kaspa-addressmanager = { version = "2.0.1", path = "components/addressmanager" }
-kaspa-bip32 = { version = "2.0.1", path = "wallet/bip32" }
-kaspa-cli = { version = "2.0.1", path = "cli" }
-kaspa-connectionmanager = { version = "2.0.1", path = "components/connectionmanager" }
-kaspa-consensus = { version = "2.0.1", path = "consensus" }
-kaspa-consensus-core = { version = "2.0.1", path = "consensus/core" }
-kaspa-consensus-client = { version = "2.0.1", path = "consensus/client" }
-kaspa-consensus-notify = { version = "2.0.1", path = "consensus/notify" }
-kaspa-consensus-wasm = { version = "2.0.1", path = "consensus/wasm" }
-kaspa-consensusmanager = { version = "2.0.1", path = "components/consensusmanager" }
-kaspa-core = { version = "2.0.1", path = "core" }
-kaspa-daemon = { version = "2.0.1", path = "daemon" }
-kaspa-database = { version = "2.0.1", path = "database" }
-kaspa-grpc-client = { version = "2.0.1", path = "rpc/grpc/client" }
-kaspa-grpc-core = { version = "2.0.1", path = "rpc/grpc/core" }
-kaspa-grpc-server = { version = "2.0.1", path = "rpc/grpc/server" }
-kaspa-hashes = { version = "2.0.1", path = "crypto/hashes", default-features = false }
-kaspa-index-core = { version = "2.0.1", path = "indexes/core" }
-kaspa-index-processor = { version = "2.0.1", path = "indexes/processor" }
-kaspa-math = { version = "2.0.1", path = "math" }
-kaspa-merkle = { version = "2.0.1", path = "crypto/merkle" }
-kaspa-smt = { version = "2.0.1", path = "crypto/smt", default-features = false }
-kaspa-smt-store = { version = "2.0.1", path = "consensus/smt-store" }
-kaspa-metrics-core = { version = "2.0.1", path = "metrics/core" }
-kaspa-mining = { version = "2.0.1", path = "mining" }
-kaspa-mining-errors = { version = "2.0.1", path = "mining/errors" }
-kaspa-muhash = { version = "2.0.1", path = "crypto/muhash" }
-kaspa-notify = { version = "2.0.1", path = "notify" }
-kaspa-p2p-flows = { version = "2.0.1", path = "protocol/flows" }
-kaspa-p2p-lib = { version = "2.0.1", path = "protocol/p2p" }
-kaspa-p2p-mining = { version = "2.0.1", path = "protocol/mining" }
-kaspa-perf-monitor = { version = "2.0.1", path = "metrics/perf_monitor" }
-kaspa-pow = { version = "2.0.1", path = "consensus/pow" }
-kaspa-rpc-core = { version = "2.0.1", path = "rpc/core" }
-kaspa-seq-commit = { version = "2.0.1", path = "consensus/seq-commit" }
-kaspa-rpc-macros = { version = "2.0.1", path = "rpc/macros" }
-kaspa-rpc-service = { version = "2.0.1", path = "rpc/service" }
-kaspa-txscript = { version = "2.0.1", path = "crypto/txscript" }
-kaspa-txscript-errors = { version = "2.0.1", path = "crypto/txscript/errors" }
-kaspa-txscript-zk-sdk = { version = "2.0.1", path = "crypto/txscript/zk-sdk" }
-kaspa-utils = { version = "2.0.1", path = "utils", default-features = false }
-kaspa-utils-tower = { version = "2.0.1", path = "utils/tower" }
-kaspa-system-info = { version = "2.0.1", path = "system-info" }
-kaspa-build-info = { version = "2.0.1", path = "build-info" }
-kaspa-utxoindex = { version = "2.0.1", path = "indexes/utxoindex" }
-kaspa-wallet = { version = "2.0.1", path = "wallet/native" }
-kaspa-wallet-cli-wasm = { version = "2.0.1", path = "wallet/wasm" }
-kaspa-wallet-keys = { version = "2.0.1", path = "wallet/keys" }
-kaspa-wallet-pskt = { version = "2.0.1", path = "wallet/pskt" }
-kaspa-wallet-core = { version = "2.0.1", path = "wallet/core" }
-kaspa-wallet-macros = { version = "2.0.1", path = "wallet/macros" }
-kaspa-wasm = { version = "2.0.1", path = "wasm" }
-kaspa-wasm-core = { version = "2.0.1", path = "wasm/core" }
-kaspa-wrpc-client = { version = "2.0.1", path = "rpc/wrpc/client" }
-kaspa-wrpc-proxy = { version = "2.0.1", path = "rpc/wrpc/proxy" }
-kaspa-wrpc-server = { version = "2.0.1", path = "rpc/wrpc/server" }
-kaspa-wrpc-wasm = { version = "2.0.1", path = "rpc/wrpc/wasm" }
-kaspa-wrpc-example-subscriber = { version = "2.0.1", path = "rpc/wrpc/examples/subscriber" }
-kaspad = { version = "2.0.1", path = "kaspad" }
-kaspa-alloc = { version = "2.0.1", path = "utils/alloc" }
+aero-testing-integration = { version = "2.0.1", path = "testing/integration" }
+aero-addresses = { version = "2.0.1", path = "crypto/addresses" }
+aero-addressmanager = { version = "2.0.1", path = "components/addressmanager" }
+aero-bip32 = { version = "2.0.1", path = "wallet/bip32" }
+aero-cli = { version = "2.0.1", path = "cli" }
+aero-connectionmanager = { version = "2.0.1", path = "components/connectionmanager" }
+aero-consensus = { version = "2.0.1", path = "consensus" }
+aero-consensus-core = { version = "2.0.1", path = "consensus/core" }
+aero-consensus-client = { version = "2.0.1", path = "consensus/client" }
+aero-consensus-notify = { version = "2.0.1", path = "consensus/notify" }
+aero-consensus-wasm = { version = "2.0.1", path = "consensus/wasm" }
+aero-consensusmanager = { version = "2.0.1", path = "components/consensusmanager" }
+aero-core = { version = "2.0.1", path = "core" }
+aero-daemon = { version = "2.0.1", path = "daemon" }
+aero-database = { version = "2.0.1", path = "database" }
+aero-grpc-client = { version = "2.0.1", path = "rpc/grpc/client" }
+aero-grpc-core = { version = "2.0.1", path = "rpc/grpc/core" }
+aero-grpc-server = { version = "2.0.1", path = "rpc/grpc/server" }
+aero-hashes = { version = "2.0.1", path = "crypto/hashes", default-features = false }
+aero-randomx = { version = "2.0.1", path = "crypto/randomx" }
+aero-index-core = { version = "2.0.1", path = "indexes/core" }
+aero-index-processor = { version = "2.0.1", path = "indexes/processor" }
+aero-math = { version = "2.0.1", path = "math" }
+aero-merkle = { version = "2.0.1", path = "crypto/merkle" }
+aero-smt = { version = "2.0.1", path = "crypto/smt", default-features = false }
+aero-smt-store = { version = "2.0.1", path = "consensus/smt-store" }
+aero-metrics-core = { version = "2.0.1", path = "metrics/core" }
+aero-mining = { version = "2.0.1", path = "mining" }
+aero-mining-errors = { version = "2.0.1", path = "mining/errors" }
+aero-muhash = { version = "2.0.1", path = "crypto/muhash" }
+aero-notify = { version = "2.0.1", path = "notify" }
+aero-p2p-flows = { version = "2.0.1", path = "protocol/flows" }
+aero-p2p-lib = { version = "2.0.1", path = "protocol/p2p" }
+aero-p2p-mining = { version = "2.0.1", path = "protocol/mining" }
+aero-perf-monitor = { version = "2.0.1", path = "metrics/perf_monitor" }
+aero-pow = { version = "2.0.1", path = "consensus/pow" }
+aero-rpc-core = { version = "2.0.1", path = "rpc/core" }
+aero-seq-commit = { version = "2.0.1", path = "consensus/seq-commit" }
+aero-rpc-macros = { version = "2.0.1", path = "rpc/macros" }
+aero-rpc-service = { version = "2.0.1", path = "rpc/service" }
+aero-txscript = { version = "2.0.1", path = "crypto/txscript" }
+aero-txscript-errors = { version = "2.0.1", path = "crypto/txscript/errors" }
+aero-txscript-zk-sdk = { version = "2.0.1", path = "crypto/txscript/zk-sdk" }
+aero-utils = { version = "2.0.1", path = "utils", default-features = false }
+aero-utils-tower = { version = "2.0.1", path = "utils/tower" }
+aero-system-info = { version = "2.0.1", path = "system-info" }
+aero-build-info = { version = "2.0.1", path = "build-info" }
+aero-utxoindex = { version = "2.0.1", path = "indexes/utxoindex" }
+aero-wallet = { version = "2.0.1", path = "wallet/native" }
+aero-wallet-cli-wasm = { version = "2.0.1", path = "wallet/wasm" }
+aero-wallet-keys = { version = "2.0.1", path = "wallet/keys" }
+aero-wallet-pskt = { version = "2.0.1", path = "wallet/pskt" }
+aero-wallet-core = { version = "2.0.1", path = "wallet/core" }
+aero-wallet-macros = { version = "2.0.1", path = "wallet/macros" }
+aero-wasm = { version = "2.0.1", path = "wasm" }
+aero-wasm-core = { version = "2.0.1", path = "wasm/core" }
+aero-wrpc-client = { version = "2.0.1", path = "rpc/wrpc/client" }
+aero-wrpc-proxy = { version = "2.0.1", path = "rpc/wrpc/proxy" }
+aero-wrpc-server = { version = "2.0.1", path = "rpc/wrpc/server" }
+aero-wrpc-wasm = { version = "2.0.1", path = "rpc/wrpc/wasm" }
+aero-wrpc-example-subscriber = { version = "2.0.1", path = "rpc/wrpc/examples/subscriber" }
+aerod = { version = "2.0.1", path = "aerod" }
+aero-alloc = { version = "2.0.1", path = "utils/alloc" }
 
 # external
 aes = "0.8.3"
@@ -171,11 +175,11 @@ borsh = { version = "1.5.1", features = ["derive", "rc"], default-features = fal
 bs58 = { version = "0.5.0", features = ["check"], default-features = false }
 bytes = "1.7.1"
 bytemuck = "1.24.0"
-cc = "1.0.83"
 cfb-mode = "0.8.2"
 cfg-if = "1.0.0"
 chacha20poly1305 = "0.10.1"
 clap = { version = "4.5.35", features = ["derive", "string", "cargo"] }
+cmake = "0.1"
 convert_case = "0.6.0"
 criterion = { version = "0.5.1", default-features = false }
 crossbeam-channel = "0.5.8"
@@ -215,7 +219,6 @@ indexmap = "2.1.0"
 ipnet = { version = "2.11.0", default-features = false }
 itertools = { version = "0.13.0", default-features = false }
 js-sys = { version = "=0.3.77", default-features = false }
-keccak = "0.1.4"
 local-ip-address = "0.6.1"
 log = { version = "0.4.20", default-features = false }
 log4rs = "1.4.0"
@@ -261,7 +264,6 @@ serde_repr = "0.1.18"
 sha1 = "0.10.6"
 sha2 = { version = "0.10.8", default-features = false }
 sha2-const-stable = "0.1.0"
-sha3 = "0.10.8"
 slugify-rs = "0.0.3"
 smallvec = { version = "1.11.1", features = ["serde", "const_generics"] }
 sorted-insert = "0.2.3"
@@ -378,25 +380,25 @@ strip = false
 # CI optimization: Keep debug fast to compile, but optimize hot-path crates
 # so tests run at reasonable speed without full release builds.
 
-[profile.dev.package.kaspa-consensus]
+[profile.dev.package.aero-consensus]
 opt-level = 2
 
-[profile.dev.package.kaspa-consensus-core]
+[profile.dev.package.aero-consensus-core]
 opt-level = 2
 
-[profile.dev.package.kaspa-hashes]
+[profile.dev.package.aero-hashes]
 opt-level = 2
 
-[profile.dev.package.kaspa-math]
+[profile.dev.package.aero-math]
 opt-level = 2
 
-[profile.dev.package.kaspa-muhash]
+[profile.dev.package.aero-muhash]
 opt-level = 2
 
-[profile.dev.package.kaspa-pow]
+[profile.dev.package.aero-pow]
 opt-level = 2
 
-[profile.dev.package.kaspa-txscript]
+[profile.dev.package.aero-txscript]
 opt-level = 2
 
 # External crates used heavily by consensus/crypto

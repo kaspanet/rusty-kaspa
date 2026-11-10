@@ -1,7 +1,6 @@
 use super::{client::ListeningClient, fee};
-use itertools::Itertools;
-use kaspa_addresses::Address;
-use kaspa_consensus_core::{
+use aero_addresses::Address;
+use aero_consensus_core::{
     constants::{TX_VERSION, TX_VERSION_TOCCATA},
     header::Header,
     mass::SigopCount,
@@ -16,10 +15,11 @@ use kaspa_consensus_core::{
         utxo_diff::UtxoDiff,
     },
 };
-use kaspa_core::info;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::{BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification, api::rpc::RpcApi};
-use kaspa_txscript::pay_to_address_script;
+use aero_core::info;
+use aero_grpc_client::GrpcClient;
+use aero_rpc_core::{BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification, api::rpc::RpcApi};
+use aero_txscript::pay_to_address_script;
+use itertools::Itertools;
 use rand::{Rng, thread_rng};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use secp256k1::Keypair;

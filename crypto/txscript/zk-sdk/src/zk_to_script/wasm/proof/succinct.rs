@@ -1,8 +1,8 @@
 use crate::zk_to_script::wasm::proof::FinalizedR0Script;
 use crate::zk_to_script::wasm::{InnerState, ZkScriptBuilder};
-use kaspa_txscript::error::Error;
-use kaspa_txscript::result::Result;
-use kaspa_wasm_core::types::BinaryT;
+use aero_txscript::error::Error;
+use aero_txscript::result::Result;
+use aero_wasm_core::types::BinaryT;
 use risc0_zkvm::{Digest, ReceiptClaim, SuccinctReceipt};
 use wasm_bindgen::prelude::wasm_bindgen;
 use workflow_wasm::prelude::*;

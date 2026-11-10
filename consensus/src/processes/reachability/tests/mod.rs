@@ -14,13 +14,13 @@ use crate::{
         relations::{RelationsStoreExtensions, delete_reachability_relations, init as relations_init},
     },
 };
-use itertools::Itertools;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlockHashSet,
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
 };
-use kaspa_database::prelude::{DirectWriter, StoreError};
-use kaspa_hashes::Hash;
+use aero_database::prelude::{DirectWriter, StoreError};
+use aero_hashes::Hash;
+use itertools::Itertools;
 use std::collections::{
     VecDeque,
     hash_map::Entry::{Occupied, Vacant},

@@ -1,11 +1,11 @@
+use aero_utils::{
+    hex::{FromHex, ToHex},
+    serde_bytes::FromHexVisitor,
+};
 use alloc::borrow::Cow;
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::Formatter;
 use js_sys::Object;
-use kaspa_utils::{
-    hex::{FromHex, ToHex},
-    serde_bytes::FromHexVisitor,
-};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{Error, Visitor},
@@ -47,7 +47,7 @@ export interface IScriptPublicKey {
 }
 "#;
 
-/// Represents a Kaspad ScriptPublicKey
+/// Represents a Aerod ScriptPublicKey
 /// @category Consensus
 #[derive(Default, PartialEq, Eq, Clone, Hash, CastFromJs)]
 #[wasm_bindgen(inspectable)]
@@ -126,7 +126,7 @@ impl<'de> Deserialize<'de> for ScriptPublicKey {
             // as serialization will never produce objects.
             // - review multiple integer mappings (are they all needed?)
             // - consider manual marshaling of RPC data structures
-            // (which is now possible due to the introduction of the kaspa-consensus-wasm crate)
+            // (which is now possible due to the introduction of the aero-consensus-wasm crate)
             #[cfg(target_arch = "wasm32")]
             fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
             where

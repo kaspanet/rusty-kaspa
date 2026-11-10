@@ -1,6 +1,6 @@
-const kaspa = require('../../../../nodejs/kaspa');
+const aero = require('../../../../nodejs/aero');
 const {parseArgs} = require("../utils");
-kaspa.initConsolePanicHook();
+aero.initConsolePanicHook();
 
 (async () => {
     const {} = parseArgs();
@@ -11,7 +11,7 @@ kaspa.initConsolePanicHook();
         "b000000000000002" +
         "c000000000000003");
     console.log("blueWork:", blueWork);
-    const header = new kaspa.Header({
+    const header = new aero.Header({
         version: 0,
         parentsByLevel: [["0000000000000000000000000000000000000000000000000000000000000000"]],
         hashMerkleRoot: "5510d0c31d6ae3491d6ce8af8e1048c3f287d9c47e4361bd21a9a5fb033a0c1a",
@@ -33,7 +33,7 @@ kaspa.initConsolePanicHook();
     console.log("header.blueWork.toString(16):", header.blueWork.toString(16));
 
     console.log("creating PoW");
-    const pow = new kaspa.PoW(header);
+    const pow = new aero.PoW(header);
     const nonce = BigInt("0xffffffffffffffff");
     console.log("nonce:", nonce);
     const [a, v] = pow.checkWork(nonce);

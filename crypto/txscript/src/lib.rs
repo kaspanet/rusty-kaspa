@@ -42,16 +42,16 @@ use crate::data_stack::{Stack, StackEntry};
 use crate::opcodes::{OpCodeImplementation, deserialize_next_opcode};
 use crate::zk_precompiles::compute_zk_cost;
 use crate::zk_precompiles::tags::ZkTag;
-use itertools::Itertools;
-use kaspa_consensus_core::hashing::sighash::{
+use aero_consensus_core::hashing::sighash::{
     SigHashReusedValues, SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash,
 };
-use kaspa_consensus_core::hashing::sighash_type::SigHashType;
-use kaspa_consensus_core::mass::{Gram, ScriptUnits};
-use kaspa_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
-use kaspa_hashes::Hash;
-use kaspa_txscript_errors::TxScriptError;
-use kaspa_utils::hex::ToHex;
+use aero_consensus_core::hashing::sighash_type::SigHashType;
+use aero_consensus_core::mass::{Gram, ScriptUnits};
+use aero_consensus_core::tx::{PopulatedTransaction, ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
+use aero_hashes::Hash;
+use aero_txscript_errors::TxScriptError;
+use aero_utils::hex::ToHex;
+use itertools::Itertools;
 use log::trace;
 use opcodes::codes::OpReturn;
 use opcodes::{OpCond, codes, to_small_int};
@@ -576,7 +576,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     pub fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
         self.print_opcode_execution(&opcode);
 
-        // Different from kaspad: Illegal and disabled opcode are checked on execute instead
+        // Different from aerod: Illegal and disabled opcode are checked on execute instead
         // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
             self.num_ops += 1;
@@ -925,19 +925,19 @@ mod tests {
 
     use super::*;
     use crate::script_builder::{ScriptBuilder, ScriptBuilderResult};
-    use kaspa_addresses::{Address, Prefix, Version};
-    use kaspa_consensus_core::config::params::MAINNET_PARAMS;
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
-    use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
-    use kaspa_consensus_core::mass::{
+    use aero_addresses::{Address, Prefix, Version};
+    use aero_consensus_core::config::params::MAINNET_PARAMS;
+    use aero_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+    use aero_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
+    use aero_consensus_core::mass::{
         ComputeBudget, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT, SCRIPT_UNITS_PER_GRAM, ScriptUnits, SigopCount,
     };
-    use kaspa_consensus_core::tx::{
+    use aero_consensus_core::tx::{
         ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput,
         TransactionOutpoint, TransactionOutput,
     };
-    use kaspa_core::assert_match;
-    use kaspa_utils::hex::FromHex;
+    use aero_core::assert_match;
+    use aero_utils::hex::FromHex;
     use smallvec::SmallVec;
 
     struct ScriptTestCase {
@@ -1380,7 +1380,7 @@ mod tests {
         let utxo_entry = UtxoEntry::new(1, ScriptPublicKey::new(0, two_sigops_script.clone().into()), 0, false, None);
         let mut mutable_tx = MutableTransaction::with_entries(tx, vec![utxo_entry]);
         let sighash_reused = SigHashReusedValuesUnsync::new();
-        let sig_hash = kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash(
+        let sig_hash = aero_consensus_core::hashing::sighash::calc_schnorr_signature_hash(
             &mutable_tx.as_verifiable(),
             0,
             SIG_HASH_ALL,
@@ -2382,12 +2382,12 @@ mod bitcoind_tests {
 
     use super::*;
     use crate::script_builder::ScriptBuilderError;
-    use kaspa_consensus_core::constants::MAX_TX_IN_SEQUENCE_NUM;
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
-    use kaspa_consensus_core::tx::{
+    use aero_consensus_core::constants::MAX_TX_IN_SEQUENCE_NUM;
+    use aero_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+    use aero_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
-    use kaspa_hashes::Hash;
+    use aero_hashes::Hash;
 
     #[derive(PartialEq, Eq, Debug, Clone)]
     enum UnifiedError {

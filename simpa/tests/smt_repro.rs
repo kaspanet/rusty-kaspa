@@ -4,26 +4,26 @@ use std::{
     time::{Duration, Instant},
 };
 
-use kaspa_consensus::{
+use aero_consensus::{
     config::ConfigBuilder,
     consensus::Consensus,
     constants::perf::PerfParams,
     model::stores::ghostdag::KType,
     params::{DEVNET_PARAMS, ForkActivation, NETWORK_DELAY_BOUND, Params},
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockLevel,
     api::{ConsensusApi, ImportLane},
     config::bps::calculate_ghostdag_k,
     subnets::SubnetworkId,
     tx::TransactionOutpoint,
 };
-use kaspa_database::{create_temp_db, prelude::ConnBuilder};
-use kaspa_hashes::{Hash, ZERO_HASH};
-use kaspa_smt_store::{processor::SmtStores, streaming_import::streaming_import};
+use aero_database::{create_temp_db, prelude::ConnBuilder};
+use aero_hashes::{Hash, ZERO_HASH};
+use aero_smt_store::{processor::SmtStores, streaming_import::streaming_import};
 use simpa::simulator::{
     miner::{LaneContext, LaneProducer},
-    network::KaspaNetworkSimulator,
+    network::AeroNetworkSimulator,
 };
 
 const BPS: f64 = 1.0;
@@ -62,7 +62,7 @@ fn pruning_point_smt_export_import_repro_seed_5() {
 
 fn assert_pruning_point_smt_roundtrip(seed: u64) {
     let _guard = REPRO_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    kaspa_core::log::try_init_logger("warn");
+    aero_core::log::try_init_logger("warn");
 
     let mut params = DEVNET_PARAMS;
     apply_pruning_repro_params(&mut params);
@@ -75,7 +75,7 @@ fn assert_pruning_point_smt_roundtrip(seed: u64) {
             .build(),
     );
 
-    let mut sim = KaspaNetworkSimulator::new_with_seed(DELAY, BPS, Some(TARGET_BLOCKS), config, None, Some(seed));
+    let mut sim = AeroNetworkSimulator::new_with_seed(DELAY, BPS, Some(TARGET_BLOCKS), config, None, Some(seed));
     let (consensus, handles, lifetime) = sim
         .init_with_lane_producer(MINERS, TXS_PER_BLOCK, false, None, None, None, false, |miner_id| {
             Box::new(ChurningLaneProducer::new(seed ^ miner_id, LANE_COUNT, LANE_BAND, LANE_EPOCH_BLOCKS, LANE_CARRY_PERCENT))

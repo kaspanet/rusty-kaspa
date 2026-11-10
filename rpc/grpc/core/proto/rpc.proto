@@ -1,9 +1,9 @@
 // RPC-related types. Request messages, response messages, and dependant types.
 //
-// Clients are expected to build RequestMessages and wrap them in KaspadMessage. (see messages.proto)
+// Clients are expected to build RequestMessages and wrap them in AerodMessage. (see messages.proto)
 //
-// Having received a RequestMessage, (wrapped in a KaspadMessage) the RPC server will respond with a
-// ResponseMessage (likewise wrapped in a KaspadMessage) respective to the original RequestMessage.
+// Having received a RequestMessage, (wrapped in a AerodMessage) the RPC server will respond with a
+// ResponseMessage (likewise wrapped in a AerodMessage) respective to the original RequestMessage.
 //
 //
 syntax = "proto3";
@@ -141,7 +141,7 @@ enum RpcNotifyCommand {
   NOTIFY_STOP = 1;
 }
 
-// GetCurrentNetworkRequestMessage requests the network kaspad is currently running against.
+// GetCurrentNetworkRequestMessage requests the network aerod is currently running against.
 //
 // Possible networks are: Mainnet, Testnet, Simnet, Devnet
 message GetCurrentNetworkRequestMessage {}
@@ -175,7 +175,7 @@ message SubmitBlockResponseMessage {
 //
 // See: SubmitBlockRequestMessage
 message GetBlockTemplateRequestMessage {
-  // Which kaspa address should the coinbase block reward transaction pay into
+  // Which aero address should the coinbase block reward transaction pay into
   string payAddress = 1;
   string extraData = 2;
 }
@@ -183,9 +183,9 @@ message GetBlockTemplateRequestMessage {
 message GetBlockTemplateResponseMessage {
   RpcBlock block = 3;
 
-  // Whether kaspad thinks that it's synced.
-  // Callers are discouraged (but not forbidden) from solving blocks when kaspad is not synced.
-  // That is because when kaspad isn't in sync with the rest of the network there's a high
+  // Whether aerod thinks that it's synced.
+  // Callers are discouraged (but not forbidden) from solving blocks when aerod is not synced.
+  // That is because when aerod isn't in sync with the rest of the network there's a high
   // chance the block will never be accepted, thus the solving effort would have been wasted.
   bool isSynced = 2;
 
@@ -211,7 +211,7 @@ message BlockAddedNotificationMessage {
   RpcBlock block = 3;
 }
 
-// GetPeerAddressesRequestMessage requests the list of known kaspad addresses in the
+// GetPeerAddressesRequestMessage requests the list of known aerod addresses in the
 // current network. (mainnet, testnet, etc.)
 message GetPeerAddressesRequestMessage {}
 
@@ -269,7 +269,7 @@ message RpcMempoolEntry {
 }
 
 // GetConnectedPeerInfoRequestMessage requests information about all the p2p peers
-// currently connected to this kaspad.
+// currently connected to this aerod.
 message GetConnectedPeerInfoRequestMessage {}
 
 message GetConnectedPeerInfoResponseMessage {
@@ -284,7 +284,7 @@ message GetConnectedPeerInfoMessage {
   // How long did the last ping/pong exchange take
   int64 lastPingDuration = 3;
 
-  // Whether this kaspad initiated the connection
+  // Whether this aerod initiated the connection
   bool isOutbound = 6;
   int64 timeOffset = 7;
   string userAgent = 8;
@@ -292,15 +292,15 @@ message GetConnectedPeerInfoMessage {
   // The protocol version that this peer claims to support
   uint32 advertisedProtocolVersion = 9;
 
-  // The timestamp of when this peer connected to this kaspad
+  // The timestamp of when this peer connected to this aerod
   int64 timeConnected = 10;
 
   // Whether this peer is the IBD peer (if IBD is running)
   bool isIbdPeer = 11;
 }
 
-// AddPeerRequestMessage adds a peer to kaspad's outgoing connection list.
-// This will, in most cases, result in kaspad connecting to said peer.
+// AddPeerRequestMessage adds a peer to aerod's outgoing connection list.
+// This will, in most cases, result in aerod connecting to said peer.
 message AddPeerRequestMessage {
   string address = 1;
 
@@ -394,7 +394,7 @@ message GetSubnetworkResponseMessage {
 }
 
 /// GetVirtualChainFromBlockRequestMessage requests the virtual selected
-/// parent chain from some startHash to this kaspad's current virtual
+/// parent chain from some startHash to this aerod's current virtual
 /// Note:
 ///     this call batches the response to:
 ///         a. the network's `mergeset size limit * 10` amount of added chain blocks, if `includeAcceptedTransactionIds = false`
@@ -426,7 +426,7 @@ message GetVirtualChainFromBlockResponseMessage {
 }
 
 // GetBlocksRequestMessage requests blocks between a certain block lowHash up to this
-// kaspad's current virtual.
+// aerod's current virtual.
 message GetBlocksRequestMessage {
   string lowHash = 1;
   bool includeBlocks = 2;
@@ -439,7 +439,7 @@ message GetBlocksResponseMessage {
   RPCError error = 1000;
 }
 
-// GetBlockCountRequestMessage requests the current number of blocks in this kaspad.
+// GetBlockCountRequestMessage requests the current number of blocks in this aerod.
 // Note that this number may decrease as pruning occurs.
 message GetBlockCountRequestMessage {}
 
@@ -450,7 +450,7 @@ message GetBlockCountResponseMessage {
 }
 
 // GetBlockDagInfoRequestMessage requests general information about the current state
-// of this kaspad's DAG.
+// of this aerod's DAG.
 message GetBlockDagInfoRequestMessage {}
 
 message GetBlockDagInfoResponseMessage {
@@ -491,7 +491,7 @@ message FinalityConflictResolvedNotificationMessage {
   string finalityBlockHash = 1;
 }
 
-// ShutdownRequestMessage shuts down this kaspad.
+// ShutdownRequestMessage shuts down this aerod.
 message ShutdownRequestMessage {}
 
 message ShutdownResponseMessage {
@@ -514,7 +514,7 @@ message GetHeadersResponseMessage {
 // NotifyUtxosChangedRequestMessage registers this connection for utxoChanged notifications
 // for the given addresses.
 //
-// This call is only available when this kaspad was started with `--utxoindex`
+// This call is only available when this aerod was started with `--utxoindex`
 //
 // See: UtxosChangedNotificationMessage
 message NotifyUtxosChangedRequestMessage {
@@ -545,11 +545,11 @@ message RpcUtxosByAddressesEntry {
 // StopNotifyingUtxosChangedRequestMessage unregisters this connection for utxoChanged notifications
 // for the given addresses.
 //
-// This call is only available when this kaspad was started with `--utxoindex`
+// This call is only available when this aerod was started with `--utxoindex`
 //
 // See: UtxosChangedNotificationMessage
 //
-// This message only exists for backward compatibility reason with kaspad and is deprecated.
+// This message only exists for backward compatibility reason with aerod and is deprecated.
 // Use instead UtxosChangedNotificationMessage with command = NOTIFY_STOP.
 message StopNotifyingUtxosChangedRequestMessage {
   repeated string addresses = 1;
@@ -559,9 +559,9 @@ message StopNotifyingUtxosChangedResponseMessage {
   RPCError error = 1000;
 }
 
-// GetUtxosByAddressesRequestMessage requests all current UTXOs for the given kaspad addresses
+// GetUtxosByAddressesRequestMessage requests all current UTXOs for the given aerod addresses
 //
-// This call is only available when this kaspad was started with `--utxoindex`
+// This call is only available when this aerod was started with `--utxoindex`
 message GetUtxosByAddressesRequestMessage {
   repeated string addresses = 1;
 }
@@ -574,7 +574,7 @@ message GetUtxosByAddressesResponseMessage {
 
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
 //
-// This call is only available when this kaspad was started with `--utxoindex`
+// This call is only available when this aerod was started with `--utxoindex`
 message GetBalanceByAddressRequestMessage {
   string address = 1;
 }
@@ -655,7 +655,7 @@ message VirtualDaaScoreChangedNotificationMessage {
 // NotifyPruningPointUtxoSetOverrideRequestMessage registers this connection for
 // pruning point UTXO set override notifications.
 //
-// This call is only available when this kaspad was started with `--utxoindex`
+// This call is only available when this aerod was started with `--utxoindex`
 //
 // See: NotifyPruningPointUtxoSetOverrideResponseMessage
 message NotifyPruningPointUtxoSetOverrideRequestMessage {
@@ -675,11 +675,11 @@ message PruningPointUtxoSetOverrideNotificationMessage {}
 // StopNotifyingPruningPointUtxoSetOverrideRequestMessage unregisters this connection for
 // pruning point UTXO set override notifications.
 //
-// This call is only available when this kaspad was started with `--utxoindex`
+// This call is only available when this aerod was started with `--utxoindex`
 //
 // See: PruningPointUtxoSetOverrideNotificationMessage
 //
-// This message only exists for backward compatibility reason with kaspad and is deprecated.
+// This message only exists for backward compatibility reason with aerod and is deprecated.
 // Use instead NotifyPruningPointUtxoSetOverrideRequestMessage with command = NOTIFY_STOP.
 message StopNotifyingPruningPointUtxoSetOverrideRequestMessage {}
 
@@ -1080,7 +1080,7 @@ message RpcChainBlockAcceptedTransactions {
 }
 
 /// GetVirtualChainFromBlockV2RequestMessage requests the virtual selected
-/// parent chain from some startHash to this kaspad's current virtual
+/// parent chain from some startHash to this aerod's current virtual
 message GetVirtualChainFromBlockV2RequestMessage {
   string startHash = 1;
 

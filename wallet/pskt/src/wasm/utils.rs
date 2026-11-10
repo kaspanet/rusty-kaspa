@@ -1,39 +1,39 @@
-use kaspa_consensus_core::constants::*;
-use kaspa_consensus_core::network::NetworkType;
+use aero_consensus_core::constants::*;
+use aero_consensus_core::network::NetworkType;
 use separator::{Separatable, separated_float, separated_int, separated_uint_with_output};
 
 #[inline]
-pub fn sompi_to_kaspa(sompi: u64) -> f64 {
-    sompi as f64 / SOMPI_PER_KASPA as f64
+pub fn sompi_to_aero(sompi: u64) -> f64 {
+    sompi as f64 / SOMPI_PER_AERO as f64
 }
 
 #[inline]
-pub fn kaspa_to_sompi(kaspa: f64) -> u64 {
-    (kaspa * SOMPI_PER_KASPA as f64) as u64
+pub fn aero_to_sompi(aero: f64) -> u64 {
+    (aero * SOMPI_PER_AERO as f64) as u64
 }
 
 #[inline]
-pub fn sompi_to_kaspa_string(sompi: u64) -> String {
-    sompi_to_kaspa(sompi).separated_string()
+pub fn sompi_to_aero_string(sompi: u64) -> String {
+    sompi_to_aero(sompi).separated_string()
 }
 
 #[inline]
-pub fn sompi_to_kaspa_string_with_trailing_zeroes(sompi: u64) -> String {
-    separated_float!(format!("{:.8}", sompi_to_kaspa(sompi)))
+pub fn sompi_to_aero_string_with_trailing_zeroes(sompi: u64) -> String {
+    separated_float!(format!("{:.8}", sompi_to_aero(sompi)))
 }
 
-pub fn kaspa_suffix(network_type: &NetworkType) -> &'static str {
+pub fn aero_suffix(network_type: &NetworkType) -> &'static str {
     match network_type {
-        NetworkType::Mainnet => "KAS",
-        NetworkType::Testnet => "TKAS",
-        NetworkType::Simnet => "SKAS",
-        NetworkType::Devnet => "DKAS",
+        NetworkType::Mainnet => "ARO",
+        NetworkType::Testnet => "TARO",
+        NetworkType::Simnet => "SARO",
+        NetworkType::Devnet => "DARO",
     }
 }
 
 #[inline]
-pub fn sompi_to_kaspa_string_with_suffix(sompi: u64, network_type: &NetworkType) -> String {
-    let kas = sompi_to_kaspa_string(sompi);
-    let suffix = kaspa_suffix(network_type);
+pub fn sompi_to_aero_string_with_suffix(sompi: u64, network_type: &NetworkType) -> String {
+    let kas = sompi_to_aero_string(sompi);
+    let suffix = aero_suffix(network_type);
     format!("{kas} {suffix}")
 }

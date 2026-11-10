@@ -19,7 +19,6 @@ pub mod history;
 // pub mod import;
 pub mod list;
 pub mod message;
-pub mod miner;
 pub mod monitor;
 pub mod mute;
 pub mod network;
@@ -52,13 +51,13 @@ pub mod metrics;
 // create-unsigned-tx
 // sign
 
-pub fn register_handlers(cli: &Arc<KaspaCli>) -> Result<()> {
+pub fn register_handlers(cli: &Arc<AeroCli>) -> Result<()> {
     register_handlers!(
         cli,
         cli.handlers(),
         [
-            account, address, close, connect, details, disconnect, estimate, exit, export, guide, help, history, rpc, list, miner,
-            message, monitor, mute, network, node, open, ping, pskb, reload, select, send, server, settings, sweep, track, transfer,
+            account, address, close, connect, details, disconnect, estimate, exit, export, guide, help, history, rpc, list, message,
+            monitor, mute, network, node, open, ping, pskb, reload, select, send, server, settings, sweep, track, transfer,
             wallet,
             // halt,
             // theme,  start, stop

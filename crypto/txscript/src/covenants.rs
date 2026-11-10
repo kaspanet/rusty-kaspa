@@ -1,9 +1,9 @@
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     hashing,
     tx::{CovenantBinding, VerifiableTransaction},
 };
-use kaspa_hashes::Hash;
-use kaspa_txscript_errors::CovenantsError;
+use aero_hashes::Hash;
+use aero_txscript_errors::CovenantsError;
 use std::{collections::HashMap, sync::LazyLock};
 
 /// Context for an input's specific authority over a subset of outputs.
@@ -166,7 +166,7 @@ impl CovenantsContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         hashing,
         subnets::SubnetworkId,
         tx::{

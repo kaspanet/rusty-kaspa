@@ -1,13 +1,13 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     mass::Gram,
     tx::{TransactionInput, VerifiableTransaction},
 };
-use kaspa_txscript::{
+use aero_txscript::{
     EngineCtx, EngineCtxSync, EngineCtxUnsync, EngineFlags, SeqCommitAccessor, TxScriptEngine, covenants::CovenantsContext,
 };
-use kaspa_txscript_errors::TxScriptError;
+use aero_txscript_errors::TxScriptError;
 use rayon::ThreadPool;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::marker::Sync;
@@ -148,7 +148,7 @@ impl TransactionValidator {
                 // lock-time. We subtract one from the relative lock in
                 // order to maintain the original lockTime semantics.
                 //
-                // Note: in the kaspad codebase there's a use in i64 in order to use the -1 value
+                // Note: in the aerod codebase there's a use in i64 in order to use the -1 value
                 // as None. Here it's not needed, but we still use it to avoid breaking consensus.
                 let lock_daa_score = entry.block_daa_score as i64 + relative_lock - 1;
 
@@ -226,25 +226,25 @@ mod tests {
     use super::super::errors::TxRuleError;
     use super::{CHECK_SCRIPTS_PARALLELISM_THRESHOLD, TxValidationFlags, check_scripts};
     use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
-    use core::str::FromStr;
-    use itertools::Itertools;
-    use kaspa_consensus_core::mass::{ComputeBudget, free_script_units_per_input};
-    use kaspa_consensus_core::mass::{GRAMS_PER_COMPUTE_BUDGET_UNIT, MassCalculator, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT};
-    use kaspa_consensus_core::sign::sign;
-    use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_consensus_core::tx::{
+    use aero_consensus_core::mass::{ComputeBudget, free_script_units_per_input};
+    use aero_consensus_core::mass::{GRAMS_PER_COMPUTE_BUDGET_UNIT, MassCalculator, SCRIPT_UNITS_PER_COMPUTE_BUDGET_UNIT};
+    use aero_consensus_core::sign::sign;
+    use aero_consensus_core::subnets::SubnetworkId;
+    use aero_consensus_core::tx::{
         ComputeCommit, MutableTransaction, PopulatedTransaction, ScriptPublicKey, ScriptVec, Transaction, TransactionId,
         TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
     };
-    use kaspa_core::assert_match;
-    use kaspa_txscript::opcodes::codes::{OpCheckSigVerify, OpDup};
-    use kaspa_txscript::{
+    use aero_core::assert_match;
+    use aero_txscript::opcodes::codes::{OpCheckSigVerify, OpDup};
+    use aero_txscript::{
         EngineCtx, EngineFlags,
         opcodes::codes::{OpCheckSig, OpDrop},
         script_builder::ScriptBuilder,
         standard::{pay_to_script_hash_script, pay_to_script_hash_signature_script},
     };
-    use kaspa_txscript_errors::TxScriptError;
+    use aero_txscript_errors::TxScriptError;
+    use core::str::FromStr;
+    use itertools::Itertools;
     use secp256k1::Secp256k1;
     use smallvec::SmallVec;
     use std::iter::once;
@@ -303,7 +303,7 @@ mod tests {
 
     #[test]
     fn check_scripts_parallel_budget_behavior() {
-        let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
+        let sig_cache = aero_txscript::caches::Cache::new(10_000);
         let flags = Default::default();
 
         // (a) One input alone is over budget when compute_budget=0 (allowed units per input = 9999).
@@ -422,7 +422,7 @@ mod tests {
     // input with 1 sigop-count budget, can now suffice for two sigops instead of one.
     #[test]
     fn check_scripts_v0_sigop_count_input_fails_by_default_and_succeeds_with_5000_sigop_script_units() {
-        let sig_cache = kaspa_txscript::caches::Cache::new(10_000);
+        let sig_cache = aero_txscript::caches::Cache::new(10_000);
 
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &[7u8; 32]).unwrap();
         let (x_only_pubkey, _) = schnorr_key.x_only_public_key();

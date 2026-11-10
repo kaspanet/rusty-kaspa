@@ -1,9 +1,9 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::str::{self, FromStr};
 
+use aero_utils::hex::{FromHex, ToHex};
+use aero_utils::{serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref};
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_utils::hex::{FromHex, ToHex};
-use kaspa_utils::{serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref};
 use thiserror::Error;
 
 /// The size of the array used to store subnetwork IDs.

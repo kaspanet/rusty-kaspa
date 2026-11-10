@@ -32,7 +32,7 @@ pub enum Error {
     NotInitialized,
 
     #[error(transparent)]
-    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+    ConsensusClient(#[from] aero_consensus_client::error::Error),
 
     #[error(transparent)]
     Pskt(#[from] crate::error::Error),

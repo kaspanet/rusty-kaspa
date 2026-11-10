@@ -13,8 +13,8 @@
 use alloc::collections::BTreeMap;
 use alloc::vec::Vec;
 
+use aero_hashes::Hash;
 use core::marker::PhantomData;
-use kaspa_hashes::Hash;
 
 use crate::proof::{OwnedSmtProof, ProofTerminal};
 use crate::store::{BTreeSmtStore, BranchKey, CollapsedLeaf, LeafUpdate, Node, SmtStore, SortedLeafUpdates, SortedLeafUpdatesRef};
@@ -175,7 +175,7 @@ impl<H: SmtHasher> SparseMerkleTree<H, BTreeSmtStore> {
     #[cfg(any(test, feature = "test-utils"))]
     /// Remove a leaf by key, incrementally updating the root via SLO.
     pub fn remove(&mut self, key: &Hash) -> Option<Hash> {
-        use kaspa_hashes::ZERO_HASH;
+        use aero_hashes::ZERO_HASH;
         let old = self.store.get_leaf(key);
         if old.is_some() {
             let sorted = SortedLeafUpdates::from_unsorted(core::iter::once(LeafUpdate { key: *key, leaf_hash: ZERO_HASH }));
@@ -288,7 +288,7 @@ fn child_branch_key(parent: &BranchKey, right: bool, depth: usize) -> BranchKey 
 
 fn leaf_result(update: Option<&LeafUpdate>) -> NodeResult {
     match update {
-        Some(u) if u.leaf_hash != kaspa_hashes::ZERO_HASH => {
+        Some(u) if u.leaf_hash != aero_hashes::ZERO_HASH => {
             NodeResult::Collapsed(CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash })
         }
         _ => NodeResult::Empty,
@@ -354,7 +354,7 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
     if let Some(u) = updates.single()
         && existing.is_none()
     {
-        if u.leaf_hash == kaspa_hashes::ZERO_HASH {
+        if u.leaf_hash == aero_hashes::ZERO_HASH {
             return Ok(NodeResult::Empty);
         }
         let cl = CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash };
@@ -366,7 +366,7 @@ fn compute_subtree<H: SmtHasher, S: SmtStore>(
         && let Some(Node::Collapsed(existing_cl)) = existing
         && u.key == existing_cl.lane_key
     {
-        let new_node = if u.leaf_hash == kaspa_hashes::ZERO_HASH {
+        let new_node = if u.leaf_hash == aero_hashes::ZERO_HASH {
             None
         } else {
             Some(Node::Collapsed(CollapsedLeaf { lane_key: u.key, leaf_hash: u.leaf_hash }))
@@ -464,8 +464,8 @@ fn read_sibling_result<S: SmtStore>(
 mod tests {
     use super::*;
     use crate::proof::SmtProofError;
+    use aero_hashes::{HasherBase, SeqCommitActiveNode, ZERO_HASH};
     use alloc::vec;
-    use kaspa_hashes::{HasherBase, SeqCommitActiveNode, ZERO_HASH};
     use rand::{Rng, SeedableRng, rngs::StdRng};
 
     type TestHasher = SeqCommitActiveNode;

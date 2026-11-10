@@ -1,7 +1,7 @@
 //!
 //! Events emitted by the wallet framework. This includes various wallet,
 //! account and transaction events as well as state and sync events
-//! produced by the client RPC and the Kaspa node monitoring subsystems.
+//! produced by the client RPC and the Aero node monitoring subsystems.
 //!
 
 use crate::api::message::FeeRateEstimateBucket;
@@ -10,7 +10,7 @@ use crate::storage::{Hint, PrvKeyDataInfo, StorageDescriptor, TransactionRecord,
 use crate::utxo::context::UtxoContextId;
 use transaction::TransactionRecordNotification;
 
-/// Sync state of the kaspad node
+/// Sync state of the aerod node
 #[derive(Clone, Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type", content = "data")]

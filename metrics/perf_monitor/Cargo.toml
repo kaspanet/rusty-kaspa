@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-perf-monitor"
-description = "Kaspa process performance monitoring tools"
+name = "aero-perf-monitor"
+description = "Aero process performance monitoring tools"
 rust-version.workspace = true
 version.workspace = true
 authors.workspace = true
@@ -10,7 +10,7 @@ include.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-core.workspace = true
+aero-core.workspace = true
 log.workspace = true
 portable-atomic.workspace = true
 thiserror.workspace = true

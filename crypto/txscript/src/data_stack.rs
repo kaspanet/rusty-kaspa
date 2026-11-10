@@ -1,8 +1,8 @@
 use crate::{MAX_SCRIPT_ELEMENT_SIZE, TxScriptError};
+use aero_hashes::Hash;
+use aero_txscript_errors::SerializationError;
 use core::fmt::Debug;
 use core::iter;
-use kaspa_hashes::Hash;
-use kaspa_txscript_errors::SerializationError;
 use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::num::TryFromIntError;
@@ -494,8 +494,8 @@ impl Stack {
 mod tests {
     use super::OpcodeData;
     use crate::data_stack::{SizedEncodeInt, serialize_i64};
-    use kaspa_txscript_errors::{SerializationError, TxScriptError};
-    use kaspa_utils::hex::FromHex;
+    use aero_txscript_errors::{SerializationError, TxScriptError};
+    use aero_utils::hex::FromHex;
 
     // TestScriptNumBytes
     #[test]

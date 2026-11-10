@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-consensus-core"
-description = "Kaspa consensus core"
+name = "aero-consensus-core"
+description = "Aero consensus core"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -25,15 +25,15 @@ futures-util.workspace = true
 getrandom.workspace = true
 itertools.workspace = true
 js-sys.workspace = true
-kaspa-addresses.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes = { workspace = true, features = ["mem_size"] }
-kaspa-math.workspace = true
-kaspa-smt.workspace = true
-kaspa-merkle.workspace = true
-kaspa-muhash.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-utils.workspace = true
+aero-addresses.workspace = true
+aero-core.workspace = true
+aero-hashes = { workspace = true, features = ["mem_size"] }
+aero-math.workspace = true
+aero-smt.workspace = true
+aero-merkle.workspace = true
+aero-muhash.workspace = true
+aero-txscript-errors.workspace = true
+aero-utils.workspace = true
 rand.workspace = true
 secp256k1.workspace = true
 serde-value.workspace = true

@@ -5,15 +5,15 @@
 use crate::derivation::gen1::WalletDerivationManager;
 use crate::derivation::traits::WalletDerivationManagerTrait;
 use crate::imports::*;
-use kaspa_addresses::AddressArrayT;
-use kaspa_consensus_core::network::NetworkType;
+use aero_addresses::AddressArrayT;
+use aero_consensus_core::network::NetworkType;
 // use crate::xprv::XPrv;
 
 ///
 /// Helper class to generate public keys from an extended public key (XPub)
 /// that has been derived up to the co-signer index.
 ///
-/// Please note that in Kaspa master public keys use `kpub` prefix.
+/// Please note that in Aero master public keys use `kpub` prefix.
 ///
 /// @see {@link PrivateKeyGenerator}, {@link XPub}, {@link XPrv}, {@link Mnemonic}
 /// @category Wallet SDK

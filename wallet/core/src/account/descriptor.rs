@@ -4,10 +4,10 @@
 
 use crate::derivation::AddressDerivationMeta;
 use crate::imports::*;
+use aero_addresses::Address;
+use aero_wallet_macros::declare_typescript_wasm_interface as declare;
 use borsh::{BorshDeserialize, BorshSerialize};
 use convert_case::{Case, Casing};
-use kaspa_addresses::Address;
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

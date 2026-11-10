@@ -4,8 +4,8 @@ use crate::{
     RpcError, RpcOptionalTransaction, RpcOptionalTransactionInput, RpcOptionalTransactionOutput, RpcResult, RpcTransaction,
     RpcTransactionInput, RpcTransactionOutput,
 };
-use kaspa_consensus_core::mass::{ComputeBudget, SigopCount};
-use kaspa_consensus_core::tx::{ComputeCommit, Transaction, TransactionInput, TransactionOutput};
+use aero_consensus_core::mass::{ComputeBudget, SigopCount};
+use aero_consensus_core::tx::{ComputeCommit, Transaction, TransactionInput, TransactionOutput};
 
 struct RpcInputWithVersion {
     version: u16,
@@ -135,11 +135,11 @@ impl TryFrom<RpcTransaction> for Transaction {
             item.inputs
                 .into_iter()
                 .map(|input| RpcInputWithVersion { version, input }.try_into())
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
+                .collect::<RpcResult<Vec<aero_consensus_core::tx::TransactionInput>>>()?,
             item.outputs
                 .into_iter()
-                .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionOutput>>>()?,
+                .map(aero_consensus_core::tx::TransactionOutput::try_from)
+                .collect::<RpcResult<Vec<aero_consensus_core::tx::TransactionOutput>>>()?,
             item.lock_time,
             item.subnetwork_id,
             item.gas,
@@ -214,11 +214,11 @@ impl TryFrom<RpcOptionalTransaction> for Transaction {
             item.inputs
                 .into_iter()
                 .map(|input| RpcOptionalInputWithVersion { version, input }.try_into())
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionInput>>>()?,
+                .collect::<RpcResult<Vec<aero_consensus_core::tx::TransactionInput>>>()?,
             item.outputs
                 .into_iter()
-                .map(kaspa_consensus_core::tx::TransactionOutput::try_from)
-                .collect::<RpcResult<Vec<kaspa_consensus_core::tx::TransactionOutput>>>()?,
+                .map(aero_consensus_core::tx::TransactionOutput::try_from)
+                .collect::<RpcResult<Vec<aero_consensus_core::tx::TransactionOutput>>>()?,
             item.lock_time.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "lock_time".to_owned()))?,
             item.subnetwork_id.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "subnetwork_id".to_owned()))?,
             item.gas.ok_or(RpcError::MissingRpcFieldError("RpcTransaction".to_owned(), "gas".to_owned()))?,

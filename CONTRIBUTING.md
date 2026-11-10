@@ -1,12 +1,12 @@
-# Contributing to Kaspa
+# Contributing to Aero
 
-Thanks for your interest in contributing to Kaspa!
+Thanks for your interest in contributing to Aero!
 
 We welcome contributions of all sizes and there are many opportunities to contribute at any level — from clarifying documentation and fixing small bugs to implementing full features and reviewing pull requests.
 
 Reach out to `@Node Developers` in Discord in the [#development](https://discord.com/channels/599153230659846165/755890250643144788) channel.
 
-Follow along the R&D Telegram group [@kasparnd](https://t.me/kasparnd).
+Follow along the R&D Telegram group [@aerornd](https://t.me/kasparnd).
 
 ## Quick summary
 
@@ -69,5 +69,5 @@ Be respectful and constructive in discussions. We expect contributors to follow 
 
 ## Thank You
 
-Thanks for helping make Kaspa better. If you have questions, reach out to the channels described at the top of this document
+Thanks for helping make Aero better. If you have questions, reach out to the channels described at the top of this document
 

@@ -1,4 +1,4 @@
-use kaspa_consensus_core::config::constants::consensus::DEFAULT_GAS_PER_LANE_LIMIT;
+use aero_consensus_core::config::constants::consensus::DEFAULT_GAS_PER_LANE_LIMIT;
 use rand::{
     Rng,
     distributions::{Distribution, WeightedIndex},

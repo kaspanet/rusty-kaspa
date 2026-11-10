@@ -4,14 +4,14 @@ use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{ghostdag::GhostdagStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
 };
-use itertools::Itertools;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet, ChainPath,
     blockhash::BlockHashExtensions,
     errors::traversal::{TraversalError, TraversalResult},
 };
-use kaspa_core::trace;
-use kaspa_hashes::Hash;
+use aero_core::trace;
+use aero_hashes::Hash;
+use itertools::Itertools;
 
 #[derive(Clone)]
 pub struct DagTraversalManager<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {

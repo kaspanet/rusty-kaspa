@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-wasm-core"
-description = "Kaspa core WASM32 types"
+name = "aero-wasm-core"
+description = "Aero core WASM32 types"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

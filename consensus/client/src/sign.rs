@@ -3,9 +3,7 @@
 //!
 
 use crate::transaction::Transaction;
-use core::iter::once;
-use itertools::Itertools;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     hashing::{
         sighash::{SigHashReusedValuesUnsync, calc_schnorr_signature_hash},
         sighash_type::SIG_HASH_ALL,
@@ -13,6 +11,8 @@ use kaspa_consensus_core::{
     tx::PopulatedTransaction,
     //sign::Signed,
 };
+use core::iter::once;
+use itertools::Itertools;
 use std::collections::BTreeMap;
 
 /// A wrapper enum that represents the transaction signed state. A transaction

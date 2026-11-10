@@ -6,7 +6,7 @@ pub struct Address;
 
 impl Address {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
 
         if argv.is_empty() {
             let address = ctx.account().await?.receive_address()?.to_string();
@@ -31,7 +31,7 @@ impl Address {
         Ok(())
     }
 
-    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
+    async fn display_help(self: Arc<Self>, ctx: Arc<AeroCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(&[("address [new]", "Show current or generate a new account address")], None)?;
 
         Ok(())

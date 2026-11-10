@@ -6,7 +6,7 @@ pub mod relations;
 pub mod tests;
 mod tree;
 
-use kaspa_database::prelude::StoreError;
+use aero_database::prelude::StoreError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -24,7 +24,7 @@ pub enum ReachabilityError {
     BadQuery,
 }
 
-impl kaspa_database::prelude::StoreErrorPredicates for ReachabilityError {
+impl aero_database::prelude::StoreErrorPredicates for ReachabilityError {
     fn is_key_not_found(&self) -> bool {
         matches!(self, ReachabilityError::StoreError(err) if err.is_key_not_found())
     }

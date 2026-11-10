@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-connectionmanager"
-description = "Kaspa connection manager"
+name = "aero-connectionmanager"
+description = "Aero connection manager"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -13,10 +13,10 @@ repository.workspace = true
 duration-string.workspace = true
 futures-util.workspace = true
 itertools.workspace = true
-kaspa-addressmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-p2p-lib.workspace = true
-kaspa-utils = { workspace = true, features = ["triggers"] }
+aero-addressmanager.workspace = true
+aero-core.workspace = true
+aero-p2p-lib.workspace = true
+aero-utils = { workspace = true, features = ["triggers"] }
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true

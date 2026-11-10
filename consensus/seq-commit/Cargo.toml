@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-seq-commit"
+name = "aero-seq-commit"
 description = "Sequencing commitment types and hashing"
 rust-version.workspace = true
 version.workspace = true
@@ -12,15 +12,15 @@ repository.workspace = true
 [features]
 
 [dependencies]
-kaspa-hashes.workspace = true
-kaspa-merkle.workspace = true
-kaspa-smt.workspace = true
+aero-hashes.workspace = true
+aero-merkle.workspace = true
+aero-smt.workspace = true
 
 thiserror.workspace = true
 
 [dev-dependencies]
-kaspa-consensus-core.workspace = true
-kaspa-smt = { workspace = true, features = ["test-utils"] }
+aero-consensus-core.workspace = true
+aero-smt = { workspace = true, features = ["test-utils"] }
 
 [lints]
 workspace = true

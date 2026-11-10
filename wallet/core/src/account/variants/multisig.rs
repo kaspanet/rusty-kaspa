@@ -6,7 +6,7 @@ use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
 
-pub const MULTISIG_ACCOUNT_KIND: &str = "kaspa-multisig-standard";
+pub const MULTISIG_ACCOUNT_KIND: &str = "aero-multisig-standard";
 
 pub struct Ctor {}
 
@@ -17,7 +17,7 @@ impl Factory for Ctor {
     }
 
     fn description(&self) -> String {
-        "Kaspa Core Multi-Signature Account".to_string()
+        "Aero Core Multi-Signature Account".to_string()
     }
 
     async fn try_load(

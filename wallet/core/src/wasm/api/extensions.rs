@@ -1,6 +1,6 @@
 use crate::imports::*;
+use aero_consensus_core::Hash;
 use js_sys::Object;
-use kaspa_consensus_core::Hash;
 
 pub trait WalletApiObjectExtension {
     fn get_secret(&self, key: &str) -> Result<Secret>;

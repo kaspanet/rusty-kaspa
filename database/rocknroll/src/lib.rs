@@ -9,7 +9,7 @@ pub enum Error {
     InvalidArgs(String),
 
     #[error("database error: {0}")]
-    Database(#[from] kaspa_database::prelude::StoreError),
+    Database(#[from] aero_database::prelude::StoreError),
 
     #[error("failed opening RocksDB: {0}")]
     RocksDb(#[from] Box<dyn std::error::Error>),

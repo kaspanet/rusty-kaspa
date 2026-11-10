@@ -6,11 +6,11 @@ use crate::mempool::{
         tx::{MempoolTransaction, TxRemovalReason},
     },
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     api::ConsensusApi,
     tx::{Transaction, TransactionId},
 };
-use kaspa_core::time::Stopwatch;
+use aero_core::time::Stopwatch;
 use std::{collections::HashSet, sync::atomic::Ordering};
 
 impl Mempool {

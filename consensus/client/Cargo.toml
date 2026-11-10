@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-consensus-client"
-description = "Kaspa consensus client data structures"
+name = "aero-consensus-client"
+description = "Aero consensus client data structures"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -13,13 +13,13 @@ wasm32-sdk = []
 wasm32-types = []
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-hashes = { workspace = true, features = ["workflow"] }
-kaspa-math.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
-kaspa-wasm-core.workspace = true
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-hashes = { workspace = true, features = ["workflow"] }
+aero-math.workspace = true
+aero-txscript.workspace = true
+aero-utils.workspace = true
+aero-wasm-core.workspace = true
 
 ahash.workspace = true
 borsh.workspace = true

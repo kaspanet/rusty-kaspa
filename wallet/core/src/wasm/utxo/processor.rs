@@ -4,10 +4,10 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::utxo as native;
 use crate::wasm::notify::{UtxoProcessorEventTarget, UtxoProcessorNotificationCallback, UtxoProcessorNotificationTypeOrCallback};
-use kaspa_consensus_core::network::NetworkIdT;
-use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
-use kaspa_wasm_core::events::{Sink, get_event_targets};
-use kaspa_wrpc_wasm::RpcClient;
+use aero_consensus_core::network::NetworkIdT;
+use aero_wallet_macros::declare_typescript_wasm_interface as declare;
+use aero_wasm_core::events::{Sink, get_event_targets};
+use aero_wrpc_wasm::RpcClient;
 use workflow_log::log_error;
 
 declare! {
@@ -79,7 +79,7 @@ cfg_if! {
 ///
 /// UtxoProcessor class is the main coordinator that manages UTXO processing
 /// between multiple UtxoContext instances. It acts as a bridge between the
-/// Kaspa node RPC connection, address subscriptions and UtxoContext instances.
+/// Aero node RPC connection, address subscriptions and UtxoContext instances.
 ///
 /// @see {@link IUtxoProcessorArgs},
 /// {@link UtxoContext},

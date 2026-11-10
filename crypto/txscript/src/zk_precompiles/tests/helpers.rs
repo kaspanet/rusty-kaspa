@@ -1,8 +1,8 @@
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     hashing::sighash::SigHashReusedValuesUnsync,
     tx::{PopulatedTransaction, Transaction, TransactionId, TransactionInput, TransactionOutpoint, UtxoEntry},
 };
-use kaspa_txscript_errors::TxScriptError;
+use aero_txscript_errors::TxScriptError;
 
 use crate::{
     EngineCtx, EngineFlags, SigCacheKey, TxScriptEngine,

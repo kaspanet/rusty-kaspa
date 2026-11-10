@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     header::Header,
     trusted::{TrustedGhostdagData, TrustedHeader},
 };

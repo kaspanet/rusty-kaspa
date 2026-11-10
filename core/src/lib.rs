@@ -1,8 +1,8 @@
-extern crate self as kaspa_core;
+extern crate self as aero_core;
 
+pub mod aerod_env;
 pub mod assert;
 pub mod console;
-pub mod kaspad_env;
 pub mod log;
 pub mod panic;
 pub mod time;

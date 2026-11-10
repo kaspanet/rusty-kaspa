@@ -1,15 +1,15 @@
-use crate::cli::KaspaCli;
+use crate::cli::AeroCli;
 use crate::imports::*;
 use crate::result::Result;
-use kaspa_bip32::{Language, Mnemonic, WordCount};
-use kaspa_wallet_core::storage::keydata::PrvKeyDataVariantKind;
-use kaspa_wallet_core::{
+use aero_bip32::{Language, Mnemonic, WordCount};
+use aero_wallet_core::storage::keydata::PrvKeyDataVariantKind;
+use aero_wallet_core::{
     storage::{Hint, make_filename},
     wallet::WalletGuard,
 };
 
 pub(crate) async fn create(
-    ctx: &Arc<KaspaCli>,
+    ctx: &Arc<AeroCli>,
     wallet_guard: Option<WalletGuard<'_>>,
     name: Option<&str>,
     import_with_mnemonic: bool,
@@ -27,7 +27,7 @@ pub(crate) async fn create(
 
     if let Err(err) = wallet.network_id() {
         tprintln!(ctx);
-        tprintln!(ctx, "Before creating a wallet, you need to select a Kaspa network.");
+        tprintln!(ctx, "Before creating a wallet, you need to select a Aero network.");
         tprintln!(ctx, "Please use 'network <name>' command to select a network.");
         tprintln!(ctx, "Currently available networks are 'mainnet', 'testnet-10' and 'testnet-11'");
         tprintln!(ctx);
@@ -57,7 +57,7 @@ pub(crate) async fn create(
         your wallet, you may be accessing a fake wallet designed to steal \
         your private key. If this occurs, stop using the wallet immediately, \
         check the browser URL domain name and seek help on social networks \
-        (Kaspa Discord or Telegram). \
+        (Aero Discord or Telegram). \
         \n\
         ",
     );
@@ -164,7 +164,7 @@ pub(crate) async fn create(
             ctx,
             "Your mnemonic phrase allows you to re-create your private key. \
             The person who has access to this mnemonic will have full control of \
-            the Kaspa stored in it. Keep your mnemonic safe. Write it down and \
+            the Aero stored in it. Keep your mnemonic safe. Write it down and \
             store it in a safe, preferably in a fire-resistant location. Do not \
             store your mnemonic on this computer or a mobile device. This wallet \
             will never ask you for this mnemonic phrase unless you manually \

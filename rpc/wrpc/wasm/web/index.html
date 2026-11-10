@@ -1,10 +1,10 @@
 <html>
     <head>
         <script type="module">
-            import * as kaspa from './kaspa-rpc/kaspa-rpc.js';
+            import * as aero from './aero-rpc/aero-rpc.js';
             (async () => {
-                await kaspa.default('./kaspa-rpc/kaspa-rpc_bg.wasm');
-                console.log(kaspa.version());
+                await aero.default('./aero-rpc/aero-rpc_bg.wasm');
+                console.log(aero.version());
             })();
         </script>
     </head>

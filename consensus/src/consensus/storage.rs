@@ -32,10 +32,10 @@ use crate::{
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
-use kaspa_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
-use kaspa_database::{prelude::CachePolicy, registry::DatabaseStorePrefixes};
-use kaspa_hashes::Hash;
-use kaspa_smt_store::processor::SmtStores;
+use aero_consensus_core::{BlockHashSet, blockstatus::BlockStatus};
+use aero_database::{prelude::CachePolicy, registry::DatabaseStorePrefixes};
+use aero_hashes::Hash;
+use aero_smt_store::processor::SmtStores;
 use parking_lot::RwLock;
 use std::{ops::DerefMut, sync::Arc};
 

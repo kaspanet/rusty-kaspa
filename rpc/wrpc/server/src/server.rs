@@ -4,8 +4,8 @@ use crate::{
     result::Result,
     service::Options,
 };
-use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{
+use aero_grpc_client::GrpcClient;
+use aero_notify::{
     connection::ChannelType,
     events::EVENT_TYPE_ARRAY,
     listener::ListenerLifespan,
@@ -14,12 +14,12 @@ use kaspa_notify::{
     subscriber::Subscriber,
     subscription::{MutationPolicies, UtxosChangedMutationPolicy},
 };
-use kaspa_rpc_core::{
+use aero_rpc_core::{
     Notification, RpcResult,
     api::rpc::{DynRpcService, RpcApi},
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
 };
-use kaspa_rpc_service::service::RpcCoreService;
+use aero_rpc_service::service::RpcCoreService;
 use std::{
     collections::HashMap,
     sync::{

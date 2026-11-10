@@ -6,7 +6,7 @@ pub struct Network;
 
 impl Network {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
 
         if let Some(network_id) = argv.first() {
             let network_id: NetworkId = network_id.trim().parse::<NetworkId>()?;

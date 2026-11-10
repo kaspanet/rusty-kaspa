@@ -154,7 +154,7 @@ macro_rules! default_opts {
             opts.set_wal_dir(&wal_subdir);
         }
 
-        let guard = kaspa_utils::fd_budget::acquire_guard($self.files_limit)?;
+        let guard = aero_utils::fd_budget::acquire_guard($self.files_limit)?;
         opts.set_max_open_files($self.files_limit);
         opts.create_if_missing($self.create_if_missing);
         Ok((opts, guard))
@@ -162,7 +162,7 @@ macro_rules! default_opts {
 }
 
 impl ConnBuilder<PathBuf, false, Unspecified, i32> {
-    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+    pub fn build(self) -> Result<Arc<DB>, aero_utils::fd_budget::Error> {
         let (opts, guard) = default_opts!(self)?;
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
         Ok(db)
@@ -177,7 +177,7 @@ impl ConnBuilder<PathBuf, false, Unspecified, i32> {
         }
 
         let (mut opts, guard) =
-            default_opts!(self).map_err(|err: kaspa_utils::fd_budget::Error| -> Box<dyn std::error::Error> { Box::new(err) })?;
+            default_opts!(self).map_err(|err: aero_utils::fd_budget::Error| -> Box<dyn std::error::Error> { Box::new(err) })?;
         opts.create_if_missing(false);
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open_for_read_only(&opts, &self.db_path, false)?, guard));
         Ok(db)
@@ -185,7 +185,7 @@ impl ConnBuilder<PathBuf, false, Unspecified, i32> {
 }
 
 impl ConnBuilder<PathBuf, true, Unspecified, i32> {
-    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+    pub fn build(self) -> Result<Arc<DB>, aero_utils::fd_budget::Error> {
         let (mut opts, guard) = default_opts!(self)?;
         opts.enable_statistics();
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
@@ -194,7 +194,7 @@ impl ConnBuilder<PathBuf, true, Unspecified, i32> {
 }
 
 impl ConnBuilder<PathBuf, true, u32, i32> {
-    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+    pub fn build(self) -> Result<Arc<DB>, aero_utils::fd_budget::Error> {
         let (mut opts, guard) = default_opts!(self)?;
         opts.enable_statistics();
         opts.set_report_bg_io_stats(true);

@@ -3,8 +3,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use super::error::ConversionError;
 use crate::pb as protowire;
 
+use aero_utils::networking::{IpAddress, NetAddress};
 use itertools::Itertools;
-use kaspa_utils::networking::{IpAddress, NetAddress};
 
 // ----------------------------------------------------------------------------
 // consensus_core to protowire
@@ -67,7 +67,7 @@ impl TryFrom<protowire::NetAddress> for NetAddress {
 
 #[cfg(test)]
 mod tests {
-    use kaspa_utils::networking::IpAddress;
+    use aero_utils::networking::IpAddress;
 
     use crate::pb;
     use std::{

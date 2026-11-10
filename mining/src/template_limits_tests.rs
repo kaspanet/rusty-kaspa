@@ -14,7 +14,7 @@ use crate::{
         tx::{Orphan, Priority, RbfPolicy},
     },
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     api::{
         ConsensusApi,
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -25,7 +25,7 @@ use kaspa_consensus_core::{
         constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
         params::{Params, SIMNET_PARAMS},
     },
-    constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+    constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_AERO, TX_VERSION},
     errors::{
         block::RuleError as BlockRuleError,
         coinbase::CoinbaseResult,
@@ -40,8 +40,8 @@ use kaspa_consensus_core::{
         UtxoEntry, scriptvec,
     },
 };
-use kaspa_core::time::unix_now;
-use kaspa_hashes::{Hash, ZERO_HASH};
+use aero_core::time::unix_now;
+use aero_hashes::{Hash, ZERO_HASH};
 use parking_lot::RwLock;
 use std::{
     collections::HashMap,
@@ -96,7 +96,7 @@ impl ConsensusApi for MassPolicyTestConsensus {
             Transaction::new(
                 TX_VERSION,
                 vec![],
-                vec![TransactionOutput::new(SOMPI_PER_KASPA, coinbase_miner_data.script_public_key)],
+                vec![TransactionOutput::new(SOMPI_PER_AERO, coinbase_miner_data.script_public_key)],
                 0,
                 SUBNETWORK_ID_COINBASE,
                 0,
@@ -271,7 +271,7 @@ fn test_transaction_with_input_amount(n: u64, transient_mass: u64, fee: u64, inp
 }
 
 fn test_transaction_with_gas(n: u64, transient_mass: u64, fee: u64, gas: u64) -> MutableTransaction {
-    transaction_spending_outpoint(n, outpoint(n), transient_mass, fee, 10 * SOMPI_PER_KASPA, gas)
+    transaction_spending_outpoint(n, outpoint(n), transient_mass, fee, 10 * SOMPI_PER_AERO, gas)
 }
 
 fn transaction_spending_outpoint(

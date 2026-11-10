@@ -1,5 +1,5 @@
 //!
-//! Declares the client-side [`Transaction`] type, which represents a Kaspa transaction.
+//! Declares the client-side [`Transaction`] type, which represents a Aero transaction.
 //!
 
 #![allow(non_snake_case)]
@@ -12,13 +12,13 @@ use crate::output::{TransactionOutput, TransactionOutputArrayAsArgT, Transaction
 use crate::result::Result;
 use crate::serializable::{SerializableTransactionT, numeric, string};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference};
+use aero_consensus_core::network::NetworkType;
+use aero_consensus_core::network::NetworkTypeT;
+use aero_consensus_core::subnets::{self, SubnetworkId};
+use aero_consensus_core::tx::{GenesisCovenantGroup, UtxoEntry};
+use aero_txscript::extract_script_pub_key_address;
+use aero_utils::hex::*;
 use ahash::AHashMap;
-use kaspa_consensus_core::network::NetworkType;
-use kaspa_consensus_core::network::NetworkTypeT;
-use kaspa_consensus_core::subnets::{self, SubnetworkId};
-use kaspa_consensus_core::tx::{GenesisCovenantGroup, UtxoEntry};
-use kaspa_txscript::extract_script_pub_key_address;
-use kaspa_utils::hex::*;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_TRANSACTION: &'static str = r#"
@@ -88,7 +88,7 @@ pub struct TransactionInner {
     pub id: TransactionId,
 }
 
-/// Represents a Kaspa transaction.
+/// Represents a Aero transaction.
 /// This is an artificial construct that includes additional
 /// transaction-related data such as additional data from UTXOs
 /// used by transaction inputs.
@@ -181,7 +181,7 @@ impl Transaction {
     /// Returns a list of unique addresses used by transaction inputs.
     /// This method can be used to determine addresses used by transaction inputs
     /// in order to select private keys needed for transaction signing.
-    pub fn addresses(&self, network_type: &NetworkTypeT) -> Result<kaspa_addresses::AddressArrayT> {
+    pub fn addresses(&self, network_type: &NetworkTypeT) -> Result<aero_addresses::AddressArrayT> {
         let mut list = std::collections::HashSet::new();
         for input in &self.inner.lock().unwrap().inputs {
             if let Some(utxo) = input.get_utxo() {
@@ -553,8 +553,8 @@ mod tests {
     use crate::input::TransactionInput;
     use crate::outpoint::TransactionOutpoint;
     use crate::output::TransactionOutput;
-    use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_consensus_core::tx::ScriptPublicKey;
+    use aero_consensus_core::subnets::SubnetworkId;
+    use aero_consensus_core::tx::ScriptPublicKey;
     use wasm_bindgen::JsValue;
     use wasm_bindgen_test::wasm_bindgen_test;
 

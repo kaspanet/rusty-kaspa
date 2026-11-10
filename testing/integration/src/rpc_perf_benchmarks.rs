@@ -6,14 +6,14 @@ use crate::{
     },
     tasks::{Stopper, TasksRunner, block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask},
 };
+use aero_addresses::Address;
+use aero_alloc::init_allocator_with_default_settings;
+use aero_consensus::params::Params;
+use aero_consensus_core::network::NetworkType;
+use aero_core::info;
+use aero_rpc_core::api::rpc::RpcApi;
+use aero_txscript::pay_to_address_script;
 use futures_util::future::join_all;
-use kaspa_addresses::Address;
-use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::params::Params;
-use kaspa_consensus_core::network::NetworkType;
-use kaspa_core::info;
-use kaspa_rpc_core::api::rpc::RpcApi;
-use kaspa_txscript::pay_to_address_script;
 use rand::Rng;
 use rand::thread_rng;
 use std::{
@@ -32,7 +32,7 @@ const TPS_PRESSURE: u64 = 40;
 const PREALLOC_AMOUNT_SOMPI: u64 = 1;
 const SUBMIT_TX_CLIENTS: usize = 2;
 
-/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- rpc_perf_benchmarks::bench_rpc_high_load --exact --nocapture --ignored`
+/// `cargo test --release --package aero-testing-integration --lib --features devnet-prealloc -- rpc_perf_benchmarks::bench_rpc_high_load --exact --nocapture --ignored`
 #[tokio::test]
 #[ignore = "bmk"]
 #[cfg(feature = "devnet-prealloc")] // Add this feature gate
@@ -40,13 +40,13 @@ async fn bench_rpc_high_load() {
     use tokio::time::sleep;
 
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
-    kaspa_core::panic::configure_panic();
+    aero_core::log::try_init_logger("info,aero_core::time=debug,aero_mining::monitor=debug");
+    aero_core::panic::configure_panic();
 
     // Setup for pre-allocated UTXOs and transaction generation
     let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let prealloc_address =
-        Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
+        Address::new(NetworkType::Simnet.into(), aero_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
     let schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
     let spk = pay_to_address_script(&prealloc_address);
 
@@ -119,7 +119,7 @@ async fn bench_rpc_high_load() {
                 let hash = thread_virtual_chain.get(index).unwrap();
 
                 let start = Instant::now();
-                client.get_virtual_chain_from_block_v2(*hash, Some(kaspa_rpc_core::RpcDataVerbosityLevel::High), None).await.unwrap();
+                client.get_virtual_chain_from_block_v2(*hash, Some(aero_rpc_core::RpcDataVerbosityLevel::High), None).await.unwrap();
 
                 latencies.push(start.elapsed());
             }

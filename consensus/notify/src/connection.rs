@@ -1,3 +1,3 @@
 use crate::notification::Notification;
 
-pub type ConsensusChannelConnection = kaspa_notify::connection::ChannelConnection<Notification>;
+pub type ConsensusChannelConnection = aero_notify::connection::ChannelConnection<Notification>;

@@ -1,5 +1,5 @@
 #!/bin/bash
-# This script builds the Rusty Kaspa WASM32 SDK release.
+# This script builds the Rusty Aero WASM32 SDK release.
 
 # make the script fail for any failed command
 set -e
@@ -14,76 +14,76 @@ rm -rf nodejs/*
 rm -rf docs/*
 rm -rf examples/nodejs/typescript/lib
 
-mkdir -p release/kaspa-wasm32-sdk/web
-mkdir -p release/kaspa-wasm32-sdk/nodejs
-mkdir -p release/kaspa-wasm32-sdk/docs
+mkdir -p release/aero-wasm32-sdk/web
+mkdir -p release/aero-wasm32-sdk/nodejs
+mkdir -p release/aero-wasm32-sdk/docs
 
 # pushd .
 # cd ../rpc/wrpc/wasm
-# wasm-pack build --target web --out-name kaspa-rpc --out-dir web/kaspa-rpc --features wasm32-sdk $@
+# wasm-pack build --target web --out-name aero-rpc --out-dir web/aero-rpc --features wasm32-sdk $@
 # popd
 
-wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen $@
-wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-keygen-dev --features wasm32-keygen $@
+wasm-pack build --weak-refs --target web --out-name aero --out-dir web/aero-keygen --features wasm32-keygen $@
+wasm-pack build --weak-refs --dev --target web --out-name aero --out-dir web/aero-keygen-dev --features wasm32-keygen $@
 
-wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc $@
-wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-rpc-dev --features wasm32-rpc $@
+wasm-pack build --weak-refs --target web --out-name aero --out-dir web/aero-rpc --features wasm32-rpc $@
+wasm-pack build --weak-refs --dev --target web --out-name aero --out-dir web/aero-rpc-dev --features wasm32-rpc $@
 
-wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core $@
-wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-core-dev --features wasm32-core $@
+wasm-pack build --weak-refs --target web --out-name aero --out-dir web/aero-core --features wasm32-core $@
+wasm-pack build --weak-refs --dev --target web --out-name aero --out-dir web/aero-core-dev --features wasm32-core $@
 
-wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk $@
-wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-dev --features wasm32-sdk $@
+wasm-pack build --weak-refs --target web --out-name aero --out-dir web/aero --features wasm32-sdk $@
+wasm-pack build --weak-refs --dev --target web --out-name aero --out-dir web/aero-dev --features wasm32-sdk $@
 
-wasm-pack build --weak-refs --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk $@
-wasm-pack build --weak-refs --dev --target nodejs --out-name kaspa --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
+wasm-pack build --weak-refs --target nodejs --out-name aero --out-dir nodejs/aero --features wasm32-sdk $@
+wasm-pack build --weak-refs --dev --target nodejs --out-name aero --out-dir nodejs/aero-dev --features wasm32-sdk $@
 
-# wasm-pack build --target web --dev --out-name kaspa --out-dir build/docs/kaspa --features wasm32-sdk $@
-typedoc --name "Kaspa WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-keygen ./build/docs/kaspa-keygen.ts
-typedoc --name "Kaspa WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-rpc ./build/docs/kaspa-rpc.ts
-typedoc --name "Kaspa WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-core ./build/docs/kaspa-core.ts
-typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa ./build/docs/kaspa.ts
+# wasm-pack build --target web --dev --out-name aero --out-dir build/docs/aero --features wasm32-sdk $@
+typedoc --name "Aero WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/aero-keygen ./build/docs/aero-keygen.ts
+typedoc --name "Aero WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/aero-rpc ./build/docs/aero-rpc.ts
+typedoc --name "Aero WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/aero-core ./build/docs/aero-core.ts
+typedoc --name "Aero WASM32 SDK" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/aero ./build/docs/aero.ts
 
-# cp -r ../rpc/wrpc/wasm/web/kaspa-rpc release/kaspa-wasm32-sdk/web/kaspa-rpc
-cp -r web/kaspa-keygen release/kaspa-wasm32-sdk/web/kaspa-keygen
-cp -r web/kaspa-keygen-dev release/kaspa-wasm32-sdk/web/kaspa-keygen-dev
+# cp -r ../rpc/wrpc/wasm/web/aero-rpc release/aero-wasm32-sdk/web/aero-rpc
+cp -r web/aero-keygen release/aero-wasm32-sdk/web/aero-keygen
+cp -r web/aero-keygen-dev release/aero-wasm32-sdk/web/aero-keygen-dev
 
-cp -r web/kaspa-rpc release/kaspa-wasm32-sdk/web/kaspa-rpc
-cp -r web/kaspa-rpc-dev release/kaspa-wasm32-sdk/web/kaspa-rpc-dev
+cp -r web/aero-rpc release/aero-wasm32-sdk/web/aero-rpc
+cp -r web/aero-rpc-dev release/aero-wasm32-sdk/web/aero-rpc-dev
 
-cp -r web/kaspa-core release/kaspa-wasm32-sdk/web/kaspa-core
-cp -r web/kaspa-core-dev release/kaspa-wasm32-sdk/web/kaspa-core-dev
+cp -r web/aero-core release/aero-wasm32-sdk/web/aero-core
+cp -r web/aero-core-dev release/aero-wasm32-sdk/web/aero-core-dev
 
-cp -r web/kaspa release/kaspa-wasm32-sdk/web/kaspa
-cp -r web/kaspa-dev release/kaspa-wasm32-sdk/web/kaspa-dev
+cp -r web/aero release/aero-wasm32-sdk/web/aero
+cp -r web/aero-dev release/aero-wasm32-sdk/web/aero-dev
 
-cp -r nodejs/kaspa release/kaspa-wasm32-sdk/nodejs/kaspa
-cp -r nodejs/kaspa-dev release/kaspa-wasm32-sdk/nodejs/kaspa-dev
+cp -r nodejs/aero release/aero-wasm32-sdk/nodejs/aero
+cp -r nodejs/aero-dev release/aero-wasm32-sdk/nodejs/aero-dev
 
-cp -r docs/kaspa-keygen release/kaspa-wasm32-sdk/docs/kaspa-keygen
-cp -r docs/kaspa-rpc release/kaspa-wasm32-sdk/docs/kaspa-rpc
-cp -r docs/kaspa-core release/kaspa-wasm32-sdk/docs/kaspa-core
-cp -r docs/kaspa release/kaspa-wasm32-sdk/docs/kaspa
+cp -r docs/aero-keygen release/aero-wasm32-sdk/docs/aero-keygen
+cp -r docs/aero-rpc release/aero-wasm32-sdk/docs/aero-rpc
+cp -r docs/aero-core release/aero-wasm32-sdk/docs/aero-core
+cp -r docs/aero release/aero-wasm32-sdk/docs/aero
 
-mkdir -p release/kaspa-wasm32-sdk/examples/data
-cp -r examples/data/.gitignore release/kaspa-wasm32-sdk/examples/data/.gitignore
-cp -r examples/nodejs release/kaspa-wasm32-sdk/examples/
-cp -r examples/web release/kaspa-wasm32-sdk/examples/
-cp -r examples/init.js release/kaspa-wasm32-sdk/examples/
-cp -r examples/jsconfig.json release/kaspa-wasm32-sdk/examples/
-cp -r examples/package.json release/kaspa-wasm32-sdk/examples/
+mkdir -p release/aero-wasm32-sdk/examples/data
+cp -r examples/data/.gitignore release/aero-wasm32-sdk/examples/data/.gitignore
+cp -r examples/nodejs release/aero-wasm32-sdk/examples/
+cp -r examples/web release/aero-wasm32-sdk/examples/
+cp -r examples/init.js release/aero-wasm32-sdk/examples/
+cp -r examples/jsconfig.json release/aero-wasm32-sdk/examples/
+cp -r examples/package.json release/aero-wasm32-sdk/examples/
 
 pushd .
-cd release/kaspa-wasm32-sdk/examples
+cd release/aero-wasm32-sdk/examples
 npm install
 popd
 
-# tsc release/kaspa-wasm32-sdk/examples/nodejs/typescript/
+# tsc release/aero-wasm32-sdk/examples/nodejs/typescript/
 
-cp index.html release/kaspa-wasm32-sdk/index.html
-cp README.md release/kaspa-wasm32-sdk/README.md
-cp CHANGELOG.md release/kaspa-wasm32-sdk/CHANGELOG.md
-cp LICENSE release/kaspa-wasm32-sdk/LICENSE
+cp index.html release/aero-wasm32-sdk/index.html
+cp README.md release/aero-wasm32-sdk/README.md
+cp CHANGELOG.md release/aero-wasm32-sdk/CHANGELOG.md
+cp LICENSE release/aero-wasm32-sdk/LICENSE
 
 node build/package-sizes.js
-cp package-sizes.js release/kaspa-wasm32-sdk/package-sizes.js
+cp package-sizes.js release/aero-wasm32-sdk/package-sizes.js

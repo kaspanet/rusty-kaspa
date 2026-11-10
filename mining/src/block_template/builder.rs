@@ -1,11 +1,11 @@
 use super::errors::BuilderResult;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     api::ConsensusApi,
     block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
     tx::COINBASE_TRANSACTION_INDEX,
 };
-use kaspa_core::time::{Stopwatch, unix_now};
+use aero_core::time::{Stopwatch, unix_now};
 
 pub(crate) struct BlockTemplateBuilder {}
 

@@ -3,7 +3,7 @@ use risc0_zkvm::{Digest, Groth16Receipt, Groth16ReceiptVerifierParameters};
 
 use super::prepare::prepare_r0_groth16_proof;
 use crate::result::Result;
-use kaspa_txscript::{
+use aero_txscript::{
     opcodes::codes::{OpCat, OpDup, OpFromAltStack, OpRot, OpSHA256, OpSubstr, OpSwap, OpToAltStack, OpZkPrecompile},
     script_builder::ScriptBuilder,
     zk_precompiles::tags::ZkTag,
@@ -78,7 +78,7 @@ const R0_SERIALIZED_COMPRESSED_VK: [u8; 424] = [
 ];
 
 /// Converts an R0 Groth16 receipt into the compressed proof bytes expected by
-/// the Kaspa Groth16 verifier and pushes them onto the provided builder.
+/// the Aero Groth16 verifier and pushes them onto the provided builder.
 ///
 /// This is typically called while building a signature script. The script that
 /// invokes [`append_r0_groth16_verifier`] is responsible for producing or

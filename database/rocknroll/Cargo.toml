@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-rocknroll"
-description = "Kaspa RocksDB developer scanning tools"
+name = "aero-rocknroll"
+description = "Aero RocksDB developer scanning tools"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -9,12 +9,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-consensus = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
-kaspa-consensus-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes.workspace = true
-kaspa-smt-store = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
-kaspad.workspace = true
+aero-consensus = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
+aero-consensus-core.workspace = true
+aero-database.workspace = true
+aero-hashes.workspace = true
+aero-smt-store = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
+aerod.workspace = true
 
 clap = { workspace = true, features = ["derive"] }
 thiserror.workspace = true

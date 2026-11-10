@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-consensus"
-description = "Kaspa consensus library"
+name = "aero-consensus"
+description = "Aero consensus library"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -19,24 +19,24 @@ faster-hex.workspace = true
 futures-util.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes.workspace = true
-kaspa-math.workspace = true
-kaspa-merkle.workspace = true
-kaspa-muhash.workspace = true
-kaspa-notify.workspace = true
-kaspa-pow.workspace = true
-kaspa-seq-commit.workspace = true
-kaspa-smt.workspace = true
-kaspa-smt-store.workspace = true
-kaspa-txscript.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-utils = { workspace = true, features = ["sim"] }
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-consensus-notify.workspace = true
+aero-consensusmanager.workspace = true
+aero-core.workspace = true
+aero-database.workspace = true
+aero-hashes.workspace = true
+aero-math.workspace = true
+aero-merkle.workspace = true
+aero-muhash.workspace = true
+aero-notify.workspace = true
+aero-pow.workspace = true
+aero-seq-commit.workspace = true
+aero-smt.workspace = true
+aero-smt-store.workspace = true
+aero-txscript.workspace = true
+aero-txscript-errors.workspace = true
+aero-utils = { workspace = true, features = ["sim"] }
 log.workspace = true
 num-traits.workspace = true
 once_cell.workspace = true
@@ -60,8 +60,8 @@ criterion.workspace = true
 serde_json.workspace = true
 flate2.workspace = true
 rand_distr.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-addresses.workspace = true
+aero-txscript-errors.workspace = true
+aero-addresses.workspace = true
 
 [[bench]]
 name = "parallel_muhash"
@@ -77,8 +77,8 @@ harness = false
 
 [features]
 html_reports = []
-devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]
-test-smt-pruning-diagnostics = ["kaspa-smt-store/test-smt-pruning-diagnostics"]
+devnet-prealloc = ["aero-consensus-core/devnet-prealloc"]
+test-smt-pruning-diagnostics = ["aero-smt-store/test-smt-pruning-diagnostics"]
 baseline-debugging = []
 
 [lints]

@@ -7,10 +7,10 @@
 
 use crate::imports::*;
 use crate::{TransactionOutpoint, TransactionOutpointT, TransactionOutput, result::Result};
-use kaspa_consensus_core::hashing::covenant_id;
-use kaspa_hashes as native;
-use kaspa_hashes::HasherBase;
-use kaspa_wasm_core::types::BinaryT;
+use aero_consensus_core::hashing::covenant_id;
+use aero_hashes as native;
+use aero_hashes::HasherBase;
+use aero_wasm_core::types::BinaryT;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_COVENANT_AUTHORIZED_OUTPUT: &'static str = r#"
@@ -115,8 +115,8 @@ pub fn js_covenant_id(genesis_outpoint: &TransactionOutpointT, auth_outputs: &Co
 mod tests {
     use super::*;
     use crate::output::TransactionOutput;
-    use kaspa_consensus_core::hashing::covenant_id;
-    use kaspa_consensus_core::tx::ScriptPublicKey;
+    use aero_consensus_core::hashing::covenant_id;
+    use aero_consensus_core::tx::ScriptPublicKey;
     use wasm_bindgen::JsValue;
     use wasm_bindgen_test::wasm_bindgen_test;
 

@@ -1,4 +1,4 @@
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     constants::{STORAGE_MASS_PARAMETER, TRANSIENT_BYTE_TO_MASS_FACTOR},
     mass::MassCalculator,
     tx::Transaction,

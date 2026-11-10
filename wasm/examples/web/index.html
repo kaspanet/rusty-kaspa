@@ -35,9 +35,9 @@
         <div class="banner">
             <img src="resources/ferris.svg" height="44px" />
             <img src="resources/wasm.svg" height="44px" />
-            <img src="resources/kaspa.svg" height="44px" />
+            <img src="resources/aero.svg" height="44px" />
         </div>
-        Rusty Kaspa WASM32 SDK v<span id="version"></span><br>&nbsp;<br>
+        Rusty Aero WASM32 SDK v<span id="version"></span><br>&nbsp;<br>
         Packages:<br>
         <ul id="packages"></ul>
         Examples:
@@ -58,7 +58,7 @@
                 <p>Try running <code>python3 -m http.server</code> and navigating to <a href="http://localhost:8000/index.html">http://localhost:8000/</a></p>
                 <p>If using Rust, install http server by running: <code>cargo install http-server</code>,<br>
                 then run <code>http-server</code> and navigate to <a href="http://localhost:7878/index.html">http://localhost:7878/</a></p>
-                <p>Make sure to run HTTP server from the root of the <code>kaspa-wasm32-sdk</code> folder.</p>
+                <p>Make sure to run HTTP server from the root of the <code>aero-wasm32-sdk</code> folder.</p>
             `;
         } else {
             if (!window.packageSizes) {
@@ -66,10 +66,10 @@
             }
             let el = document.getElementById("packages");
             Object.entries({
-                "kaspa-keygen": ["KeyGen","Key & Address Generation only"],
-                "kaspa-rpc": ["RPC","RPC only"],
-                "kaspa-core": ["Core","RPC + Key & Address Generation + Wallet SDK"],
-                "kaspa": ["SDK","Full SDK + Integrated Wallet"],
+                "aero-keygen": ["KeyGen","Key & Address Generation only"],
+                "aero-rpc": ["RPC","RPC only"],
+                "aero-core": ["Core","RPC + Key & Address Generation + Wallet SDK"],
+                "aero": ["SDK","Full SDK + Integrated Wallet"],
             }).forEach(([ident,[name,descr]]) => {
                 let size = packageSizes[ident] ? `${packageSizes[ident]}` : "";
                 el.innerHTML += `<li>WASM32 ${name} Package ${" ".repeat(6-name.length)}${size} - ${descr} - <a href="../../docs/${ident}/index.html" target="_blank">Docs</a></li>`;
@@ -78,12 +78,12 @@
         }
     </script>
     <script type="module">
-        import * as kaspa from '../../web/kaspa-core/kaspa.js';
+        import * as aero from '../../web/aero-core/aero.js';
         (async () => {
-            await kaspa.default('../../web/kaspa-core/kaspa_bg.wasm');
-            console.log("kaspa", kaspa);
-            console.log("version", kaspa.version());
-            document.getElementById("version").innerText = kaspa.version();
+            await aero.default('../../web/aero-core/aero_bg.wasm');
+            console.log("aero", aero);
+            console.log("version", aero.version());
+            document.getElementById("version").innerText = aero.version();
         })();
     </script>
 </html>

@@ -1,10 +1,10 @@
 // @ts-ignore
 globalThis.WebSocket = require("websocket").w3cwebsocket; // W3C WebSocket module shim
 
-const kaspa = require("../../../../nodejs/kaspa");
-const { RpcClient, Encoding, Resolver } = kaspa;
+const aero = require("../../../../nodejs/aero");
+const { RpcClient, Encoding, Resolver } = aero;
 
-kaspa.initConsolePanicHook();
+aero.initConsolePanicHook();
 
 const BLOCK_HASH =
   "ab36f709e83bf6ba66e9516cbf02b9a9848a1b913e7c59cd5010e90928a27e22";

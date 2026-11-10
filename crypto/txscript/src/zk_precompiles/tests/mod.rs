@@ -11,14 +11,14 @@ mod fast_zk_tests {
         get_zk_script_units_upper_bound,
         zk_precompiles::{groth16::Groth16Error, tags::ZkTag},
     };
-    use ark_bn254::{Bn254, G1Affine};
-    use ark_groth16::{Proof, VerifyingKey};
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         hashing::sighash::SigHashReusedValuesUnsync,
         tx::{PopulatedTransaction, ScriptPublicKey},
     };
-    use kaspa_txscript_errors::TxScriptError;
+    use aero_txscript_errors::TxScriptError;
+    use ark_bn254::{Bn254, G1Affine};
+    use ark_groth16::{Proof, VerifyingKey};
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use risc0_circuit_recursion::CircuitImpl;
     use risc0_zkp::adapter::CircuitInfo;
 
@@ -202,21 +202,21 @@ mod fast_zk_tests {
                 |fields| {
                     fields.inputs[0].pop();
                 },
-                ExpectedZkError::StartsWith("Kaspa txscript error: ZK Integrity: Invalid Fr length:"),
+                ExpectedZkError::StartsWith("Aero txscript error: ZK Integrity: Invalid Fr length:"),
             ),
             (
                 "long public input",
                 |fields| {
                     fields.inputs[0].push(0);
                 },
-                ExpectedZkError::StartsWith("Kaspa txscript error: ZK Integrity: Invalid Fr length:"),
+                ExpectedZkError::StartsWith("Aero txscript error: ZK Integrity: Invalid Fr length:"),
             ),
             (
                 "out of field public input",
                 |fields| {
                     fields.inputs[0] = vec![0xff; 32];
                 },
-                ExpectedZkError::StartsWith("Kaspa txscript error: ZK Integrity: ARK serialization error:"),
+                ExpectedZkError::StartsWith("Aero txscript error: ZK Integrity: ARK serialization error:"),
             ),
             (
                 "truncated vk",

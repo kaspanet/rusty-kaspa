@@ -1,7 +1,7 @@
+use aero_consensus_core::{BlockHashSet, blockhash::BlockHashes};
+use aero_database::prelude::{ReadLock, StoreError, StoreResult, StoreResultExt};
+use aero_hashes::Hash;
 use itertools::Itertools;
-use kaspa_consensus_core::{BlockHashSet, blockhash::BlockHashes};
-use kaspa_database::prelude::{ReadLock, StoreError, StoreResult, StoreResultExt};
-use kaspa_hashes::Hash;
 
 use crate::model::{services::reachability::ReachabilityService, stores::relations::RelationsStoreReader};
 

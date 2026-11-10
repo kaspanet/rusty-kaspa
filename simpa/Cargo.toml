@@ -1,6 +1,6 @@
 [package]
 name = "simpa"
-description = "Kaspa Network Simulator"
+description = "Aero Network Simulator"
 publish = false
 rust-version.workspace = true
 version.workspace = true
@@ -11,15 +11,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-alloc.workspace = true            # This changes the global allocator for all of the next dependencies so should be kept first
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensus.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes.workspace = true
-kaspa-perf-monitor.workspace = true
-kaspa-utils.workspace = true
+aero-alloc.workspace = true            # This changes the global allocator for all of the next dependencies so should be kept first
+aero-consensus-core.workspace = true
+aero-consensus-notify.workspace = true
+aero-consensus.workspace = true
+aero-core.workspace = true
+aero-database.workspace = true
+aero-hashes.workspace = true
+aero-perf-monitor.workspace = true
+aero-utils.workspace = true
 
 async-channel.workspace = true
 cfg-if.workspace = true
@@ -40,16 +40,16 @@ tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 serde_json.workspace = true
 serde.workspace = true
 faster-hex.workspace = true
-kaspa-testing-integration.workspace = true
+aero-testing-integration.workspace = true
 
 [dev-dependencies]
-kaspa-consensus = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
-kaspa-smt-store = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
+aero-consensus = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
+aero-smt-store = { workspace = true, features = ["test-smt-pruning-diagnostics"] }
 
 [features]
-heap = ["dhat", "kaspa-alloc/heap"]
-semaphore-trace = ["kaspa-utils/semaphore-trace"]
-baseline-debugging = ["kaspa-consensus/baseline-debugging"]
+heap = ["dhat", "aero-alloc/heap"]
+semaphore-trace = ["aero-utils/semaphore-trace"]
+baseline-debugging = ["aero-consensus/baseline-debugging"]
 
 [lints]
 workspace = true

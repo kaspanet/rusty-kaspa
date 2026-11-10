@@ -1,13 +1,13 @@
 use crate::imports::*;
 
 #[derive(Default, Handler)]
-#[help("Send a Kaspa transaction to a public address")]
+#[help("Send a Aero transaction to a public address")]
 pub struct Send;
 
 impl Send {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         // address, amount, priority fee
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
 
         let account = ctx.wallet().account()?;
 
@@ -17,10 +17,10 @@ impl Send {
         }
 
         let address = Address::try_from(argv.first().unwrap().as_str())?;
-        let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?;
+        let amount_sompi = try_parse_required_nonzero_aero_as_sompi_u64(argv.get(1))?;
         // TODO fee_rate
         let fee_rate = None;
-        let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(2))?.unwrap_or(0);
+        let priority_fee_sompi = try_parse_optional_aero_as_sompi_i64(argv.get(2))?.unwrap_or(0);
         let outputs = PaymentOutputs::from((address.clone(), amount_sompi));
         let abortable = Abortable::default();
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
@@ -42,7 +42,7 @@ impl Send {
             .await?;
 
         tprintln!(ctx, "Send - {summary}");
-        tprintln!(ctx, "\nSending {} KAS to {address}, tx ids:", sompi_to_kaspa_string(amount_sompi));
+        tprintln!(ctx, "\nSending {} ARO to {address}, tx ids:", sompi_to_aero_string(amount_sompi));
         // tprintln!(ctx, "{}\n", ids.into_iter().map(|a| a.to_string()).collect::<Vec<_>>().join("\n"));
 
         Ok(())

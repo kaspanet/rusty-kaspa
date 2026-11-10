@@ -1,32 +1,32 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
-use kaspa_hashes::Hash;
-use kaspa_pow::{matrix::Matrix, xoshiro::XoShiRo256PlusPlus};
-
-// Big enough to make the cache not very useful
-const ITERS: usize = 1024;
+use aero_hashes::Hash;
+use aero_math::Uint256;
+use aero_pow::{Hasher, State};
 
 fn bench_pow(c: &mut Criterion) {
-    let mut rng = XoShiRo256PlusPlus::new(Hash::from_bytes([42; 32]));
-    let gen_hash = |rng: &mut XoShiRo256PlusPlus| Hash::from_le_u64([rng.u64(), rng.u64(), rng.u64(), rng.u64()]);
-    let matrices: Vec<_> = (0..ITERS).map(|_| Matrix::generate(gen_hash(&mut rng))).collect();
-    let hashes: Vec<_> = (0..ITERS).map(|_| gen_hash(&mut rng)).collect();
+    let state = State::from_parts(Hash::from_bytes([42; 32]), 1, Uint256::MAX);
 
-    c.bench_function("Compute Rank", |b| {
+    // Light mode: what every validating node pays per header (builds the 256 MiB cache on first use).
+    let mut nonce = 0u64;
+    c.bench_function("RandomX light (validation)", |b| {
         b.iter(|| {
-            for matrix in &matrices {
-                black_box(matrix.compute_rank());
-            }
+            nonce = nonce.wrapping_add(1);
+            black_box(state.calculate_pow(black_box(nonce)));
         });
     });
 
-    c.bench_function("HeavyHash", |b| {
-        b.iter(|| {
-            for (matrix, &hash) in matrices.iter().zip(hashes.iter()) {
-                black_box(matrix.heavy_hash(hash));
-            }
+    // Fast mode: what a miner pays per hash. Needs ~2 GiB and builds the dataset on first use (slow).
+    if std::env::var_os("AERO_BENCH_FAST").is_some() {
+        let mut hasher = Hasher::fast();
+        let mut nonce = 0u64;
+        c.bench_function("RandomX fast (mining)", |b| {
+            b.iter(|| {
+                nonce = nonce.wrapping_add(1);
+                black_box(state.calculate_pow_with(&mut hasher, black_box(nonce)));
+            });
         });
-    });
+    }
 }
 
 criterion_group!(benches, bench_pow);

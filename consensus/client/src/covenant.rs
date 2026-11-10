@@ -1,16 +1,16 @@
 //!
-//! Client-side WASM wrapper for [`kaspa_consensus_core::tx::GenesisCovenantGroup`].
+//! Client-side WASM wrapper for [`aero_consensus_core::tx::GenesisCovenantGroup`].
 //!
 
 #![allow(non_snake_case)]
 
 use crate::imports::*;
 use crate::result::Result as ClientResult;
+use aero_consensus_core::errors::tx::PopulateGenesisCovenantsError;
+use aero_consensus_core::tx::{CovenantBinding as CoreCovenantBinding, GenesisCovenantGroup as CoreGenesisCovenantGroup};
+use aero_hashes::Hash;
+use aero_wasm_core::types::NumberArray;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_consensus_core::errors::tx::PopulateGenesisCovenantsError;
-use kaspa_consensus_core::tx::{CovenantBinding as CoreCovenantBinding, GenesisCovenantGroup as CoreGenesisCovenantGroup};
-use kaspa_hashes::Hash;
-use kaspa_wasm_core::types::NumberArray;
 use workflow_wasm::error::Error as WasmError;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -274,7 +274,7 @@ impl TryCastFromJs for GenesisCovenantGroup {
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use super::*;
-    use kaspa_hashes::HASH_SIZE;
+    use aero_hashes::HASH_SIZE;
     use std::str::FromStr;
     use wasm_bindgen::JsValue;
     use wasm_bindgen_test::wasm_bindgen_test;

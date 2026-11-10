@@ -3,22 +3,22 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
-use itertools::Itertools;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockLevel, BlueWorkType,
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     errors::pruning::{ProofWeakness, PruningImportError, PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningProofMetadata},
 };
-use kaspa_core::info;
-use kaspa_database::{
+use aero_core::info;
+use aero_database::{
     prelude::{CachePolicy, ConnBuilder, StoreResultUnitExt},
     utils::DbLifetime,
 };
-use kaspa_hashes::Hash;
-use kaspa_pow::{calc_block_level, calc_block_level_check_pow};
-use kaspa_utils::vec::VecExtensions;
+use aero_hashes::Hash;
+use aero_pow::{calc_block_level, calc_block_level_check_pow};
+use aero_utils::vec::VecExtensions;
+use itertools::Itertools;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
@@ -117,7 +117,7 @@ impl ProofContext {
         // Initialize stores
         //
 
-        let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (db_lifetime, db) = aero_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_policy = CachePolicy::Count(2 * ppm.pruning_proof_m as usize);
         let headers_store =
             Arc::new(DbHeadersStore::new(db.clone(), CachePolicy::Count(headers_estimate), CachePolicy::Count(headers_estimate)));

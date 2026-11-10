@@ -1,5 +1,5 @@
 use crate::{BlockHashSet, HashMapCustomHasher};
-use kaspa_hashes::{HASH_SIZE, Hash};
+use aero_hashes::{HASH_SIZE, Hash};
 use std::sync::Arc;
 
 pub type BlockHashes = Arc<Vec<Hash>>;

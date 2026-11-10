@@ -1,5 +1,5 @@
+use aero_utils::networking::{ContextualNetAddress, IpAddress, NetAddress, PeerId};
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_utils::networking::{ContextualNetAddress, IpAddress, NetAddress, PeerId};
 use serde::{Deserialize, Serialize};
 
 pub type RpcNodeId = PeerId;

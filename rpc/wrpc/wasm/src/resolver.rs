@@ -1,13 +1,13 @@
-//! [`Resolver`](NativeResolver) bindings for obtaining public Kaspa wRPC URL endpoints.
+//! [`Resolver`](NativeResolver) bindings for obtaining public Aero wRPC URL endpoints.
 
 #![allow(non_snake_case)]
 
 use crate::client::{RpcClient, RpcConfig};
 use crate::imports::*;
+pub use aero_rpc_macros::declare_typescript_wasm_interface as declare;
+use aero_wrpc_client::Resolver as NativeResolver;
+use aero_wrpc_client::node::NodeDescriptor;
 use js_sys::Array;
-pub use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
-use kaspa_wrpc_client::Resolver as NativeResolver;
-use kaspa_wrpc_client::node::NodeDescriptor;
 use serde::ser;
 use workflow_wasm::extensions::ObjectExtension;
 
@@ -89,9 +89,9 @@ extern "C" {
 }
 
 ///
-/// Resolver is a client for obtaining public Kaspa wRPC URL.
+/// Resolver is a client for obtaining public Aero wRPC URL.
 ///
-/// Resolver queries a list of public Kaspa Resolver URLs using HTTP to fetch
+/// Resolver queries a list of public Aero Resolver URLs using HTTP to fetch
 /// wRPC endpoints for the given encoding, network identifier and other
 /// parameters. It then provides this information to the {@link RpcClient}.
 ///
@@ -146,27 +146,27 @@ impl Resolver {
 
 #[wasm_bindgen]
 impl Resolver {
-    /// List of public Kaspa Resolver URLs.
+    /// List of public Aero Resolver URLs.
     #[wasm_bindgen(getter)]
     pub fn urls(&self) -> Option<ResolverArrayT> {
         self.resolver.urls().map(|urls| Array::from_iter(urls.iter().map(|v| JsValue::from(v.as_str()))).unchecked_into())
     }
 
-    /// Fetches a public Kaspa wRPC endpoint for the given encoding and network identifier.
+    /// Fetches a public Aero wRPC endpoint for the given encoding and network identifier.
     /// @see {@link Encoding}, {@link NetworkId}, {@link Node}
     #[wasm_bindgen(js_name = getNode)]
     pub async fn get_node(&self, encoding: Encoding, network_id: NetworkIdT) -> Result<NodeDescriptor> {
         self.resolver.get_node(encoding, *network_id.try_into_cast()?).await
     }
 
-    /// Fetches a public Kaspa wRPC endpoint URL for the given encoding and network identifier.
+    /// Fetches a public Aero wRPC endpoint URL for the given encoding and network identifier.
     /// @see {@link Encoding}, {@link NetworkId}
     #[wasm_bindgen(js_name = getUrl)]
     pub async fn get_url(&self, encoding: Encoding, network_id: NetworkIdT) -> Result<String> {
         self.resolver.get_url(encoding, *network_id.try_into_cast()?).await
     }
 
-    /// Connect to a public Kaspa wRPC endpoint for the given encoding and network identifier
+    /// Connect to a public Aero wRPC endpoint for the given encoding and network identifier
     /// supplied via {@link IResolverConnect} interface.
     /// @see {@link IResolverConnect}, {@link RpcClient}
     pub async fn connect(&self, options: IResolverConnect) -> Result<RpcClient> {

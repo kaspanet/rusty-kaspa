@@ -43,7 +43,7 @@ use crate::{
         window::{WindowManager, WindowType},
     },
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
     acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::{
@@ -69,7 +69,6 @@ use kaspa_consensus_core::{
     merkle::calc_hash_merkle_root,
     mining_rules::MiningRules,
     muhash::MuHashExtensions,
-    network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::TrustedBlock,
     tx::{
@@ -77,30 +76,30 @@ use kaspa_consensus_core::{
         TransactionQueryResult, TransactionType, UtxoEntry,
     },
 };
-use kaspa_consensus_notify::root::ConsensusNotificationRoot;
+use aero_consensus_notify::root::ConsensusNotificationRoot;
 
+use aero_consensusmanager::{SessionLock, SessionReadGuard};
 use crossbeam_channel::{
     Receiver as CrossbeamReceiver, Sender as CrossbeamSender, bounded as bounded_crossbeam, unbounded as unbounded_crossbeam,
 };
 use itertools::Itertools;
-use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
-use kaspa_core::info;
+use aero_core::info;
 #[cfg(feature = "test-smt-pruning-diagnostics")]
-use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_hashes::Hash;
-use kaspa_muhash::MuHash;
-use kaspa_smt_store::processor::SmtReadBounds;
+use aero_database::prelude::StoreResult;
+use aero_database::prelude::StoreResultExt;
+use aero_hashes::Hash;
+use aero_muhash::MuHash;
+use aero_smt_store::processor::SmtReadBounds;
 #[cfg(feature = "test-smt-pruning-diagnostics")]
-use kaspa_smt_store::processor::StaleSmtEntriesCount;
-use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::arc::ArcExtensions;
+use aero_smt_store::processor::StaleSmtEntriesCount;
+use aero_txscript::caches::TxScriptCacheCounters;
+use aero_utils::arc::ArcExtensions;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rocksdb::WriteBatch;
 
 use self::{services::ConsensusServices, storage::ConsensusStorage};
-use kaspa_consensus_core::api::SeqCommitLaneEntry;
+use aero_consensus_core::api::SeqCommitLaneEntry;
 use std::{
     cmp,
     cmp::Reverse,
@@ -814,7 +813,7 @@ impl ConsensusApi for Consensus {
                     // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
                     // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
                     // unreachable.
-                    kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
+                    aero_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
                     None
                 });
             }
@@ -892,36 +891,8 @@ impl ConsensusApi for Consensus {
         let step_divisor: usize = 3; // The number of extra samples we'll get from blocks after last pp header
         let prealloc_len = pp_headers.len() + step_divisor + 1;
 
-        let mut sample_headers;
-
         // Part 1: Add samples from pruning point headers:
-        if self.config.net.network_type == NetworkType::Mainnet {
-            // For mainnet, we add extra data (16 pp headers) from before checkpoint genesis.
-            // Source: https://github.com/kaspagang/kaspad-py-explorer/blob/main/src/tx_timestamp_estimation.ipynb
-            // For context see also: https://github.com/kaspagang/kaspad-py-explorer/blob/main/src/genesis_proof.ipynb
-            const POINTS: &[DaaScoreTimestamp] = &[
-                DaaScoreTimestamp { daa_score: 0, timestamp: 1636298787842 },
-                DaaScoreTimestamp { daa_score: 87133, timestamp: 1636386662010 },
-                DaaScoreTimestamp { daa_score: 176797, timestamp: 1636473700804 },
-                DaaScoreTimestamp { daa_score: 264837, timestamp: 1636560706885 },
-                DaaScoreTimestamp { daa_score: 355974, timestamp: 1636650005662 },
-                DaaScoreTimestamp { daa_score: 445152, timestamp: 1636737841327 },
-                DaaScoreTimestamp { daa_score: 536709, timestamp: 1636828600930 },
-                DaaScoreTimestamp { daa_score: 624635, timestamp: 1636912614350 },
-                DaaScoreTimestamp { daa_score: 712234, timestamp: 1636999362832 },
-                DaaScoreTimestamp { daa_score: 801831, timestamp: 1637088292662 },
-                DaaScoreTimestamp { daa_score: 890716, timestamp: 1637174890675 },
-                DaaScoreTimestamp { daa_score: 978396, timestamp: 1637260956454 },
-                DaaScoreTimestamp { daa_score: 1068387, timestamp: 1637349078269 },
-                DaaScoreTimestamp { daa_score: 1139626, timestamp: 1637418723538 },
-                DaaScoreTimestamp { daa_score: 1218320, timestamp: 1637495941516 },
-                DaaScoreTimestamp { daa_score: 1312860, timestamp: 1637609671037 },
-            ];
-            sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len + POINTS.len());
-            sample_headers.extend_from_slice(POINTS);
-        } else {
-            sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len);
-        }
+        let mut sample_headers = Vec::<DaaScoreTimestamp>::with_capacity(prealloc_len);
 
         for header in pp_headers.iter() {
             sample_headers.push(DaaScoreTimestamp { daa_score: header.1.daa_score, timestamp: header.1.timestamp });
@@ -1174,15 +1145,15 @@ impl ConsensusApi for Consensus {
     fn import_pruning_point_smt(
         &self,
         new_pruning_point: Hash,
-        metadata: kaspa_consensus_core::api::SmtExportMetadata,
+        metadata: aero_consensus_core::api::SmtExportMetadata,
         inactivity_shortcut_block: Hash,
         lane_batches: ImportLaneBatchIterator<'_>,
     ) -> PruningImportResult<()> {
         use crate::model::stores::smt_metadata::SmtBlockMetadata;
-        use kaspa_hashes::ZERO_HASH;
-        use kaspa_smt_store::streaming_import::streaming_import;
+        use aero_hashes::ZERO_HASH;
+        use aero_smt_store::streaming_import::streaming_import;
 
-        let kaspa_consensus_core::api::SmtExportMetadata { lanes_root, payload_and_ctx_digest, active_lanes_count, .. } = metadata;
+        let aero_consensus_core::api::SmtExportMetadata { lanes_root, payload_and_ctx_digest, active_lanes_count, .. } = metadata;
         let expected_lane_count = active_lanes_count;
 
         // `inactivity_shortcut_block` was already resolved by the caller during metadata verification.
@@ -1226,7 +1197,7 @@ impl ConsensusApi for Consensus {
     fn get_pruning_point_smt_metadata(
         &self,
         expected_pruning_point: Hash,
-    ) -> ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+    ) -> ConsensusResult<aero_consensus_core::api::SmtExportMetadata> {
         self.virtual_processor.get_pruning_point_smt_metadata(expected_pruning_point)
     }
 
@@ -1237,8 +1208,8 @@ impl ConsensusApi for Consensus {
     fn open_pruning_point_smt_lane_stream(
         &self,
         expected_pruning_point: Hash,
-    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<kaspa_consensus_core::api::ImportLane>> + Send + 'static>> {
-        use kaspa_consensus_core::api::{ImportLane, SMT_PROOF_INTERVAL};
+    ) -> ConsensusResult<Box<dyn Iterator<Item = ConsensusResult<aero_consensus_core::api::ImportLane>> + Send + 'static>> {
+        use aero_consensus_core::api::{ImportLane, SMT_PROOF_INTERVAL};
 
         let pp = self.pruning_point_store.read().pruning_point().unwrap();
         if pp != expected_pruning_point {
@@ -1583,8 +1554,8 @@ impl ConsensusApi for Consensus {
         // In debug builds, verify the proof is consistent with the stored lanes_root
         // and that metadata chains to the header's seq_commit.
         debug_assert!({
-            use kaspa_hashes::SeqCommitActiveNode;
-            use kaspa_seq_commit::{
+            use aero_hashes::SeqCommitActiveNode;
+            use aero_seq_commit::{
                 hashing::smt_leaf_hash,
                 types::SmtLeafInput,
                 verify::{SmtMetadata, verify_smt_metadata},

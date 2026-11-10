@@ -1,5 +1,5 @@
+use aero_muhash::MuHash;
 use futures_util::future::BoxFuture;
-use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
         TransactionType, UtxoEntry,
     },
 };
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 pub use self::stats::{BlockCount, ConsensusStats};
 
@@ -69,7 +69,7 @@ pub struct ImportLane {
     pub lane_key: Hash,
     pub lane_tip: Hash,
     pub blue_score: u64,
-    pub proof: Option<kaspa_smt::proof::OwnedSmtProof>,
+    pub proof: Option<aero_smt::proof::OwnedSmtProof>,
 }
 
 pub type ImportLaneBatchIterator<'a> = &'a mut (dyn Iterator<Item = Vec<ImportLane>> + Send);
@@ -106,7 +106,7 @@ pub struct SeqCommitLaneEntry {
 /// `activity_root = H_activity_root(inactivity_shortcut, lanes_root)`.
 #[derive(Clone, Debug)]
 pub struct SeqCommitLaneProof {
-    pub smt_proof: kaspa_smt::proof::OwnedSmtProof,
+    pub smt_proof: aero_smt::proof::OwnedSmtProof,
     pub lane: Option<SeqCommitLaneEntry>,
     pub payload_and_ctx_digest: Hash,
     pub parent_seq_commit: Hash,

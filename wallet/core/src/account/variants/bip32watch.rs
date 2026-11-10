@@ -6,7 +6,7 @@ use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
 
-pub const BIP32_WATCH_ACCOUNT_KIND: &str = "kaspa-bip32-watch-standard";
+pub const BIP32_WATCH_ACCOUNT_KIND: &str = "aero-bip32-watch-standard";
 
 pub struct Ctor {}
 
@@ -17,7 +17,7 @@ impl Factory for Ctor {
     }
 
     fn description(&self) -> String {
-        "Kaspa Core bip32-watch Account".to_string()
+        "Aero Core bip32-watch Account".to_string()
     }
 
     async fn try_load(

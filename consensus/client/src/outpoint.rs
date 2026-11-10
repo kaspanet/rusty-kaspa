@@ -84,7 +84,7 @@ impl TryFrom<&JsValue> for TransactionOutpointInner {
     }
 }
 
-/// Represents a Kaspa transaction outpoint.
+/// Represents a Aero transaction outpoint.
 /// NOTE: This struct is immutable - to create a custom outpoint
 /// use the `TransactionOutpoint::new` constructor. (in JavaScript
 /// use `new TransactionOutpoint(transactionId, index)`).
@@ -198,6 +198,6 @@ impl From<&TransactionOutpoint> for cctx::TransactionOutpoint {
 
 impl TransactionOutpoint {
     pub fn simulated() -> Self {
-        Self::new(TransactionId::from_slice(&rand::random::<[u8; kaspa_hashes::HASH_SIZE]>()), 0)
+        Self::new(TransactionId::from_slice(&rand::random::<[u8; aero_hashes::HASH_SIZE]>()), 0)
     }
 }

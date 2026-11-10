@@ -9,12 +9,12 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use kaspa_consensus_core::mass::ComputeBudget;
-use kaspa_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
-use kaspa_consensus_core::tx::{
+use aero_consensus_core::mass::ComputeBudget;
+use aero_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
+use aero_consensus_core::tx::{
     ComputeCommit, CovenantBinding, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput,
 };
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 const FIXTURE: &str = include_str!("fixtures/pre_toccata_db_compat_hex");
 
@@ -40,7 +40,7 @@ fn spk(version: u16, script: &[u8]) -> ScriptPublicKey {
 }
 
 /// Reconstructs the pre-Toccata coinbase transaction whose bincode is checked
-/// in as `transaction_v0_coinbase`. Canonical Kaspa coinbase shape: NO inputs.
+/// in as `transaction_v0_coinbase`. Canonical Aero coinbase shape: NO inputs.
 /// Building via [`Transaction::new`] finalizes a fresh post-Toccata cached id;
 /// structural eq against the deserialized fixture then implicitly asserts that
 /// the post-Toccata `finalize()` produces the same id as pre-Toccata for v0

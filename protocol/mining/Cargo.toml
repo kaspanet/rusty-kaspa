@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-p2p-mining"
-description = "Kaspa p2p mining"
+name = "aero-p2p-mining"
+description = "Aero p2p mining"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,15 +10,15 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-core.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-mining-errors.workspace = true
-kaspa-hashes.workspace = true
-kaspa-math.workspace = true
-kaspa-p2p-lib.workspace = true
-kaspa-utils.workspace = true
-kaspa-utils-tower.workspace = true
+aero-core.workspace = true
+aero-consensus-core.workspace = true
+aero-consensusmanager.workspace = true
+aero-mining-errors.workspace = true
+aero-hashes.workspace = true
+aero-math.workspace = true
+aero-p2p-lib.workspace = true
+aero-utils.workspace = true
+aero-utils-tower.workspace = true
 log.workspace = true
 tokio.workspace = true
 

@@ -7,14 +7,14 @@ use super::{
     option::TryIntoOptionEx,
 };
 use crate::pb as protowire;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     block::Block,
     header::Header,
     pruning::{PruningPointProof, PruningPointsList},
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
-use kaspa_hashes::Hash;
-use kaspa_utils::networking::{IpAddress, PeerId};
+use aero_hashes::Hash;
+use aero_utils::networking::{IpAddress, PeerId};
 
 use std::{collections::HashMap, sync::Arc};
 

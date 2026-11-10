@@ -1,5 +1,5 @@
-use kaspa_consensus_core::KType;
-use kaspa_core::debug;
+use aero_consensus_core::KType;
+use aero_core::debug;
 
 #[derive(Clone)]
 pub struct RankSearchResult<T> {

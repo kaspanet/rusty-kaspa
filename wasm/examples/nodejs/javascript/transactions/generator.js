@@ -6,9 +6,9 @@ const {
     PrivateKey,
     RpcClient,
     Generator,
-    kaspaToSompi,
+    aeroToSompi,
     initConsolePanicHook
-} = require('../../../../nodejs/kaspa');
+} = require('../../../../nodejs/aero');
 
 initConsolePanicHook();
 
@@ -66,7 +66,7 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
         // is reached. The remaining amount will be sent 
         // to the change address.
         //
-        // If the requested amount is greater than the Kaspa
+        // If the requested amount is greater than the Aero
         // transaction mass, the Generator will create multiple
         // transactions where each transaction will forward
         // UTXOs to the change address, until the requested
@@ -74,15 +74,15 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
         // transaction according to the supplied outputs.
         let generator = new Generator({
             entries,
-            outputs: [{address, amount : kaspaToSompi(0.2)}],
+            outputs: [{address, amount : aeroToSompi(0.2)}],
             // priorityFee: 1000n,
-            priorityFee: kaspaToSompi(0.0001),
+            priorityFee: aeroToSompi(0.0001),
             changeAddress: sourceAddress,
         });
 
         // transaction generator creates a 
         // sequence of transactions
-        // for a requested amount of KAS.
+        // for a requested amount of ARO.
         // sign and submit these transactions
         let pending;
         while (pending = await generator.next()) {

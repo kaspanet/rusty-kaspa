@@ -1,8 +1,8 @@
 use crate::model::services::reachability::{MTReachabilityService, ReachabilityService};
 use crate::model::stores::headers::{DbHeadersStore, HeaderStoreReader};
 use crate::model::stores::reachability::DbReachabilityStore;
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_hashes::Hash;
+use aero_database::prelude::StoreResultExt;
+use aero_hashes::Hash;
 
 /// Shared utility function to keep the "within threshold" definition consistent across callers.
 pub fn seq_commit_within_threshold(high_blue_score: u64, low_blue_score: u64, threshold: u64) -> bool {
@@ -28,7 +28,7 @@ impl<'a> SeqCommitAccessor<'a> {
     }
 }
 
-impl<'a> kaspa_txscript::SeqCommitAccessor for SeqCommitAccessor<'a> {
+impl<'a> aero_txscript::SeqCommitAccessor for SeqCommitAccessor<'a> {
     fn is_chain_ancestor_from_pov(&self, block_hash: Hash) -> Option<bool> {
         self.reachability_service.try_is_chain_ancestor_of(block_hash, self.selected_parent).optional().unwrap()
     }

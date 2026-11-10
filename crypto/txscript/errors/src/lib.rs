@@ -1,4 +1,4 @@
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 use thiserror::Error;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]

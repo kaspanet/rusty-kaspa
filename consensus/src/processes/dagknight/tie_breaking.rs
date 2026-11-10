@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{BlockHashSet, KType};
-use kaspa_hashes::Hash;
+use aero_consensus_core::{BlockHashSet, KType};
+use aero_hashes::Hash;
 use parking_lot::RwLock;
 
 use crate::{
@@ -277,7 +277,7 @@ impl<
 #[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::*;
-    use kaspa_consensus_core::{BlueWorkType, blockhash::ORIGIN, header::Header};
+    use aero_consensus_core::{BlueWorkType, blockhash::ORIGIN, header::Header};
     use std::{cell::RefCell, collections::HashMap};
 
     use crate::{

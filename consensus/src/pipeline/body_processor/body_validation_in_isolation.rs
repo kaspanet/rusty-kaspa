@@ -5,7 +5,7 @@ use std::{
 
 use super::BlockBodyProcessor;
 use crate::errors::{BlockProcessResult, RuleError};
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     block::Block,
     mass::{ContextualMasses, Mass, NonContextualMasses},
     merkle::calc_hash_merkle_root,
@@ -169,7 +169,7 @@ mod tests {
         errors::RuleError,
         params::MAINNET_PARAMS,
     };
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         api::{BlockValidationFutures, ConsensusApi},
         block::MutableBlock,
         constants::TX_VERSION_TOCCATA,
@@ -181,8 +181,8 @@ mod tests {
             scriptvec,
         },
     };
-    use kaspa_core::assert_match;
-    use kaspa_hashes::Hash;
+    use aero_core::assert_match;
+    use aero_hashes::Hash;
 
     fn lane(index: u8) -> SubnetworkId {
         SubnetworkId::from_namespace([0, 0, 0, index])

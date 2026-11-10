@@ -1,4 +1,4 @@
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 /// Lane version value — just the tip hash.
 ///
@@ -9,8 +9,8 @@ pub type LaneTipHash = Hash;
 
 #[cfg(test)]
 mod tests {
-    use kaspa_hashes::Hash;
-    use kaspa_smt::store::{CollapsedLeaf, Node};
+    use aero_hashes::Hash;
+    use aero_smt::store::{CollapsedLeaf, Node};
 
     #[test]
     fn node_internal_round_trip() {

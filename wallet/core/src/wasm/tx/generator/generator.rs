@@ -22,7 +22,7 @@ const TS_GENERATOR_SETTINGS_OBJECT: &'static str = r#"
  * transactions as a source for the "final" transaction.
  * 
  * @see 
- *      {@link kaspaToSompi},
+ *      {@link aeroToSompi},
  *      {@link Generator}, 
  *      {@link PendingTransaction}, 
  *      {@link UtxoContext}, 
@@ -35,7 +35,7 @@ interface IGeneratorSettingsObject {
     /** 
      * Final transaction outputs (do not supply change transaction).
      * 
-     * Typical usage: { address: "kaspa:...", amount: 1000n }
+     * Typical usage: { address: "aero:...", amount: 1000n }
      */
     outputs: PaymentOutput | IPaymentOutput[];
     /** 
@@ -124,10 +124,10 @@ extern "C" {
 ///
 /// let generator = new Generator({
 ///     utxoEntries : [...],
-///     changeAddress : "kaspa:...",
+///     changeAddress : "aero:...",
 ///     outputs : [
-///         { amount : kaspaToSompi(10.0), address: "kaspa:..."},
-///         { amount : kaspaToSompi(20.0), address: "kaspa:..."},
+///         { amount : aeroToSompi(10.0), address: "aero:..."},
+///         { amount : aeroToSompi(20.0), address: "aero:..."},
 ///         ...
 ///     ],
 ///     priorityFee : 1000n,

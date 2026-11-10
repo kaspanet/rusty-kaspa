@@ -4,8 +4,8 @@
 
 use crate::derivation::create_xpub_from_xprv;
 use crate::imports::*;
-use kaspa_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};
-use kaspa_utils::hex::ToHex;
+use aero_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};
+use aero_utils::hex::ToHex;
 use secp256k1::SecretKey;
 use xxhash_rust::xxh3::xxh3_64;
 

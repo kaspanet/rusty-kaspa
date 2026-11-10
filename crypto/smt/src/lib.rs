@@ -1,4 +1,4 @@
-//! # kaspa-smt — 256-bit Sparse Merkle Tree
+//! # aero-smt — 256-bit Sparse Merkle Tree
 //!
 //! A general-purpose 256-bit Sparse Merkle Tree (SMT) with compressed proofs.
 //!
@@ -33,7 +33,7 @@ pub mod store;
 pub mod streaming;
 pub mod tree;
 
-use kaspa_hashes::{Hash, Hasher};
+use aero_hashes::{Hash, Hasher};
 
 /// Depth of the sparse Merkle tree (number of levels from root to leaf).
 pub const DEPTH: usize = 256;
@@ -66,7 +66,7 @@ pub fn bit_at(key: &Hash, d: usize) -> bool {
 /// in tests. Production code should use `H::EMPTY_HASHES` or `H::empty_root()` instead.
 #[cfg(test)]
 fn compute_empty_hashes<H: Hasher>() -> alloc::boxed::Box<[Hash; DEPTH + 1]> {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
     let mut result = alloc::boxed::Box::new([ZERO_HASH; DEPTH + 1]);
     for i in 1..=DEPTH {
         result[i] = hash_node::<H>(result[i - 1], result[i - 1]);
@@ -77,7 +77,7 @@ fn compute_empty_hashes<H: Hasher>() -> alloc::boxed::Box<[Hash; DEPTH + 1]> {
 /// Trait for hashers that can be used with [`tree::SparseMerkleTree`].
 ///
 /// Provides precomputed empty subtree hashes for efficient tree operations.
-/// Implementations for all BLAKE3-based hashers in `kaspa-hashes` are
+/// Implementations for all BLAKE3-based hashers in `aero-hashes` are
 /// generated at build time via `build.rs`.
 pub trait SmtHasher: Hasher {
     /// Hasher used for collapsed (single-leaf subtree) nodes.
@@ -109,7 +109,7 @@ include!(concat!(env!("OUT_DIR"), "/empty_hashes_generated.rs"));
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
+    use aero_hashes::{SeqCommitActiveNode, ZERO_HASH};
 
     type H = SeqCommitActiveNode;
 

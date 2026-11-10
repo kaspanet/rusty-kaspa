@@ -3,17 +3,17 @@ use std::io::Write;
 
 use flate2::{Compression, write::GzEncoder};
 
-use kaspa_consensus::params::Params;
-use kaspa_consensus::{consensus::Consensus, params::OverrideParams};
-use kaspa_consensus_core::{api::ConsensusApi, block::Block};
-use kaspa_testing_integration::common::json::JtfBlock;
+use aero_consensus::params::Params;
+use aero_consensus::{consensus::Consensus, params::OverrideParams};
+use aero_consensus_core::{api::ConsensusApi, block::Block};
+use aero_testing_integration::common::json::JtfBlock;
 
 use crate::topologically_ordered_hashes;
 
 pub(crate) fn write_blocks_json(params: &Params, consensus: &Consensus, file_path: &str) {
     let file = File::create(file_path).unwrap();
     let mut writer = GzEncoder::new(file, Compression::default());
-    write_kaspad_params(params, &mut writer);
+    write_aerod_params(params, &mut writer);
     let hashes = topologically_ordered_hashes(consensus, consensus.get_retention_period_root(), true);
     for hash in hashes {
         let block = consensus.get_block(hash).unwrap();
@@ -22,7 +22,7 @@ pub(crate) fn write_blocks_json(params: &Params, consensus: &Consensus, file_pat
     writer.finish().unwrap();
 }
 
-fn write_kaspad_params<W: Write>(params: &Params, writer: &mut W) {
+fn write_aerod_params<W: Write>(params: &Params, writer: &mut W) {
     let override_params: OverrideParams = params.clone().into();
     serde_json::to_writer(&mut *writer, &override_params).unwrap();
     writer.write_all(b"\n").unwrap();

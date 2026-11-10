@@ -3,8 +3,7 @@
 //!
 
 use crate::model::message::*;
-use derive_more::Display;
-use kaspa_notify::{
+use aero_notify::{
     events::EventType,
     notification::{Notification as NotificationTrait, full_featured},
     subscription::{
@@ -13,6 +12,7 @@ use kaspa_notify::{
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use wasm_bindgen::JsValue;

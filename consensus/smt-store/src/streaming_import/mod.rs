@@ -3,19 +3,19 @@
 //! Processes sorted lanes in chunks: parallel leaf hashing via rayon,
 //! then feeds to [`StreamingSmtBuilder`] with [`DbSink`] for batched DB writes.
 
-use kaspa_smt::SmtHasher;
+use aero_smt::SmtHasher;
 mod db_sink;
 
 use std::time::Instant;
 
 use std::collections::BTreeMap;
 
-use kaspa_consensus_core::api::ImportLane;
-use kaspa_database::prelude::{BatchDbWriter, DB, StoreError};
-use kaspa_hashes::{Hash, SeqCommitActiveNode};
-use kaspa_seq_commit::hashing::smt_leaf_hash;
-use kaspa_seq_commit::types::SmtLeafInput;
-use kaspa_smt::streaming::{StreamError, StreamingSmtBuilder};
+use aero_consensus_core::api::ImportLane;
+use aero_database::prelude::{BatchDbWriter, DB, StoreError};
+use aero_hashes::{Hash, SeqCommitActiveNode};
+use aero_seq_commit::hashing::smt_leaf_hash;
+use aero_seq_commit::types::SmtLeafInput;
+use aero_smt::streaming::{StreamError, StreamingSmtBuilder};
 use log::info;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::prelude::IndexedParallelIterator;

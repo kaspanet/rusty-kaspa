@@ -31,8 +31,8 @@
 //! - [`SmtProof`] — borrowed view, zero-alloc, usable in `no_std` / ZK.
 //! - [`OwnedSmtProof`] — owned, delegates to `SmtProof` via `as_proof()`.
 
+use aero_hashes::{Hash, ZERO_HASH};
 use alloc::vec::Vec;
-use kaspa_hashes::{Hash, ZERO_HASH};
 
 use crate::store::{BranchKey, CollapsedLeaf};
 /// Cache of already-computed branch hashes, keyed by `(depth, key_prefix)`.

@@ -2,19 +2,14 @@ use self::{
     error::{Error, Result},
     resolver::{DynResolver, id::IdResolver, queue::QueueResolver},
 };
-use async_channel::{Receiver, Sender};
-use async_trait::async_trait;
-pub use client_pool::ClientPool;
-use connection_event::ConnectionEvent;
-use futures::{future::FutureExt, pin_mut, select};
-use kaspa_core::{debug, error, trace};
-use kaspa_grpc_core::{
+use aero_core::{debug, error, trace};
+use aero_grpc_core::{
     RPC_MAX_MESSAGE_SIZE,
     channel::NotificationChannel,
-    ops::KaspadPayloadOps,
-    protowire::{GetInfoRequestMessage, KaspadRequest, KaspadResponse, kaspad_request, rpc_client::RpcClient},
+    ops::AerodPayloadOps,
+    protowire::{AerodRequest, AerodResponse, GetInfoRequestMessage, aerod_request, rpc_client::RpcClient},
 };
-use kaspa_notify::{
+use aero_notify::{
     collector::{Collector, CollectorFrom},
     error::{Error as NotifyError, Result as NotifyResult},
     events::{EVENT_TYPE_ARRAY, EventArray, EventType},
@@ -27,7 +22,7 @@ use kaspa_notify::{
         context::SubscriptionContext,
     },
 };
-use kaspa_rpc_core::{
+use aero_rpc_core::{
     Notification,
     api::rpc::RpcApi,
     error::RpcError,
@@ -35,11 +30,16 @@ use kaspa_rpc_core::{
     model::message::*,
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
 };
-use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
-use kaspa_utils_tower::{
+use aero_utils::{channel::Channel, triggers::DuplexTrigger};
+use aero_utils_tower::{
     counters::TowerConnectionCounters,
     middleware::{CountBytesBody, MapRequestBodyLayer, MapResponseBodyLayer, ServiceBuilder},
 };
+use async_channel::{Receiver, Sender};
+use async_trait::async_trait;
+pub use client_pool::ClientPool;
+use connection_event::ConnectionEvent;
+use futures::{future::FutureExt, pin_mut, select};
 use regex::Regex;
 use std::{
     sync::{
@@ -233,7 +233,7 @@ impl GrpcClient {
 impl RpcApi for GrpcClient {
     // this example illustrates the body of the function created by the route!() macro
     // async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
-    //     self.inner.call(KaspadPayloadOps::SubmitBlock, request).await?.as_ref().try_into()
+    //     self.inner.call(AerodPayloadOps::SubmitBlock, request).await?.as_ref().try_into()
     // }
 
     route!(ping_call, Ping);
@@ -361,8 +361,8 @@ pub const REQUEST_TIMEOUT_DURATION: u64 = 5_000;
 pub const TIMEOUT_MONITORING_INTERVAL: u64 = 10_000;
 pub const RECONNECT_INTERVAL: u64 = 2_000;
 
-type KaspadRequestSender = async_channel::Sender<KaspadRequest>;
-type KaspadRequestReceiver = async_channel::Receiver<KaspadRequest>;
+type AerodRequestSender = async_channel::Sender<AerodRequest>;
+type AerodRequestReceiver = async_channel::Receiver<AerodRequest>;
 
 #[derive(Debug, Default)]
 struct ServerFeatures {
@@ -376,7 +376,7 @@ struct ServerFeatures {
 ///
 /// Data flow:
 /// ```
-/// //   KaspadRequest -> request_send -> stream -> KaspadResponse
+/// //   AerodRequest -> request_send -> stream -> AerodResponse
 /// ```
 ///
 /// Execution flow:
@@ -413,8 +413,8 @@ struct Inner {
     notification_channel: NotificationChannel,
 
     // Sending to server
-    request_sender: KaspadRequestSender,
-    request_receiver: KaspadRequestReceiver,
+    request_sender: AerodRequestSender,
+    request_receiver: AerodRequestReceiver,
 
     // Receiving from server
     receiver_is_running: AtomicBool,
@@ -448,8 +448,8 @@ impl Inner {
     fn new(
         url: String,
         server_features: ServerFeatures,
-        request_sender: KaspadRequestSender,
-        request_receiver: KaspadRequestReceiver,
+        request_sender: AerodRequestSender,
+        request_receiver: AerodRequestReceiver,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: u64,
@@ -523,11 +523,11 @@ impl Inner {
     #[allow(unused_variables)]
     async fn try_connect(
         url: String,
-        request_sender: KaspadRequestSender,
-        request_receiver: KaspadRequestReceiver,
+        request_sender: AerodRequestSender,
+        request_receiver: AerodRequestReceiver,
         request_timeout: u64,
         counters: Arc<TowerConnectionCounters>,
-    ) -> Result<(Streaming<KaspadResponse>, ServerFeatures)> {
+    ) -> Result<(Streaming<AerodResponse>, ServerFeatures)> {
         // gRPC endpoint
         #[cfg(not(feature = "heap"))]
         let channel =
@@ -575,8 +575,8 @@ impl Inner {
             }
         };
 
-        // Actual KaspadRequest to KaspadResponse stream
-        let mut stream: Streaming<KaspadResponse> = client.message_stream(request_stream).await?.into_inner();
+        // Actual AerodRequest to AerodResponse stream
+        let mut stream: Streaming<AerodResponse> = client.message_stream(request_stream).await?.into_inner();
 
         // Collect server capabilities as stated in GetInfoResponse
         let mut server_features = ServerFeatures::default();
@@ -680,11 +680,11 @@ impl Inner {
         self.resolver.clone()
     }
 
-    async fn call(&self, op: KaspadPayloadOps, request: impl Into<KaspadRequest>) -> Result<KaspadResponse> {
+    async fn call(&self, op: AerodPayloadOps, request: impl Into<AerodRequest>) -> Result<AerodResponse> {
         // Calls are only allowed if the client is connected to the server
         if self.is_connected() {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
-            let mut request: KaspadRequest = request.into();
+            let mut request: AerodRequest = request.into();
             request.id = id;
 
             trace!("GRPC client: resolver call: {:?}", request);
@@ -738,7 +738,7 @@ impl Inner {
     }
 
     /// Launch a task receiving and handling response messages sent by the server.
-    fn spawn_response_receiver_task(self: Arc<Self>, mut stream: Streaming<KaspadResponse>) {
+    fn spawn_response_receiver_task(self: Arc<Self>, mut stream: Streaming<AerodResponse>) {
         // Note: self is a cloned Arc here so that it can be used in the spawned task.
 
         // The task can only be spawned once
@@ -854,7 +854,7 @@ impl Inner {
         });
     }
 
-    fn handle_response(&self, response: KaspadResponse) {
+    fn handle_response(&self, response: AerodResponse) {
         if response.is_notification() {
             trace!("GRPC client: handle_response received a notification");
             match Notification::try_from(&response) {
@@ -914,7 +914,7 @@ impl Inner {
 
     /// Start sending notifications of some type to the client.
     async fn start_notify_to_client(&self, scope: Scope) -> RpcResult<()> {
-        let request = kaspad_request::Payload::from_notification_type(&scope, Command::Start);
+        let request = aerod_request::Payload::from_notification_type(&scope, Command::Start);
         self.call((&request).into(), request).await?;
         Ok(())
     }
@@ -922,7 +922,7 @@ impl Inner {
     /// Stop sending notifications of some type to the client.
     async fn stop_notify_to_client(&self, scope: Scope) -> RpcResult<()> {
         if self.handle_stop_notify() {
-            let request = kaspad_request::Payload::from_notification_type(&scope, Command::Stop);
+            let request = aerod_request::Payload::from_notification_type(&scope, Command::Stop);
             self.call((&request).into(), request).await?;
         }
         Ok(())

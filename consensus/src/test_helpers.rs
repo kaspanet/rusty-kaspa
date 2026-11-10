@@ -3,8 +3,7 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
 
-use faster_hex::hex_string;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet, KType,
     block::Block,
     blockhash::BlockHashExtensions,
@@ -13,8 +12,9 @@ use kaspa_consensus_core::{
     tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
     utxo::utxo_collection::UtxoCollection,
 };
-use kaspa_hashes::{HASH_SIZE, Hash};
-use kaspa_math::Uint192;
+use aero_hashes::{HASH_SIZE, Hash};
+use aero_math::Uint192;
+use faster_hex::hex_string;
 use parking_lot::RwLock;
 use rand::{Rng, rngs::SmallRng, seq::SliceRandom};
 
@@ -176,7 +176,7 @@ pub fn generate_random_transaction_outpoint(rng: &mut SmallRng) -> TransactionOu
     TransactionOutpoint::new(generate_random_hash(rng), rng.r#gen())
 }
 
-//TODO: create `assert_eq_<kaspa-struct>!()` helper macros in `consensus::test_helpers`
+//TODO: create `assert_eq_<aero-struct>!()` helper macros in `consensus::test_helpers`
 /// Utility to output a JSON representation of a DAG
 pub fn dag_to_json(genesis: u64, blocks: &[(u64, Vec<u64>)]) -> serde_json::Value {
     let mut dag_data = serde_json::Map::new();

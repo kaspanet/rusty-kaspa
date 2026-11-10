@@ -22,14 +22,14 @@ pub enum Error {
     #[error("wRPC -> {0}")]
     RpcError(#[from] RpcError),
 
-    #[error("Kaspa RpcApi -> {0}")]
-    RpcApiError(#[from] kaspa_rpc_core::error::RpcError),
+    #[error("Aero RpcApi -> {0}")]
+    RpcApiError(#[from] aero_rpc_core::error::RpcError),
 
-    #[error("Kaspa RpcApi -> {0}")]
+    #[error("Aero RpcApi -> {0}")]
     WebSocketError(#[from] WebSocketError),
 
     #[error("Notification subsystem -> {0}")]
-    NotificationError(#[from] kaspa_notify::error::Error),
+    NotificationError(#[from] aero_notify::error::Error),
 
     #[error("Channel -> {0}")]
     ChannelError(String),
@@ -44,10 +44,10 @@ pub enum Error {
     ToValue(String),
 
     #[error("invalid network type: {0}")]
-    NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
+    NetworkType(#[from] aero_consensus_core::network::NetworkTypeError),
 
     #[error(transparent)]
-    ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
+    ConsensusWasm(#[from] aero_consensus_wasm::error::Error),
 
     #[error(transparent)]
     HttpError(#[from] HttpError),
@@ -56,13 +56,13 @@ pub enum Error {
     WasmError(#[from] WasmError),
 
     #[error(transparent)]
-    AddressError(#[from] kaspa_addresses::AddressError),
+    AddressError(#[from] aero_addresses::AddressError),
 
     #[error(transparent)]
     TomlError(#[from] toml::de::Error),
 
     #[error(transparent)]
-    NetworkId(#[from] kaspa_consensus_core::network::NetworkIdError),
+    NetworkId(#[from] aero_consensus_core::network::NetworkIdError),
 }
 
 impl Error {

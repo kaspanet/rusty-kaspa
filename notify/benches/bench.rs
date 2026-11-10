@@ -1,11 +1,11 @@
+use aero_addresses::{Address, Prefix};
+use aero_math::Uint256;
+use aero_notify::{address::tracker::Indexes, subscription::context::SubscriptionContext};
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use kaspa_addresses::{Address, Prefix};
-use kaspa_math::Uint256;
-use kaspa_notify::{address::tracker::Indexes, subscription::context::SubscriptionContext};
 
 fn create_addresses(count: usize) -> Vec<Address> {
     (0..count)
-        .map(|i| Address::new(Prefix::Mainnet, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
+        .map(|i| Address::new(Prefix::Mainnet, aero_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
         .collect()
 }
 
@@ -25,6 +25,6 @@ pub fn bench_subscription_context(c: &mut Criterion) {
     });
 }
 
-// `cargo bench --package kaspa-notify --bench bench`
+// `cargo bench --package aero-notify --bench bench`
 criterion_group!(benches, bench_subscription_context);
 criterion_main!(benches);

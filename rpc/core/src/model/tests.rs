@@ -2,17 +2,17 @@
 mod mockery {
 
     use crate::model::*;
-    use kaspa_addresses::{Prefix, Version};
-    use kaspa_consensus_core::api::BlockCount;
-    use kaspa_consensus_core::network::NetworkType;
-    use kaspa_consensus_core::subnets::SubnetworkId;
-    use kaspa_consensus_core::tx::{CovenantBinding, ScriptPublicKey};
-    use kaspa_hashes::Hash;
-    use kaspa_math::Uint192;
-    use kaspa_notify::subscription::Command;
-    use kaspa_rpc_macros::test_wrpc_serializer as test;
-    use kaspa_txscript::script_class::ScriptClass;
-    use kaspa_utils::networking::{ContextualNetAddress, IpAddress, NetAddress};
+    use aero_addresses::{Prefix, Version};
+    use aero_consensus_core::api::BlockCount;
+    use aero_consensus_core::network::NetworkType;
+    use aero_consensus_core::subnets::SubnetworkId;
+    use aero_consensus_core::tx::{CovenantBinding, ScriptPublicKey};
+    use aero_hashes::Hash;
+    use aero_math::Uint192;
+    use aero_notify::subscription::Command;
+    use aero_rpc_macros::test_wrpc_serializer as test;
+    use aero_txscript::script_class::ScriptClass;
+    use aero_utils::networking::{ContextualNetAddress, IpAddress, NetAddress};
     use rand::Rng;
     use std::net::{IpAddr, Ipv4Addr};
     use std::sync::Arc;
@@ -1738,7 +1738,7 @@ mod mockery {
             assert_eq!(decoded.inputs[0].sig_op_count, 9);
             assert_eq!(decoded.inputs[0].compute_budget, 0);
 
-            let consensus_tx: kaspa_consensus_core::tx::Transaction = decoded.try_into().unwrap();
+            let consensus_tx: aero_consensus_core::tx::Transaction = decoded.try_into().unwrap();
             assert_eq!(consensus_tx.inputs[0].compute_commit.sig_op_count(), Some(9));
             assert_eq!(consensus_tx.inputs[0].compute_commit.compute_budget(), None);
         }

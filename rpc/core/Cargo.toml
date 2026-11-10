@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-rpc-core"
-description = "Kaspa RPC core"
+name = "aero-rpc-core"
+description = "Aero RPC core"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -11,24 +11,24 @@ repository.workspace = true
 
 [features]
 wasm32-sdk = [
-    "kaspa-consensus-client/wasm32-sdk",
-    "kaspa-consensus-wasm/wasm32-sdk"
+    "aero-consensus-client/wasm32-sdk",
+    "aero-consensus-wasm/wasm32-sdk"
 ]
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-client.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensus-wasm.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-index-core.workspace = true
-kaspa-math.workspace = true
-kaspa-mining-errors.workspace = true
-kaspa-notify.workspace = true
-kaspa-txscript.workspace = true
-kaspa-rpc-macros.workspace = true
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-consensus-client.workspace = true
+aero-consensus-notify.workspace = true
+aero-consensus-wasm.workspace = true
+aero-core.workspace = true
+aero-hashes.workspace = true
+aero-index-core.workspace = true
+aero-math.workspace = true
+aero-mining-errors.workspace = true
+aero-notify.workspace = true
+aero-txscript.workspace = true
+aero-rpc-macros.workspace = true
 
 async-channel.workspace = true
 async-trait.workspace = true
@@ -51,7 +51,7 @@ wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-serializer.workspace = true
 workflow-wasm.workspace = true
-kaspa-utils = { workspace = true, features = ["peer-id"] }
+aero-utils = { workspace = true, features = ["peer-id"] }
 
 [dev-dependencies]
 serde_json.workspace = true

@@ -393,7 +393,7 @@ impl StratumListener {
                             error!(
                                 "{} {}",
                                 LogColors::error("[ERROR]"),
-                                "  * HTTP/2/gRPC connections should use the Kaspa node port (16110), not the bridge port (5555)"
+                                "  * HTTP/2/gRPC connections should use the Aero node port (16110), not the bridge port (5555)"
                             );
                             error!("{} {}", LogColors::error("[ERROR]"), "  * Closing connection immediately");
                             error!("{}", LogColors::error("========================================"));
@@ -547,7 +547,7 @@ impl StratumListener {
                                 error!(
                                     "{} {}",
                                     LogColors::error("[ERROR]"),
-                                    "  * HTTP/2/gRPC connections should use the Kaspa node port (16110), not the bridge port (5555)"
+                                    "  * HTTP/2/gRPC connections should use the Aero node port (16110), not the bridge port (5555)"
                                 );
                                 error!("{} {}", LogColors::error("[ERROR]"), "  * Closing connection immediately");
                                 error!("{}", LogColors::error("========================================"));

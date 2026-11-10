@@ -9,8 +9,8 @@ use crate::{
     mass::{BlockLaneLimits, BlockMassLimits, MassCofactors},
     network::{NetworkId, NetworkType},
 };
-use kaspa_addresses::Prefix;
-use kaspa_math::Uint256;
+use aero_addresses::Prefix;
+use aero_math::Uint256;
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::min,
@@ -242,7 +242,7 @@ pub struct OverrideParams {
     pub block_mass_limits: Option<BlockMassLimits>,
     pub block_lane_limits: Option<BlockLaneLimits>,
 
-    /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
+    /// The parameter for scaling inverse ARO value to mass units (KIP-0009)
     pub storage_mass_parameter: Option<u64>,
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period
@@ -339,13 +339,18 @@ pub struct Params {
     pub block_mass_limits: BlockMassLimits,
     pub block_lane_limits: BlockLaneLimits,
 
-    /// The parameter for scaling inverse KAS value to mass units (KIP-0009)
+    /// The parameter for scaling inverse ARO value to mass units (KIP-0009)
     pub storage_mass_parameter: u64,
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period
     pub deflationary_phase_daa_score: u64,
 
     pub pre_deflationary_phase_base_subsidy: u64,
+
+    /// Bitcoin-style emission. When `Some(n)`, the block subsidy is `pre_deflationary_phase_base_subsidy >> (daa_score / n)`:
+    /// it halves every `n` DAA score (blocks) until it reaches zero, and `deflationary_phase_daa_score` plus the
+    /// monthly decay table are unused. `None` keeps the original monthly-decay emission.
+    pub halving_interval: Option<u64>,
     pub skip_proof_of_work: bool,
     pub max_block_level: BlockLevel,
     pub pruning_proof_m: u64,
@@ -529,6 +534,8 @@ impl Params {
                 .pre_deflationary_phase_base_subsidy
                 .unwrap_or(self.pre_deflationary_phase_base_subsidy),
 
+            halving_interval: self.halving_interval,
+
             skip_proof_of_work: overrides.skip_proof_of_work.unwrap_or(self.skip_proof_of_work),
 
             max_block_level: overrides.max_block_level.unwrap_or(self.max_block_level),
@@ -590,26 +597,9 @@ impl From<NetworkId> for Params {
 }
 
 pub const MAINNET_PARAMS: Params = Params {
-    dns_seeders: &[
-        // This DNS seeder is run by Denis Mashkevich
-        "mainnet-dnsseed-1.kaspanet.org",
-        // This DNS seeder is run by Denis Mashkevich
-        "mainnet-dnsseed-2.kaspanet.org",
-        // This DNS seeder is run by Georges Künzli
-        "seeder1.kaspad.net",
-        // This DNS seeder is run by Georges Künzli
-        "seeder2.kaspad.net",
-        // This DNS seeder is run by Georges Künzli
-        "seeder3.kaspad.net",
-        // This DNS seeder is run by Georges Künzli
-        "seeder4.kaspad.net",
-        // This DNS seeder is run by Tim
-        "kaspadns.kaspacalc.net",
-        // This DNS seeder is run by supertypo
-        "n-mainnet.kaspa.ws",
-        // This DNS seeder is run by -gerri-
-        "dnsseeder-kaspa-mainnet.x-con.at",
-    ],
+    // No DNS seeders yet: run your own and list them here. Until then, nodes find each other with `--connect` /
+    // `--addpeer`, or via the peers they are given.
+    dns_seeders: &[],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -638,37 +628,31 @@ pub const MAINNET_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
-    // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
-    // switches to the deflationary period. This number is calculated as follows:
-    // We define a year as 365.25 days
-    // Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
-    // The network was down for three days shortly after launch
-    // Three days in seconds = 3 * 24 * 60 * 60 = 259200
-    deflationary_phase_daa_score: 15778800 - 259200,
-    pre_deflationary_phase_base_subsidy: 50000000000,
+    // Bitcoin-style emission with a 100,000,000 ARO hard cap and no premine or tail emission: 0.1 ARO per block
+    // (10_000_000 sompi), halving every 500_000_000 blocks (~3.96 years at 4 BPS). The total is
+    // 2 * 10_000_000 * 500_000_000 sompi = 100,000,000 ARO, minus the integer rounding of the halvings (see
+    // `coinbase::tests::halving_schedule_respects_hard_cap`). `deflationary_phase_daa_score` is unused when
+    // `halving_interval` is set.
+    deflationary_phase_daa_score: u64::MAX,
+    pre_deflationary_phase_base_subsidy: 10_000_000,
+    halving_interval: Some(500_000_000),
     skip_proof_of_work: false,
     max_block_level: 225,
     pruning_proof_m: 1000,
 
-    blockrate: BlockrateParams::new::<10>(),
+    // 4 BPS (250ms blocks), with Crescendo rules active from genesis so there is no 1 BPS pre-Crescendo phase.
+    blockrate: BlockrateParams::new::<4>(),
 
-    pre_crescendo_target_time_per_block: 1000,
+    pre_crescendo_target_time_per_block: Bps::<4>::target_time_per_block(),
 
-    // Roughly 2025-05-05 1500 UTC
-    crescendo_activation: ForkActivation::new(110_165_000),
+    crescendo_activation: ForkActivation::always(),
 
     dagknight_activation: ForkActivation::never(),
 };
 
 pub const TESTNET_PARAMS: Params = Params {
-    dns_seeders: &[
-        // This DNS seeder is run by Tiram
-        "seeder1-tn.kaspad.net",
-        // This DNS seeder is run by -gerri-
-        "dnsseeder-kaspa-testnet.x-con.at",
-        // This DNS seeder is run by supertypo
-        "n-testnet-10.kaspa.ws",
-    ],
+    // No DNS seeders yet (see MAINNET_PARAMS).
+    dns_seeders: &[],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
@@ -704,6 +688,7 @@ pub const TESTNET_PARAMS: Params = Params {
     // Three days in seconds = 3 * 24 * 60 * 60 = 259200
     deflationary_phase_daa_score: 15778800 - 259200,
     pre_deflationary_phase_base_subsidy: 50000000000,
+    halving_interval: None,
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,
@@ -748,6 +733,7 @@ pub const SIMNET_PARAMS: Params = Params {
 
     deflationary_phase_daa_score: TenBps::deflationary_phase_daa_score(),
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
+    halving_interval: None,
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -809,6 +795,7 @@ pub const DEVNET_PARAMS: Params = Params {
 
     deflationary_phase_daa_score: 0,
     pre_deflationary_phase_base_subsidy: TenBps::pre_deflationary_phase_base_subsidy(),
+    halving_interval: None,
     skip_proof_of_work: false,
     max_block_level: 250,
     pruning_proof_m: 1000,

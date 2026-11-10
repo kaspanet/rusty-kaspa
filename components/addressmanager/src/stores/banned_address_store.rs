@@ -1,9 +1,9 @@
-use kaspa_database::{
+use aero_database::{
     prelude::{CachePolicy, StoreError, StoreResult},
     prelude::{CachedDbAccess, DB, DirectDbWriter},
     registry::DatabaseStorePrefixes,
 };
-use kaspa_utils::mem_size::MemSizeEstimator;
+use aero_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv6Addr};
 use std::{error::Error, fmt::Display, sync::Arc};

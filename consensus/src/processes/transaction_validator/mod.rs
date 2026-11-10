@@ -4,12 +4,12 @@ pub mod tx_validation_in_isolation;
 pub mod tx_validation_in_utxo_context;
 use std::sync::Arc;
 
-use kaspa_txscript::{
+use aero_txscript::{
     SigCacheKey,
     caches::{Cache, TxScriptCacheCounters},
 };
 
-use kaspa_consensus_core::{KType, mass::MassCalculator};
+use aero_consensus_core::{KType, mass::MassCalculator};
 
 #[derive(Clone)]
 pub struct TransactionValidator {

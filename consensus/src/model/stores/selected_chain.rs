@@ -1,15 +1,15 @@
-use kaspa_consensus_core::ChainPath;
-use kaspa_consensus_core::blockstatus::BlockStatus;
-use kaspa_database::registry::DatabaseStorePrefixes;
+use aero_consensus_core::ChainPath;
+use aero_consensus_core::blockstatus::BlockStatus;
+use aero_database::registry::DatabaseStorePrefixes;
 use parking_lot::RwLockWriteGuard;
 use rocksdb::WriteBatch;
 
 use std::sync::Arc;
 
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DbWriter};
-use kaspa_database::prelude::{CachedDbItem, DB};
-use kaspa_database::prelude::{StoreError, StoreResult};
-use kaspa_hashes::Hash;
+use aero_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DbWriter};
+use aero_database::prelude::{CachedDbItem, DB};
+use aero_database::prelude::{StoreError, StoreResult};
+use aero_hashes::Hash;
 
 use super::U64Key;
 

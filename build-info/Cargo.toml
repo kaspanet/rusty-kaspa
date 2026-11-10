@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-build-info"
+name = "aero-build-info"
 description = "Compile-time git/build information embedded via build script"
 rust-version.workspace = true
 version.workspace = true

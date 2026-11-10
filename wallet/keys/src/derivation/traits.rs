@@ -3,8 +3,8 @@
 //!
 
 use crate::result::Result;
+use aero_bip32::ExtendedPublicKey;
 use async_trait::async_trait;
-use kaspa_bip32::ExtendedPublicKey;
 use std::{collections::HashMap, sync::Arc};
 
 #[async_trait]

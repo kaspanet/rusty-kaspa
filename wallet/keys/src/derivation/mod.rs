@@ -1,5 +1,5 @@
 //!
-//! Derivation utilities used by the integrated Kaspa Wallet API.
+//! Derivation utilities used by the integrated Aero Wallet API.
 //!
 
 pub mod gen0;

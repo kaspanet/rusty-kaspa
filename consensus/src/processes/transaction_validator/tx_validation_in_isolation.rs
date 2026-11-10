@@ -3,10 +3,10 @@ use super::{
     errors::{TxResult, TxRuleError},
 };
 use crate::constants::{MAX_SOMPI, TX_VERSION_TOCCATA};
-use kaspa_consensus_core::subnets::{
+use aero_consensus_core::subnets::{
     CoinbaseSubnetwork, NativeSubnetwork, SUBNETWORK_NAMESPACE_LEN, SUBNETWORK_ZERO_TAIL_LEN, Subnetwork,
 };
-use kaspa_consensus_core::tx::Transaction;
+use aero_consensus_core::tx::Transaction;
 use std::collections::HashSet;
 
 impl TransactionValidator {
@@ -216,7 +216,7 @@ fn check_tx_version_specific_fields(tx: &Transaction) -> TxResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         constants::{TX_VERSION, TX_VERSION_TOCCATA},
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE, SubnetworkId},
         tx::{
@@ -224,7 +224,7 @@ mod tests {
             scriptvec,
         },
     };
-    use kaspa_core::assert_match;
+    use aero_core::assert_match;
 
     use crate::{
         params::MAINNET_PARAMS,
@@ -388,8 +388,8 @@ mod tests {
 
     #[test]
     fn check_transaction_subnetwork_shape() {
-        use kaspa_consensus_core::subnets::{SUBNETWORK_ID_SIZE, SUBNETWORK_NAMESPACE_LEN, SUBNETWORK_ZERO_TAIL_LEN, SubnetworkId};
-        use kaspa_consensus_core::tx::TransactionOutpoint;
+        use aero_consensus_core::subnets::{SUBNETWORK_ID_SIZE, SUBNETWORK_NAMESPACE_LEN, SUBNETWORK_ZERO_TAIL_LEN, SubnetworkId};
+        use aero_consensus_core::tx::TransactionOutpoint;
 
         fn sid(namespace: [u8; SUBNETWORK_NAMESPACE_LEN], tail: [u8; SUBNETWORK_ZERO_TAIL_LEN]) -> SubnetworkId {
             let mut bytes = [0u8; SUBNETWORK_ID_SIZE];

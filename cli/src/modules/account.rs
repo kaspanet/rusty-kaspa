@@ -1,6 +1,6 @@
-use kaspa_wallet_core::account::BIP32_ACCOUNT_KIND;
-use kaspa_wallet_core::account::LEGACY_ACCOUNT_KIND;
-use kaspa_wallet_core::account::MULTISIG_ACCOUNT_KIND;
+use aero_wallet_core::account::BIP32_ACCOUNT_KIND;
+use aero_wallet_core::account::LEGACY_ACCOUNT_KIND;
+use aero_wallet_core::account::MULTISIG_ACCOUNT_KIND;
 
 use crate::imports::*;
 use crate::wizards;
@@ -11,7 +11,7 @@ pub struct Account;
 
 impl Account {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, mut argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
         let wallet = ctx.wallet();
 
         if !wallet.is_open() {
@@ -71,14 +71,14 @@ impl Account {
                     tprintln!(ctx, "");
                     ctx.term().help(
                         &[
-                            ("account import legacy-data", "Import KDX keydata file or kaspanet web wallet data on the same domain"),
+                            ("account import legacy-data", "Import KDX keydata file or aeronet web wallet data on the same domain"),
                             (
                                 "account import mnemonic bip32",
-                                "Import Bip32 (12 or 24 word mnemonics used by kaspawallet, kaspium, onekey, tangem etc.)",
+                                "Import Bip32 (12 or 24 word mnemonics used by aerowallet, kaspium, onekey, tangem etc.)",
                             ),
                             (
                                 "account import mnemonic legacy",
-                                "Import accounts 12 word mnemonic used by legacy applications (KDX and kaspanet web wallet)",
+                                "Import accounts 12 word mnemonic used by legacy applications (KDX and aeronet web wallet)",
                             ),
                             (
                                 "account import mnemonic multisig [additional keys]",
@@ -121,17 +121,17 @@ impl Account {
                                         if let Some(txid) = txid {
                                             tprintln!(
                                                 ctx_,
-                                                "Scan detected {} KAS at index {}; transfer txid: {}",
-                                                sompi_to_kaspa_string(balance),
+                                                "Scan detected {} ARO at index {}; transfer txid: {}",
+                                                sompi_to_aero_string(balance),
                                                 processed,
                                                 txid
                                             );
                                         } else if processed > 0 {
                                             tprintln!(
                                                 ctx_,
-                                                "Scanned {} derivations, found {} KAS",
+                                                "Scanned {} derivations, found {} ARO",
                                                 processed,
-                                                sompi_to_kaspa_string(balance)
+                                                sompi_to_aero_string(balance)
                                             );
                                         } else {
                                             tprintln!(ctx_, "Please wait... scanning for account UTXOs...");
@@ -140,7 +140,7 @@ impl Account {
                                 )
                                 .await?;
                         } else if application_runtime::is_web() {
-                            return Err("'kaspanet' web wallet storage not found at this domain name".into());
+                            return Err("'aeronet' web wallet storage not found at this domain name".into());
                         } else {
                             return Err("KDX keydata file not found".into());
                         }
@@ -149,7 +149,7 @@ impl Account {
                         if argv.is_empty() {
                             tprintln!(ctx, "usage: 'account import mnemonic <bip32|legacy|multisig>'");
                             tprintln!(ctx, "please specify the mnemonic type");
-                            tprintln!(ctx, "please use 'legacy' for 12-word KDX and kaspanet web wallet mnemonics\r\n");
+                            tprintln!(ctx, "please use 'legacy' for 12-word KDX and aeronet web wallet mnemonics\r\n");
                             return Ok(());
                         }
 
@@ -247,14 +247,14 @@ impl Account {
         Ok(())
     }
 
-    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
+    async fn display_help(self: Arc<Self>, ctx: Arc<AeroCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
                 ("create [<type>] [<name>]", "Create a new account (types: 'bip32' (default), 'legacy', 'multisig')"),
                 (
                     "import <import-type> [<key-type> [extra keys]]",
                     "Import accounts from a private key using 24 or 12 word mnemonic or legacy data \
-                (KDX and kaspanet web wallet). Use 'account import' for additional help.",
+                (KDX and aeronet web wallet). Use 'account import' for additional help.",
                 ),
                 ("name <name>", "Name or rename the selected account (use 'remove' to remove the name"),
                 ("scan [<derivations>] or scan [<start>] [<derivations>]", "Scan extended address derivation chain (legacy accounts)"),
@@ -272,7 +272,7 @@ impl Account {
 
     async fn derivation_scan(
         self: &Arc<Self>,
-        ctx: &Arc<KaspaCli>,
+        ctx: &Arc<AeroCli>,
         start: usize,
         count: usize,
         window: usize,
@@ -302,13 +302,13 @@ impl Account {
                     if let Some(txid) = txid {
                         tprintln!(
                             ctx_,
-                            "Scan detected {} KAS at index {}; transfer txid: {}",
-                            sompi_to_kaspa_string(balance),
+                            "Scan detected {} ARO at index {}; transfer txid: {}",
+                            sompi_to_aero_string(balance),
                             processed,
                             txid
                         );
                     } else {
-                        tprintln!(ctx_, "Scanned {} derivations, found {} KAS", processed, sompi_to_kaspa_string(balance));
+                        tprintln!(ctx_, "Scanned {} derivations, found {} ARO", processed, sompi_to_aero_string(balance));
                     }
                 })),
             )

@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-smt-store"
+name = "aero-smt-store"
 description = "SMT versioned store — persistent fork-aware DB layer"
 rust-version.workspace = true
 version.workspace = true
@@ -10,13 +10,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-hashes = { workspace = true, features = ["zerocopy"] }
-kaspa-seq-commit.workspace = true
-kaspa-smt.workspace = true
-kaspa-utils.workspace = true
+aero-consensus-core.workspace = true
+aero-core.workspace = true
+aero-database.workspace = true
+aero-hashes = { workspace = true, features = ["zerocopy"] }
+aero-seq-commit.workspace = true
+aero-smt.workspace = true
+aero-utils.workspace = true
 log = { workspace = true, features = ["kv_std"] }
 parking_lot.workspace = true
 rayon.workspace = true
@@ -25,10 +25,10 @@ self_cell.workspace = true
 zerocopy = { workspace = true }
 
 [dev-dependencies]
-kaspa-database.workspace = true
-kaspa-hashes = { workspace = true, features = ["zerocopy"] }
-kaspa-seq-commit.workspace = true
-kaspa-smt = { workspace = true, features = ["test-utils"] }
+aero-database.workspace = true
+aero-hashes = { workspace = true, features = ["zerocopy"] }
+aero-seq-commit.workspace = true
+aero-smt = { workspace = true, features = ["test-utils"] }
 rand.workspace = true
 
 [features]

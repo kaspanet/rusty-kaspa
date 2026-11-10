@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-consensusmanager"
-description = "Kaspa consensus library"
+name = "aero-consensusmanager"
+description = "Aero consensus library"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -14,11 +14,11 @@ duration-string.workspace = true
 futures-util.workspace = true
 futures.workspace = true
 itertools.workspace = true
-kaspa-addresses.workspace=true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-core.workspace = true
-kaspa-utils = { workspace = true, features = ["sync"] }
+aero-addresses.workspace=true
+aero-consensus-core.workspace = true
+aero-consensus-notify.workspace = true
+aero-core.workspace = true
+aero-utils = { workspace = true, features = ["sync"] }
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true

@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use kaspa_consensus_core::{BlueWorkType, KType};
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB, DbKey, StoreError};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
-use kaspa_math::Uint192;
-use kaspa_utils::mem_size::MemSizeEstimator;
+use aero_consensus_core::{BlueWorkType, KType};
+use aero_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB, DbKey, StoreError};
+use aero_database::registry::DatabaseStorePrefixes;
+use aero_hashes::Hash;
+use aero_math::Uint192;
+use aero_utils::mem_size::MemSizeEstimator;
 use rocksdb::{IterateBounds, WriteBatch};
 use serde::{Deserialize, Serialize};
 
@@ -167,7 +167,7 @@ pub struct DbUmcCascadeStore {
 
 impl DbUmcCascadeStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
-        let prefix: Vec<u8> = kaspa_database::registry::DatabaseStorePrefixes::DagKnightUMC.into();
+        let prefix: Vec<u8> = aero_database::registry::DatabaseStorePrefixes::DagKnightUMC.into();
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, prefix) }
     }
 }
@@ -192,7 +192,7 @@ impl UmcCascadeStore for DbUmcCascadeStore {
 
     fn prune_by_conflict_genesis(&self, batch: &mut WriteBatch, conflict_genesis: Hash) -> Result<u32, StoreError> {
         // Build range prefix: DagKnightUMC_prefix || conflict_genesis
-        let mut prefix: Vec<u8> = kaspa_database::registry::DatabaseStorePrefixes::DagKnightUMC.into();
+        let mut prefix: Vec<u8> = aero_database::registry::DatabaseStorePrefixes::DagKnightUMC.into();
         prefix.extend_from_slice(conflict_genesis.as_ref());
         // `PrefixRange` propagates the carry across trailing 0xFF bytes; incrementing only the
         // final byte yields `end == start` for a conflict genesis ending in 0xFF.
@@ -221,7 +221,7 @@ impl UmcCascadeStore for DbUmcCascadeStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_database::prelude::ConnBuilder;
+    use aero_database::prelude::ConnBuilder;
 
     fn key(cg: u64, k: KType, nca: u64, cb: u64) -> UmcCascadeKey {
         UmcCascadeKey::new(Hash::from_u64_word(cg), k, Hash::from_u64_word(nca), Hash::from_u64_word(cb))
@@ -281,7 +281,7 @@ mod tests {
     /// byte of the range end collapsed it onto the start, making the range empty.
     #[test]
     fn test_db_prune_by_conflict_genesis_handles_trailing_ff() {
-        let (_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_lifetime, db) = aero_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let store = DbUmcCascadeStore::new(db.clone(), CachePolicy::Count(64));
 
         let ff_cg = Hash::from_slice(&[0xFFu8; 32]);
@@ -306,7 +306,7 @@ mod tests {
     /// key order.
     #[test]
     fn test_db_prune_by_conflict_genesis_respects_upper_bound() {
-        let (_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_lifetime, db) = aero_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let store = DbUmcCascadeStore::new(db.clone(), CachePolicy::Count(64));
 
         // Adjacent in key order: [.., 0xFE, 0xFF] sorts immediately below [.., 0xFF, 0x00].

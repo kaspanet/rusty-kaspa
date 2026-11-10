@@ -1,7 +1,7 @@
 {
-  "name": "kaspa",
+  "name": "aero",
   "version": "0.13.5",
-  "description": "Kaspa SDK",
+  "description": "Aero SDK",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -11,11 +11,11 @@
     "url": "git+https://github.com/kaspanet/rusty-kaspa.git"
   },
   "keywords": [
-    "kaspa",
+    "aero",
     "wasm",
     "sdk"
   ],
-  "author": "Kaspa developers",
+  "author": "Aero developers",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/kaspanet/rusty-kaspa/issues"
@@ -23,6 +23,6 @@
   "homepage": "https://github.com/kaspanet/rusty-kaspa#readme",
   "dependencies": {
     "websocket": "1.0.34",
-    "kaspa-wasm": "0.13.5"
+    "aero-wasm": "0.13.5"
   }
 }

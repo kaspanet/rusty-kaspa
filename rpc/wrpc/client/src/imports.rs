@@ -3,13 +3,8 @@
 pub use crate::client::*;
 pub use crate::resolver::Resolver;
 pub use crate::result::Result;
-pub use async_lock::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
-pub use async_trait::async_trait;
-pub use cfg_if::cfg_if;
-pub use futures::*;
-pub use js_sys::Function;
-pub use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
-pub use kaspa_notify::{
+pub use aero_consensus_core::network::{NetworkId, NetworkIdT};
+pub use aero_notify::{
     error::{Error as NotifyError, Result as NotifyResult},
     events::EVENT_TYPE_ARRAY,
     listener::ListenerId,
@@ -17,13 +12,18 @@ pub use kaspa_notify::{
     scope::*,
     subscriber::{Subscriber, SubscriptionManager},
 };
-pub use kaspa_rpc_core::{
+pub use aero_rpc_core::{
     api::ops::RpcApiOps,
     api::rpc::RpcApi,
     error::RpcResult,
     notify::{connection::ChannelConnection, mode::NotificationMode},
     prelude::*,
 };
+pub use async_lock::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
+pub use async_trait::async_trait;
+pub use cfg_if::cfg_if;
+pub use futures::*;
+pub use js_sys::Function;
 pub use serde::{Deserialize, Serialize};
 pub use std::sync::{
     Arc, Mutex,

@@ -1,2 +1,2 @@
-const { version } = require('../../../nodejs/kaspa');
+const { version } = require('../../../nodejs/aero');
 console.log("version:", version());

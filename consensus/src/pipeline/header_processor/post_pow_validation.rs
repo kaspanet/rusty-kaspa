@@ -2,8 +2,8 @@ use super::{HeaderProcessingContext, HeaderProcessor};
 use crate::errors::{BlockProcessResult, RuleError, TwoDimVecDisplay};
 use crate::model::services::reachability::ReachabilityService;
 use crate::processes::window::WindowManager;
-use kaspa_consensus_core::header::Header;
-use kaspa_hashes::Hash;
+use aero_consensus_core::header::Header;
+use aero_hashes::Hash;
 use std::collections::HashSet;
 
 impl HeaderProcessor {

@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-rpc-service"
-description = "Kaspa RPC service"
+name = "aero-rpc-service"
+description = "Aero RPC service"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,26 +10,26 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-index-core.workspace = true
-kaspa-math.workspace = true
-kaspa-mining.workspace = true
-kaspa-notify.workspace = true
-kaspa-p2p-flows.workspace = true
-kaspa-p2p-lib.workspace = true
-kaspa-p2p-mining.workspace = true
-kaspa-perf-monitor.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-system-info.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils = { workspace = true, features = ["expiring-cache", "triggers"] }
-kaspa-utils-tower.workspace = true
-kaspa-utxoindex.workspace = true
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-consensus-notify.workspace = true
+aero-consensusmanager.workspace = true
+aero-core.workspace = true
+aero-hashes.workspace = true
+aero-index-core.workspace = true
+aero-math.workspace = true
+aero-mining.workspace = true
+aero-notify.workspace = true
+aero-p2p-flows.workspace = true
+aero-p2p-lib.workspace = true
+aero-p2p-mining.workspace = true
+aero-perf-monitor.workspace = true
+aero-rpc-core.workspace = true
+aero-system-info.workspace = true
+aero-txscript.workspace = true
+aero-utils = { workspace = true, features = ["expiring-cache", "triggers"] }
+aero-utils-tower.workspace = true
+aero-utxoindex.workspace = true
 
 async-trait.workspace = true
 log.workspace = true

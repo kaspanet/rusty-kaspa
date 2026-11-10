@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-addressmanager"
-description = "Kaspa address manager"
+name = "aero-addressmanager"
+description = "Aero address manager"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -13,10 +13,10 @@ repository.workspace = true
 borsh.workspace = true
 igd-next.workspace = true
 itertools.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-database.workspace = true
-kaspa-utils.workspace = true
+aero-consensus-core.workspace = true
+aero-core.workspace = true
+aero-database.workspace = true
+aero-utils.workspace = true
 local-ip-address.workspace = true
 log.workspace = true
 parking_lot.workspace = true

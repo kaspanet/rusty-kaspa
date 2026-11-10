@@ -1,7 +1,7 @@
 [package]
-name = "kaspa-wallet-pskt"
-keywords = ["kaspa", "wallet", "pskt", "psbt", "bip-370"]
-description = "Partially Signed Kaspa Transaction"
+name = "aero-wallet-pskt"
+keywords = ["aero", "wallet", "pskt", "psbt", "bip-370"]
+description = "Partially Signed Aero Transaction"
 categories = ["cryptography::cryptocurrencies"]
 rust-version.workspace = true
 version.workspace = true
@@ -15,17 +15,17 @@ include.workspace = true
 crate-type = ["cdylib", "lib"]
 
 [features]
-wasm32-sdk = ["kaspa-consensus-client/wasm32-sdk"]
-wasm32-types = ["kaspa-consensus-client/wasm32-types"]
+wasm32-sdk = ["aero-consensus-client/wasm32-sdk"]
+wasm32-types = ["aero-consensus-client/wasm32-types"]
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-bip32.workspace = true
-kaspa-consensus-client.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
+aero-addresses.workspace = true
+aero-bip32.workspace = true
+aero-consensus-client.workspace = true
+aero-consensus-core.workspace = true
+aero-txscript-errors.workspace = true
+aero-txscript.workspace = true
+aero-utils.workspace = true
 
 bincode.workspace = true
 derive_builder.workspace = true

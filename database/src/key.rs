@@ -143,7 +143,7 @@ impl Debug for DbKey {
 mod tests {
     use super::*;
     use DatabaseStorePrefixes::*;
-    use kaspa_hashes::{HASH_SIZE, Hash};
+    use aero_hashes::{HASH_SIZE, Hash};
 
     #[test]
     fn test_key_display() {

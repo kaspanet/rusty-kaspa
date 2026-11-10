@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-grpc-core"
-description = "Kaspa gRPC core"
+name = "aero-grpc-core"
+description = "Aero gRPC core"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,12 +10,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-utils.workspace = true
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-core.workspace = true
+aero-notify.workspace = true
+aero-rpc-core.workspace = true
+aero-utils.workspace = true
 
 async-channel.workspace = true
 async-stream.workspace = true

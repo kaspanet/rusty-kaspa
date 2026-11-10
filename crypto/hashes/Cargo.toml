@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-hashes"
-description = "Kaspa hashing functions"
+name = "aero-hashes"
+description = "Aero hashing functions"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,10 +10,9 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["keccak?/asm", "mem_size", "std", "workflow"]
-no-asm = ["keccak"]
-mem_size = ["kaspa-utils/mem_size"]
-std = ["blake2b_simd/std", "blake3/std", "borsh/std", "faster-hex/std", "js-sys?/std", "kaspa-utils/std", "serde/std", "sha2/std", "wasm-bindgen/std"]
+default = ["mem_size", "std", "workflow"]
+mem_size = ["aero-utils/mem_size"]
+std = ["blake2b_simd/std", "blake3/std", "borsh/std", "faster-hex/std", "js-sys?/std", "aero-utils/std", "serde/std", "sha2/std", "wasm-bindgen/std"]
 workflow = ["std", "dep:workflow-wasm", "dep:js-sys"]
 zerocopy = ["dep:zerocopy"]
 
@@ -23,8 +22,7 @@ blake3 = { workspace = true }
 borsh.workspace = true
 faster-hex.workspace = true
 js-sys = { workspace = true, optional = true }
-kaspa-utils = { workspace = true, default-features = false }
-keccak = { workspace = true, optional = true }
+aero-utils = { workspace = true, default-features = false }
 serde.workspace = true
 sha2.workspace = true
 sha2-const-stable.workspace = true
@@ -32,16 +30,9 @@ wasm-bindgen.workspace = true
 workflow-wasm = { workspace = true, optional = true }
 zerocopy = { workspace = true, optional = true }
 
-[target.'cfg(not(target_arch = "x86_64"))'.dependencies]
-keccak.workspace = true
-
 [dev-dependencies]
 criterion.workspace = true
 rand.workspace = true
-sha3.workspace = true
-
-[build-dependencies]
-cc.workspace = true
 
 [[bench]]
 name = "bench"

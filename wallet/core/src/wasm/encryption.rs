@@ -2,9 +2,9 @@
 
 use crate::encryption::*;
 use crate::imports::*;
+use aero_wasm_core::types::BinaryT;
+use aero_wasm_core::types::HexString;
 use base64::{Engine as _, engine::general_purpose};
-use kaspa_wasm_core::types::BinaryT;
-use kaspa_wasm_core::types::HexString;
 
 /// WASM32 binding for `encryptXChaCha20Poly1305` function.
 /// @returns The encrypted text as a base64 string.

@@ -1,10 +1,10 @@
 <html>
     <head>
         <script type="module">
-            import * as kaspa from './kaspa-wallet/kaspa-wallet.js';
+            import * as aero from './aero-wallet/aero-wallet.js';
             (async () => {
-                const wasm = await kaspa.default('./kaspa-wallet/kaspa-wallet_bg.wasm');
-                await wasm.load_kaspa_wallet_cli();
+                const wasm = await aero.default('./aero-wallet/aero-wallet_bg.wasm');
+                await wasm.load_aero_wallet_cli();
             })();
         </script>
         <style>

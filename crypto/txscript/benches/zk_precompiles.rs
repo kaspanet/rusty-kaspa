@@ -1,14 +1,14 @@
-use ark_snark::SNARK;
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     tx::PopulatedTransaction,
 };
-use kaspa_txscript::{
+use aero_txscript::{
     TxScriptEngine,
     caches::Cache,
     zk_precompiles::tests::helpers::{build_groth_script, build_stark_script, execute_zk_script},
 };
+use ark_snark::SNARK;
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use rand::rngs::OsRng;
 use secp256k1::ecdsa::Signature;
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};

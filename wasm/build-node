@@ -5,4 +5,4 @@ set -e
 # https://github.com/rust-lang/rust/issues/141048
 export RUSTFLAGS=-Ctarget-cpu=mvp
 
-wasm-pack build --weak-refs --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk
+wasm-pack build --weak-refs --target nodejs --out-name aero --out-dir nodejs/aero --features wasm32-sdk

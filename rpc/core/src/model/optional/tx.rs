@@ -1,10 +1,10 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::{
+use aero_addresses::Address;
+use aero_consensus_core::tx::{
     CovenantBinding, ScriptPublicKey, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
     UtxoEntry,
 };
-use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref, serde_bytes_fixed_ref_optional, serde_bytes_optional};
+use aero_utils::{hex::ToHex, serde_bytes_fixed_ref, serde_bytes_fixed_ref_optional, serde_bytes_optional};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
@@ -150,7 +150,7 @@ impl Deserializer for RpcOptionalUtxoEntryVerboseData {
     }
 }
 
-/// Represents a Kaspa transaction outpoint
+/// Represents a Aero transaction outpoint
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionOutpoint {
@@ -178,13 +178,13 @@ impl TryFrom<RpcOptionalTransactionOutpoint> for TransactionOutpoint {
     }
 }
 
-impl From<kaspa_consensus_client::TransactionOutpoint> for RpcOptionalTransactionOutpoint {
-    fn from(outpoint: kaspa_consensus_client::TransactionOutpoint) -> Self {
+impl From<aero_consensus_client::TransactionOutpoint> for RpcOptionalTransactionOutpoint {
+    fn from(outpoint: aero_consensus_client::TransactionOutpoint) -> Self {
         TransactionOutpoint::from(outpoint).into()
     }
 }
 
-impl TryFrom<RpcOptionalTransactionOutpoint> for kaspa_consensus_client::TransactionOutpoint {
+impl TryFrom<RpcOptionalTransactionOutpoint> for aero_consensus_client::TransactionOutpoint {
     type Error = RpcError;
 
     fn try_from(outpoint: RpcOptionalTransactionOutpoint) -> RpcResult<Self> {
@@ -212,7 +212,7 @@ impl Deserializer for RpcOptionalTransactionOutpoint {
     }
 }
 
-/// Represents a Kaspa transaction input
+/// Represents a Aero transaction input
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionInput {
@@ -300,7 +300,7 @@ impl Deserializer for RpcOptionalTransactionInput {
     }
 }
 
-/// Represent Kaspa transaction input verbose data
+/// Represent Aero transaction input verbose data
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionInputVerboseData {
@@ -329,7 +329,7 @@ impl Deserializer for RpcOptionalTransactionInputVerboseData {
     }
 }
 
-/// Represents a Kaspad transaction output
+/// Represents a Aerod transaction output
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionOutput {
@@ -388,7 +388,7 @@ impl Deserializer for RpcOptionalTransactionOutput {
     }
 }
 
-/// Represent Kaspa transaction output verbose data
+/// Represent Aero transaction output verbose data
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionOutputVerboseData {
@@ -472,7 +472,7 @@ impl TryFrom<RpcNullableCovenantBinding> for RpcCovenantBinding {
     }
 }
 
-/// Represents a Kaspa transaction
+/// Represents a Aero transaction
 #[derive(Clone)]
 pub struct RpcOptionalTransaction {
     /// Level: Full
@@ -640,7 +640,7 @@ impl Deserializer for RpcOptionalTransaction {
     }
 }
 
-/// Represent Kaspa transaction verbose data
+/// Represent Aero transaction verbose data
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcOptionalTransactionVerboseData {

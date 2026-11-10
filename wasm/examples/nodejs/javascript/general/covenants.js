@@ -6,7 +6,7 @@ const {
     TransactionOutput,
     ScriptPublicKey,
     GenesisCovenantGroup,
-} = require('../../../../nodejs/kaspa');
+} = require('../../../../nodejs/aero');
 
 initConsolePanicHook();
 

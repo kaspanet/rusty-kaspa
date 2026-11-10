@@ -2,94 +2,94 @@
 //! Integration tests
 //!
 
-use async_channel::unbounded;
-use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::config::{Config, ConfigBuilder};
-use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
-use kaspa_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
-use kaspa_consensus::model::services::seq_commit_accessor::seq_commit_within_threshold;
-use kaspa_consensus::model::stores::block_transactions::{
+use aero_alloc::init_allocator_with_default_settings;
+use aero_consensus::config::{Config, ConfigBuilder};
+use aero_consensus::consensus::factory::Factory as ConsensusFactory;
+use aero_consensus::consensus::test_consensus::{TestConsensus, TestConsensusFactory};
+use aero_consensus::model::services::seq_commit_accessor::seq_commit_within_threshold;
+use aero_consensus::model::stores::block_transactions::{
     BlockTransactionsStore, BlockTransactionsStoreReader, DbBlockTransactionsStore,
 };
-use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
-use kaspa_consensus::model::stores::headers::HeaderStoreReader;
-use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
-use kaspa_consensus::model::stores::relations::DbRelationsStore;
-use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, TESTNET_PARAMS};
-use kaspa_consensus::pipeline::ProcessingCounters;
-use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
-use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
-use kaspa_consensus::processes::window::{WindowManager, WindowType};
-use kaspa_consensus_core::api::args::TransactionValidationArgs;
-use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi, SeqCommitLaneEntry};
-use kaspa_consensus_core::block::{Block, MutableBlock};
-use kaspa_consensus_core::blockhash::{self, new_unique};
-use kaspa_consensus_core::blockstatus::BlockStatus;
-use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR};
-use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
-use kaspa_consensus_core::errors::tx::TxRuleError;
-use kaspa_consensus_core::hashing;
-use kaspa_consensus_core::header::Header;
-use kaspa_consensus_core::mass::BlockMassLimits;
-use kaspa_consensus_core::merkle::calc_hash_merkle_root;
-use kaspa_consensus_core::mining_rules::MiningRules;
-use kaspa_consensus_core::sign::sign;
-use kaspa_consensus_core::subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId};
-use kaspa_consensus_core::tx::{
+use aero_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
+use aero_consensus::model::stores::headers::HeaderStoreReader;
+use aero_consensus::model::stores::reachability::DbReachabilityStore;
+use aero_consensus::model::stores::relations::DbRelationsStore;
+use aero_consensus::model::stores::selected_chain::SelectedChainStoreReader;
+use aero_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, TESTNET_PARAMS};
+use aero_consensus::pipeline::ProcessingCounters;
+use aero_consensus::pipeline::monitor::ConsensusMonitor;
+use aero_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
+use aero_consensus::processes::window::{WindowManager, WindowType};
+use aero_consensus_core::api::args::TransactionValidationArgs;
+use aero_consensus_core::api::{BlockValidationFutures, ConsensusApi, SeqCommitLaneEntry};
+use aero_consensus_core::block::{Block, MutableBlock};
+use aero_consensus_core::blockhash::{self, new_unique};
+use aero_consensus_core::blockstatus::BlockStatus;
+use aero_consensus_core::coinbase::MinerData;
+use aero_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_AERO, TRANSIENT_BYTE_TO_MASS_FACTOR};
+use aero_consensus_core::errors::block::{BlockProcessResult, RuleError};
+use aero_consensus_core::errors::tx::TxRuleError;
+use aero_consensus_core::hashing;
+use aero_consensus_core::header::Header;
+use aero_consensus_core::mass::BlockMassLimits;
+use aero_consensus_core::merkle::calc_hash_merkle_root;
+use aero_consensus_core::mining_rules::MiningRules;
+use aero_consensus_core::sign::sign;
+use aero_consensus_core::subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId};
+use aero_consensus_core::tx::{
     MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
-use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_consensus_notify::service::NotifyService;
-use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::task::tick::TickService;
-use kaspa_core::time::unix_now;
-use kaspa_database::utils::get_kaspa_tempdir;
-use kaspa_hashes::{Hash, SeqCommitActiveNode};
-use kaspa_rpc_core::RpcHeader;
-use kaspa_seq_commit::hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, smt_leaf_hash};
-use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
-use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
-use kaspa_txscript::{MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
-use kaspa_utils::arc::ArcExtensions;
+use aero_consensus_notify::root::ConsensusNotificationRoot;
+use aero_consensus_notify::service::NotifyService;
+use aero_consensusmanager::ConsensusManager;
+use aero_core::task::tick::TickService;
+use aero_core::time::unix_now;
+use aero_database::utils::get_aero_tempdir;
+use aero_hashes::{Hash, SeqCommitActiveNode};
+use aero_rpc_core::RpcHeader;
+use aero_seq_commit::hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, smt_leaf_hash};
+use aero_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
+use aero_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
+use aero_txscript::{MAX_SCRIPT_ELEMENT_SIZE, pay_to_script_hash_script};
+use aero_utils::arc::ArcExtensions;
+use async_channel::unbounded;
 
 use crate::common;
 use crate::common::json::{json_line_to_block, json_line_to_trusted_block, json_line_to_utxo_pairs};
-use flate2::read::GzDecoder;
-use futures_util::future::try_join_all;
-use itertools::Itertools;
-use kaspa_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
-use kaspa_consensus_core::muhash::MuHashExtensions;
-use kaspa_consensus_core::{
+use aero_consensus_core::hashing::sighash::calc_schnorr_signature_hash;
+use aero_consensus_core::muhash::MuHashExtensions;
+use aero_consensus_core::{
     constants::TX_VERSION_TOCCATA,
     hashing::sighash::SigHashReusedValuesUnsync,
     mass::ComputeBudget,
     tx::{PopulatedTransaction, TransactionId},
 };
-use kaspa_core::core::Core;
-use kaspa_core::signals::Shutdown;
-use kaspa_core::task::runtime::AsyncRuntime;
-use kaspa_core::{assert_match, info};
-use kaspa_database::create_temp_db;
-use kaspa_database::prelude::{CachePolicy, ConnBuilder};
-use kaspa_index_processor::service::IndexService;
-use kaspa_math::Uint256;
-use kaspa_muhash::MuHash;
-use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_txscript::opcodes::codes::{Op0, OpCat, OpChainblockSeqCommit, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
-use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
-use kaspa_txscript::{
+use aero_core::core::Core;
+use aero_core::signals::Shutdown;
+use aero_core::task::runtime::AsyncRuntime;
+use aero_core::{assert_match, info};
+use aero_database::create_temp_db;
+use aero_database::prelude::{CachePolicy, ConnBuilder};
+use aero_index_processor::service::IndexService;
+use aero_math::Uint256;
+use aero_muhash::MuHash;
+use aero_notify::subscription::context::SubscriptionContext;
+use aero_txscript::caches::TxScriptCacheCounters;
+use aero_txscript::opcodes::codes::{Op0, OpCat, OpChainblockSeqCommit, OpDrop, OpEqual, OpTrue, OpTxOutputSpk};
+use aero_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
+use aero_txscript::{
     EngineCtx, TxScriptEngine,
     caches::Cache,
     opcodes::codes::OpZkPrecompile,
     pay_to_script_hash_signature_script,
     zk_precompiles::{tags::ZkTag, tests::helpers::load_stark_fields},
 };
-use kaspa_txscript_errors::TxScriptError;
-use kaspa_utxoindex::UtxoIndex;
-use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
+use aero_txscript_errors::TxScriptError;
+use aero_utxoindex::UtxoIndex;
+use aero_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
+use flate2::read::GzDecoder;
+use futures_util::future::try_join_all;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::cmp::{Ordering, max};
 use std::collections::HashSet;
@@ -750,7 +750,7 @@ fn gzip_file_lines(path: &Path) -> impl Iterator<Item = String> + 'static {
 }
 
 async fn json_test(file_path: &str, concurrency: bool) {
-    kaspa_core::log::try_init_logger("info");
+    aero_core::log::try_init_logger("info");
     let main_path = Path::new(file_path);
     let proof_exists = common::file_exists(&main_path.join("proof.json.gz"));
 
@@ -1137,7 +1137,7 @@ async fn difficulty_test() {
         },
     ];
 
-    kaspa_core::log::try_init_logger("info");
+    aero_core::log::try_init_logger("info");
     for test in tests.iter().filter(|x| x.enabled) {
         let consensus = TestConsensus::new(&test.config);
         let wait_handles = consensus.init();
@@ -1353,7 +1353,7 @@ async fn difficulty_test() {
 #[tokio::test]
 async fn selected_chain_test() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("info");
+    aero_core::log::try_init_logger("info");
 
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
@@ -1551,7 +1551,7 @@ async fn seqcommit_sp_context_threshold_edge_test() {
     let initial_utxo = (
         TransactionOutpoint::new(100.into(), 0),
         UtxoEntry {
-            amount: SOMPI_PER_KASPA,
+            amount: SOMPI_PER_AERO,
             script_public_key: seqcommit_spk.clone(),
             block_daa_score: 0,
             is_coinbase: false,
@@ -1640,12 +1640,12 @@ async fn staging_consensus_lifecycle_test() {
     init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).build();
 
-    let db_tempdir = get_kaspa_tempdir();
+    let db_tempdir = get_aero_tempdir();
     let db_path = db_tempdir.path().to_owned();
     let consensus_db_dir = db_path.join("consensus");
     let meta_db_dir = db_path.join("meta");
 
-    let meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).with_files_limit(5).build().unwrap();
+    let meta_db = aero_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).with_files_limit(5).build().unwrap();
 
     let (notification_send, _notification_recv) = unbounded();
     let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
@@ -1662,7 +1662,7 @@ async fn staging_consensus_lifecycle_test() {
         tx_script_cache_counters,
         200,
         Arc::new(MiningRules::default()),
-        kaspa_database::prelude::RocksDbPreset::Default,
+        aero_database::prelude::RocksDbPreset::Default,
         None,
         None,
     ));
@@ -1705,10 +1705,10 @@ async fn staging_consensus_lifecycle_test() {
 /// transaction data through introspection opcodes for advanced smart contract capabilities.
 #[tokio::test]
 async fn kip10_test() {
-    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-    use kaspa_txscript::opcodes::codes::{Op0, OpTxInputSpk};
-    use kaspa_txscript::pay_to_script_hash_script;
-    use kaspa_txscript::script_builder::ScriptBuilder;
+    use aero_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+    use aero_txscript::opcodes::codes::{Op0, OpTxInputSpk};
+    use aero_txscript::pay_to_script_hash_script;
+    use aero_txscript::script_builder::ScriptBuilder;
 
     init_allocator_with_default_settings();
 
@@ -1724,7 +1724,7 @@ async fn kip10_test() {
     let initial_utxo_collection = [(
         TransactionOutpoint::new(1.into(), 0),
         UtxoEntry {
-            amount: SOMPI_PER_KASPA,
+            amount: SOMPI_PER_AERO,
             script_public_key: spk.clone(),
             block_daa_score: 0,
             is_coinbase: false,
@@ -1877,14 +1877,14 @@ async fn covenant_opcode_accepted_test() {
 
 #[tokio::test]
 async fn push_limit_enforced_test() {
-    kaspa_core::log::try_init_logger("info");
+    aero_core::log::try_init_logger("info");
 
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.coinbase_maturity = 0;
             let mass_limit = 100 * MAX_SCRIPT_ELEMENT_SIZE as u64;
-            p.block_mass_limits = kaspa_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
+            p.block_mass_limits = aero_consensus_core::mass::BlockMassLimits::with_shared_limit(mass_limit);
             p.max_script_public_key_len = 10 * MAX_SCRIPT_ELEMENT_SIZE;
             p.storage_mass_parameter = 1;
         })
@@ -2022,7 +2022,7 @@ async fn payload_test() {
 
 #[tokio::test]
 async fn payload_for_native_tx_test() {
-    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+    use aero_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 
     init_allocator_with_default_settings();
 
@@ -2030,7 +2030,7 @@ async fn payload_for_native_tx_test() {
     let initial_utxo_collection = [(
         TransactionOutpoint::new(1.into(), 0),
         UtxoEntry {
-            amount: SOMPI_PER_KASPA,
+            amount: SOMPI_PER_AERO,
             script_public_key: ScriptPublicKey::from_vec(0, vec![OpTrue]),
             block_daa_score: 0,
             is_coinbase: false,
@@ -2110,7 +2110,7 @@ fn build_p2pk_block(
             (
                 TransactionOutpoint::new((i as u64 + 1).into(), 0),
                 UtxoEntry {
-                    amount: SOMPI_PER_KASPA / 10,
+                    amount: SOMPI_PER_AERO / 10,
                     script_public_key: p2pk_script.clone(),
                     block_daa_score: 0,
                     is_coinbase: false,
@@ -2210,7 +2210,7 @@ fn init_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Has
             0,
         );
         let tx = Transaction::new(TX_VERSION_TOCCATA, vec![input.clone()], vec![], 0, Default::default(), 0, vec![]);
-        let utxo_entry = UtxoEntry::new(10 * SOMPI_PER_KASPA, stark_spk.clone(), 0, false, None);
+        let utxo_entry = UtxoEntry::new(10 * SOMPI_PER_AERO, stark_spk.clone(), 0, false, None);
         let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
         let sig_cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
@@ -2233,7 +2233,7 @@ fn init_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Has
             (
                 TransactionOutpoint::new((i as u64 + 1).into(), 0),
                 UtxoEntry {
-                    amount: 10 * SOMPI_PER_KASPA,
+                    amount: 10 * SOMPI_PER_AERO,
                     script_public_key: stark_spk.clone(),
                     block_daa_score: 0,
                     is_coinbase: false,
@@ -2365,10 +2365,10 @@ async fn accepts_one_valid_stark_proof_but_rejects_two() {
 /// analysis would see 3 sig ops.
 #[tokio::test]
 async fn runtime_sig_op_counting_test() {
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         hashing::sighash::SigHashReusedValuesUnsync, hashing::sighash_type::SIG_HASH_ALL, subnets::SUBNETWORK_ID_NATIVE,
     };
-    use kaspa_txscript::{opcodes::codes::*, script_builder::ScriptBuilder};
+    use aero_txscript::{opcodes::codes::*, script_builder::ScriptBuilder};
 
     init_allocator_with_default_settings();
 
@@ -2396,13 +2396,13 @@ async fn runtime_sig_op_counting_test() {
     }()
     .unwrap();
 
-    let script_pub_key = kaspa_txscript::pay_to_script_hash_script(&redeem_script);
+    let script_pub_key = aero_txscript::pay_to_script_hash_script(&redeem_script);
 
     // Set up initial UTXO with P2SH script
     let initial_utxo_collection = [(
         TransactionOutpoint::new(1.into(), 0),
         UtxoEntry {
-            amount: SOMPI_PER_KASPA,
+            amount: SOMPI_PER_AERO,
             script_public_key: script_pub_key.clone(),
             block_daa_score: 0,
             is_coinbase: false,
@@ -2482,14 +2482,14 @@ async fn runtime_sig_op_counting_test() {
 
 #[tokio::test]
 async fn sighash_type_commitment_test() {
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
-    use kaspa_consensus_core::hashing::sighash_type::{
+    use aero_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+    use aero_consensus_core::hashing::sighash_type::{
         SIG_HASH_ALL, SIG_HASH_ANY_ONE_CAN_PAY, SIG_HASH_NONE, SIG_HASH_SINGLE, SigHashType,
     };
-    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-    use kaspa_txscript::opcodes::codes::*;
-    use kaspa_txscript::pay_to_script_hash_script;
-    use kaspa_txscript::script_builder::ScriptBuilder;
+    use aero_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+    use aero_txscript::opcodes::codes::*;
+    use aero_txscript::pay_to_script_hash_script;
+    use aero_txscript::script_builder::ScriptBuilder;
     use secp256k1::Keypair;
 
     init_allocator_with_default_settings();
@@ -2509,7 +2509,7 @@ async fn sighash_type_commitment_test() {
         initial_utxo_collection.push((
             TransactionOutpoint::new((i + 1).into(), 0),
             UtxoEntry {
-                amount: SOMPI_PER_KASPA / 10,
+                amount: SOMPI_PER_AERO / 10,
                 script_public_key: p2sh_script.clone(),
                 block_daa_score: 0,
                 is_coinbase: false,
@@ -2521,7 +2521,7 @@ async fn sighash_type_commitment_test() {
         initial_utxo_collection.push((
             TransactionOutpoint::new((i + 7).into(), 0),
             UtxoEntry {
-                amount: SOMPI_PER_KASPA / 20,
+                amount: SOMPI_PER_AERO / 20,
                 script_public_key: op_true_spk.clone(),
                 block_daa_score: 0,
                 is_coinbase: false,

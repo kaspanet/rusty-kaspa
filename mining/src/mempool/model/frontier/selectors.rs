@@ -1,6 +1,6 @@
 use super::{MAX_NULL_ATTEMPTS, feerate_key::FeerateTransactionKey, search_tree::SearchTree};
 use crate::Policy;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     block::TemplateTransactionSelector,
     subnets::SubnetworkId,
     tx::{Transaction, TransactionId},
@@ -371,12 +371,12 @@ impl TemplateTransactionSelector for MutatingTreeSelector {
 mod tests {
     use super::super::feerate_key::FeerateTransactionKey;
     use super::*;
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         config::constants::consensus::{DEFAULT_GAS_PER_LANE_LIMIT, DEFAULT_LANES_PER_BLOCK_LIMIT},
         mass::BlockLaneLimits,
         tx::{TransactionInput, TransactionOutpoint},
     };
-    use kaspa_hashes::{HasherBase, TransactionID};
+    use aero_hashes::{HasherBase, TransactionID};
 
     const DEFAULT_BLOCK_LANE_LIMITS: BlockLaneLimits =
         BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT };

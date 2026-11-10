@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-grpc-client"
-description = "Kaspa gRPC client"
+name = "aero-grpc-client"
+description = "Aero gRPC client"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,12 +10,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-core.workspace = true
-kaspa-grpc-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-utils.workspace = true
-kaspa-utils-tower.workspace = true
+aero-core.workspace = true
+aero-grpc-core.workspace = true
+aero-notify.workspace = true
+aero-rpc-core.workspace = true
+aero-utils.workspace = true
+aero-utils-tower.workspace = true
 
 async-channel.workspace = true
 async-stream.workspace = true

@@ -1,15 +1,15 @@
-use kaspa_consensus_core::network::NetworkId;
-use kaspa_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
-use kaspa_database::utils::get_kaspa_tempdir;
-use kaspa_grpc_client::{ClientPool, GrpcClient};
-use kaspa_grpc_server::service::GrpcService;
-use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspa_rpc_service::service::RpcCoreService;
-use kaspa_utils::{networking::ContextualNetAddress, triggers::Listener};
-use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
-use kaspa_wrpc_server::address::WrpcNetAddress;
-use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
+use aero_consensus_core::network::NetworkId;
+use aero_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
+use aero_database::utils::get_aero_tempdir;
+use aero_grpc_client::{ClientPool, GrpcClient};
+use aero_grpc_server::service::GrpcService;
+use aero_notify::subscription::context::SubscriptionContext;
+use aero_rpc_core::notify::mode::NotificationMode;
+use aero_rpc_service::service::RpcCoreService;
+use aero_utils::{networking::ContextualNetAddress, triggers::Listener};
+use aero_wrpc_client::{AeroRpcClient, WrpcEncoding};
+use aero_wrpc_server::address::WrpcNetAddress;
+use aerod_lib::{args::Args, daemon::create_core_with_runtime};
 use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tempfile::TempDir;
@@ -90,8 +90,8 @@ impl ClientManager {
     }
 
     /// Create a new wRPC (WebSocket RPC) client using Borsh encoding.
-    pub fn new_wrpc_client(&self) -> KaspaRpcClient {
-        KaspaRpcClient::new(
+    pub fn new_wrpc_client(&self) -> AeroRpcClient {
+        AeroRpcClient::new(
             WrpcEncoding::Borsh,
             Some(&format!("ws://localhost:{}", self.rpc_borsh_port)),
             None,
@@ -153,7 +153,7 @@ impl Daemon {
     }
 
     pub fn with_manager(client_manager: Arc<ClientManager>, fd_total_budget: i32) -> Daemon {
-        let appdir_tempdir = get_kaspa_tempdir();
+        let appdir_tempdir = get_aero_tempdir();
         client_manager.args.write().appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
         let (core, _) = create_core_with_runtime(&Default::default(), &client_manager.args.read(), fd_total_budget);
         let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().into_any_arc()).unwrap();

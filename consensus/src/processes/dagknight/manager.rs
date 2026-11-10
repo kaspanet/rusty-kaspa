@@ -7,12 +7,12 @@ use std::{
 use dashmap::DashMap;
 use parking_lot::RwLock;
 
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlockHashSet, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType,
     blockhash::{self, BlockHashExtensions, BlockHashes},
 };
-use kaspa_database::prelude::{StoreError, StoreResultUnitExt};
-use kaspa_hashes::Hash;
+use aero_database::prelude::{StoreError, StoreResultUnitExt};
+use aero_hashes::Hash;
 
 use crate::{
     model::{
@@ -598,9 +598,9 @@ mod tests {
         relations::MemoryRelationsStore,
     };
     use crate::processes::reachability::tests::{DagBlock, DagBuilder};
-    use kaspa_consensus_core::blockhash::ORIGIN;
-    use kaspa_consensus_core::header::Header;
-    use kaspa_math::Uint192;
+    use aero_consensus_core::blockhash::ORIGIN;
+    use aero_consensus_core::header::Header;
+    use aero_math::Uint192;
     use parking_lot::RwLock;
     use std::cell::RefCell;
     use std::collections::{HashMap, HashSet};

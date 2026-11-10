@@ -6,10 +6,10 @@
 use crate::error::Error;
 use crate::imports::*;
 use crate::parents::CompressedParents as WasmCompressedParents;
+use aero_consensus_core::BlueWorkType;
+use aero_hashes::Hash;
+use aero_utils::hex::ToHex;
 use js_sys::Object;
-use kaspa_consensus_core::BlueWorkType;
-use kaspa_hashes::Hash;
-use kaspa_utils::hex::ToHex;
 use workflow_wasm::extensions::{JsValueExtension, ObjectExtension};
 
 #[wasm_bindgen(typescript_custom_section)]

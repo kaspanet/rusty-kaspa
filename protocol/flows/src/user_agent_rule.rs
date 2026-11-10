@@ -1,4 +1,4 @@
-use kaspa_core::warn;
+use aero_core::warn;
 use regex::Regex;
 use semver::{Op, Version};
 use std::cmp::Ordering;
@@ -135,7 +135,7 @@ fn parse_version_matcher(expr: &str) -> Result<UserAgentRuleMatcher, UserAgentRu
 fn find_version_op(expr: &str) -> Option<(usize, usize, Op)> {
     // `min_by_key` keeps the first candidate on equal indexes, so we keep longer
     // overlapping operators before their prefixes (`<=` before `<`, etc.). For
-    // example, `kaspad<=1.1.1` must split at `<=`, not at `<`.
+    // example, `aerod<=1.1.1` must split at `<=`, not at `<`.
     [("<=", Op::LessEq), (">=", Op::GreaterEq), ("==", Op::Exact), ("<", Op::Less), (">", Op::Greater)]
         .iter()
         .filter_map(|(symbol, op)| expr.find(symbol).map(|index| (index, symbol.len(), *op)))
@@ -192,40 +192,40 @@ mod tests {
 
     #[test]
     fn rejects_when_allow_rules_exist_and_none_match() {
-        let rules = rules(&["allow;regex:(^|/)kaspad:"]);
+        let rules = rules(&["allow;regex:(^|/)aerod:"]);
 
-        assert!(matches!(rules.reject_reason("/kaspa-dnsseeder:1.0.0/"), Some(UserAgentRuleRejectReason::AllowanceExcluded)));
+        assert!(matches!(rules.reject_reason("/aero-dnsseeder:1.0.0/"), Some(UserAgentRuleRejectReason::AllowanceExcluded)));
     }
 
     #[test]
     fn reject_rules_veto_allowed_user_agents() {
-        let rules = rules(&["allow;regex:(^|/)(kaspad|kaspa-dnsseeder):", "reject;ver:kaspad<1.1.1"]);
+        let rules = rules(&["allow;regex:(^|/)(aerod|aero-dnsseeder):", "reject;ver:aerod<1.1.1"]);
 
-        assert!(matches!(rules.reject_reason("/kaspad:1.1.0/"), Some(UserAgentRuleRejectReason::Rejection(_))));
-        assert!(rules.reject_reason("/kaspad:1.1.1-toc.1/").is_none());
-        assert!(rules.reject_reason("/kaspa-dnsseeder:1.0.0/").is_none());
+        assert!(matches!(rules.reject_reason("/aerod:1.1.0/"), Some(UserAgentRuleRejectReason::Rejection(_))));
+        assert!(rules.reject_reason("/aerod:1.1.1-toc.1/").is_none());
+        assert!(rules.reject_reason("/aero-dnsseeder:1.0.0/").is_none());
     }
 
     #[test]
     fn supports_version_rule_colon_form_and_comparison_ops() {
-        assert!(UserAgentRule::parse("reject;ver:kaspad:<1.1.1").unwrap().is_match("/kaspad:1.1.0/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad:<1.1.1").unwrap().is_match("/kaspad:1.1.0(testnet-12)/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad<=1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
-        assert!(!UserAgentRule::parse("reject;ver:kaspad<=1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad>=1.1.1").unwrap().is_match("/kaspad:1.1.1-toc.1/"));
-        assert!(!UserAgentRule::parse("reject;ver:kaspad>=1.1.1").unwrap().is_match("/kaspad:1.1.0/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad>1.1.1").unwrap().is_match("/kaspad:1.1.2/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad==1.1.1").unwrap().is_match("/kaspad:1.1.1/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad==1.1.1").unwrap().is_match("/kaspad:1.1.1(testnet-12)/"));
-        assert!(UserAgentRule::parse("reject;ver:kaspad=1.1.1").is_err());
-        assert!(UserAgentRule::parse("reject;ver:kaspad!=1.1.1").is_err());
+        assert!(UserAgentRule::parse("reject;ver:aerod:<1.1.1").unwrap().is_match("/aerod:1.1.0/"));
+        assert!(UserAgentRule::parse("reject;ver:aerod:<1.1.1").unwrap().is_match("/aerod:1.1.0(testnet-12)/"));
+        assert!(UserAgentRule::parse("reject;ver:aerod<=1.1.1").unwrap().is_match("/aerod:1.1.1/"));
+        assert!(!UserAgentRule::parse("reject;ver:aerod<=1.1.1").unwrap().is_match("/aerod:1.1.2/"));
+        assert!(UserAgentRule::parse("reject;ver:aerod>=1.1.1").unwrap().is_match("/aerod:1.1.1-toc.1/"));
+        assert!(!UserAgentRule::parse("reject;ver:aerod>=1.1.1").unwrap().is_match("/aerod:1.1.0/"));
+        assert!(UserAgentRule::parse("reject;ver:aerod>1.1.1").unwrap().is_match("/aerod:1.1.2/"));
+        assert!(UserAgentRule::parse("reject;ver:aerod==1.1.1").unwrap().is_match("/aerod:1.1.1/"));
+        assert!(UserAgentRule::parse("reject;ver:aerod==1.1.1").unwrap().is_match("/aerod:1.1.1(testnet-12)/"));
+        assert!(UserAgentRule::parse("reject;ver:aerod=1.1.1").is_err());
+        assert!(UserAgentRule::parse("reject;ver:aerod!=1.1.1").is_err());
     }
 
     #[test]
     fn regex_rules_match_the_whole_user_agent() {
-        let rules = rules(&["reject;reg:(^|/)kaspad:1\\.1\\.0"]);
+        let rules = rules(&["reject;reg:(^|/)aerod:1\\.1\\.0"]);
 
-        assert!(matches!(rules.reject_reason("/kaspad:1.1.0/kaspad:1.1.0/"), Some(UserAgentRuleRejectReason::Rejection(_))));
-        assert!(rules.reject_reason("/kaspa-dnsseeder:1.1.0/").is_none());
+        assert!(matches!(rules.reject_reason("/aerod:1.1.0/aerod:1.1.0/"), Some(UserAgentRuleRejectReason::Rejection(_))));
+        assert!(rules.reject_reason("/aero-dnsseeder:1.1.0/").is_none());
     }
 }

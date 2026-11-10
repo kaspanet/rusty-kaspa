@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-system-info"
+name = "aero-system-info"
 description = "Runtime system information (CPU, memory, fd limit, machine id)"
 rust-version.workspace = true
 version.workspace = true
@@ -10,7 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-utils = { workspace = true, features = ["fd_budget"] }
+aero-utils = { workspace = true, features = ["fd_budget"] }
 num_cpus.workspace = true
 sha2.workspace = true
 sysinfo.workspace = true

@@ -1,8 +1,8 @@
 // Diagnostic test to find the PoW calculation bug
-use kaspa_consensus_core::header::Header;
-use kaspa_pow::State as PowState;
+use aero_consensus_core::header::Header;
+use aero_pow::State as PowState;
 // Unused diagnostic imports removed - this module is for testing only
-// use kaspa_hashes::{Hash, HasherBase, ProofOfWorkHash, BlockHash};
+// use aero_hashes::{Hash, HasherBase, ProofOfWorkHash, BlockHash};
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 

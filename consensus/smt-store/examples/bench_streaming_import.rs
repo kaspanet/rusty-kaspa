@@ -1,20 +1,20 @@
 //! Benchmark for streaming SMT import (stack-based).
 //!
 //! Usage:
-//!   cargo run --release --example bench_streaming_import -p kaspa-smt-store
-//!   cargo run --release --example bench_streaming_import -p kaspa-smt-store -- --lanes=1000000
+//!   cargo run --release --example bench_streaming_import -p aero-smt-store
+//!   cargo run --release --example bench_streaming_import -p aero-smt-store -- --lanes=1000000
 
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 use std::{fs, iter};
 
-use kaspa_consensus_core::api::ImportLane;
-use kaspa_database::create_temp_db;
-use kaspa_database::prelude::ConnBuilder;
-use kaspa_hashes::{Hash, ZERO_HASH};
-use kaspa_smt_store::processor::SmtStores;
-use kaspa_smt_store::streaming_import::streaming_import;
+use aero_consensus_core::api::ImportLane;
+use aero_database::create_temp_db;
+use aero_database::prelude::ConnBuilder;
+use aero_hashes::{Hash, ZERO_HASH};
+use aero_smt_store::processor::SmtStores;
+use aero_smt_store::streaming_import::streaming_import;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 

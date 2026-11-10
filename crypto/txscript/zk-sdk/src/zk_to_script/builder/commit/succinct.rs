@@ -5,7 +5,7 @@ use crate::zk_to_script::{
     BoundedR0SuccinctFixedJournalScript, BoundedR0SuccinctScript, UnboundedR0Script, ZkScriptBuilder, append_r0_succinct_verifier,
     append_r0_succinct_verifier_with_fixed_journal,
 };
-use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
+use aero_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 
 impl ZkScriptBuilder<UnboundedR0Script> {
     /// Commits to the succinct proof system; the locking script will expect a

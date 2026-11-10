@@ -1,6 +1,6 @@
 pub use wasm_bindgen::prelude::*;
 
-/// Kaspa Transaction Script Opcodes
+/// Aero Transaction Script Opcodes
 /// @see {@link ScriptBuilder}
 /// @category Consensus
 #[wasm_bindgen]

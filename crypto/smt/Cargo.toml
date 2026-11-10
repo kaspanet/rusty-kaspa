@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-smt"
-description = "256-bit Sparse Merkle Tree for Kaspa"
+name = "aero-smt"
+description = "256-bit Sparse Merkle Tree for Aero"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -15,7 +15,7 @@ std = []
 test-utils = ["std"]
 
 [dependencies]
-kaspa-hashes = { workspace = true, features = ["zerocopy"] }
+aero-hashes = { workspace = true, features = ["zerocopy"] }
 thiserror.workspace = true
 zerocopy.workspace = true
 

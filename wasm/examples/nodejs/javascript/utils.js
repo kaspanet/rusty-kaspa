@@ -8,7 +8,7 @@ const {
     Encoding,
     NetworkId,
     Mnemonic,
-} = require('../../../nodejs/kaspa');
+} = require('../../../nodejs/aero');
 
 /**
  * Helper function to parse command line arguments for running the scripts
@@ -60,7 +60,7 @@ function parseArgs(options = {
         process.exit(0);
     }
 
-    const addressRegex = new RegExp(/(kaspa|kaspatest):\S+/i);
+    const addressRegex = new RegExp(/(aero|aerotest):\S+/i);
     const addressArg = values.address ?? positionals.find((positional) => addressRegex.test(positional)) ?? null;
     const address = addressArg === null ? null : new Address(addressArg);
 

@@ -1,10 +1,10 @@
 use super::{error::ConversionError, option::TryIntoOptionEx};
 use crate::pb as protowire;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlueWorkType, HashMapCustomHasher, KType,
     trusted::{ExternalGhostdagData, TrustedGhostdagData, TrustedHeader},
 };
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 use std::sync::Arc;
 
 // ----------------------------------------------------------------------------

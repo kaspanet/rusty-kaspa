@@ -4,13 +4,13 @@ use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use aero_consensus_core::{KType, blockhash::ORIGIN, header::Header};
+use aero_hashes::Hash;
+use aero_math::Uint192;
 use criterion::{Criterion, SamplingMode, black_box, criterion_group, criterion_main};
-use kaspa_consensus_core::{KType, blockhash::ORIGIN, header::Header};
-use kaspa_hashes::Hash;
-use kaspa_math::Uint192;
 use parking_lot::RwLock;
 
-use kaspa_consensus::{
+use aero_consensus::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
@@ -36,7 +36,7 @@ struct TestBlock {
     selected_parent: Hash,
 }
 
-/// Helper: converts a short hex ID (e.g. "70cd51") to a full Kaspa Hash.
+/// Helper: converts a short hex ID (e.g. "70cd51") to a full Aero Hash.
 fn prefixed_hash(s: &str) -> Hash {
     let mut hex = [b'0'; 64];
     hex[..s.len()].copy_from_slice(s.as_bytes());

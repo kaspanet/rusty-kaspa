@@ -3,7 +3,7 @@ use crate::{
     mass::transaction_estimated_serialized_size,
     tx::{ComputeCommit, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
 };
-use kaspa_hashes::{Hash, Hasher, HasherBase, PayloadDigest};
+use aero_hashes::{Hash, Hasher, HasherBase, PayloadDigest};
 
 bitflags::bitflags! {
     /// A bitmask defining which transaction fields we want to encode and which to ignore.
@@ -18,14 +18,14 @@ bitflags::bitflags! {
 
 /// Returns the transaction hash. Note that this is different than the transaction ID.
 pub fn hash(tx: &Transaction) -> Hash {
-    let mut hasher = kaspa_hashes::TransactionHash::new();
+    let mut hasher = aero_hashes::TransactionHash::new();
     write_transaction(&mut hasher, tx, TxEncodingFlags::FULL);
     hasher.finalize()
 }
 
 /// Returns the transaction hash pre-crescendo (which excludes the mass commitment)
 pub fn hash_pre_crescendo(tx: &Transaction) -> Hash {
-    let mut hasher = kaspa_hashes::TransactionHash::new();
+    let mut hasher = aero_hashes::TransactionHash::new();
     write_transaction(&mut hasher, tx, TxEncodingFlags::EXCLUDE_MASS_COMMIT);
     hasher.finalize()
 }
@@ -36,7 +36,7 @@ pub fn id(tx: &Transaction) -> TransactionId {
 }
 
 pub fn id_v0(tx: &Transaction) -> TransactionId {
-    let mut hasher = kaspa_hashes::TransactionID::new();
+    let mut hasher = aero_hashes::TransactionID::new();
     write_transaction_v0_for_transaction_id(&mut hasher, tx);
     hasher.finalize()
 }
@@ -192,7 +192,7 @@ pub fn transaction_v1_rest_preimage(tx: &Transaction) -> Vec<u8> {
 /// to produce the final V1 txid (see [`id_v1`]).
 pub fn v1_rest_digest(tx: &Transaction) -> Hash {
     assert!(tx.version >= 1);
-    let mut hasher = kaspa_hashes::TransactionRest::new();
+    let mut hasher = aero_hashes::TransactionRest::new();
     write_rest_preimage(&mut hasher, tx);
     hasher.finalize()
 }
@@ -207,12 +207,12 @@ const ZERO_PAYLOAD_DIGEST: Hash = Hash::from_bytes([
 pub fn id_v1(tx: &Transaction) -> TransactionId {
     let payload_digest = payload_digest(&tx.payload);
     let rest_digest = {
-        let mut hasher = kaspa_hashes::TransactionRest::new();
+        let mut hasher = aero_hashes::TransactionRest::new();
         write_rest_preimage(&mut hasher, tx);
         hasher.finalize()
     };
 
-    let mut hasher = kaspa_hashes::TransactionV1Id::new();
+    let mut hasher = aero_hashes::TransactionV1Id::new();
     hasher.update(payload_digest).update(rest_digest);
     hasher.finalize()
 }
@@ -420,7 +420,7 @@ mod tests {
 
             if test.tx.version == 0 {
                 let preimage = transaction_v0_id_preimage(&test.tx);
-                let mut hasher = kaspa_hashes::TransactionID::new();
+                let mut hasher = aero_hashes::TransactionID::new();
                 hasher.update(&preimage);
                 let preimage_hash = hasher.finalize();
                 assert_eq!(preimage_hash, test.tx.id(), "transaction id preimage failed for test {}", i + 1);

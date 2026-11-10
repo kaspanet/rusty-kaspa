@@ -5,7 +5,7 @@ use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
 };
 
-use kaspa_math::{Uint3072, construct_uint};
+use aero_math::{Uint3072, construct_uint};
 construct_uint!(Uint128, 2);
 construct_uint!(Uint256, 4);
 

@@ -1,7 +1,7 @@
 use crate::constants::MAX_SOMPI;
 use crate::subnets::SubnetworkId;
 use crate::tx::TransactionOutpoint;
-use kaspa_txscript_errors::{CovenantsError, TxScriptError};
+use aero_txscript_errors::{CovenantsError, TxScriptError};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]

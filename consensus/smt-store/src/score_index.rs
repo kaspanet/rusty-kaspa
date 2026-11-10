@@ -4,9 +4,9 @@ use std::sync::Arc;
 use crate::keys::{BatchedScoreIndexKey, ScoreIndexKey, ScoreIndexKind, ScoreIndexValue};
 use crate::maybe_fork::MaybeFork;
 use crate::reacquire_iter::ReacquiringRawIterator;
-use kaspa_database::prelude::{DB, DbWriter, StoreError, StoreResult};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
+use aero_database::prelude::{DB, DbWriter, StoreError, StoreResult};
+use aero_database::registry::DatabaseStorePrefixes;
+use aero_hashes::Hash;
 use zerocopy::FromBytes;
 
 /// Owned counterpart of [`ScoreIndexValue`], used by iterators that hand out
@@ -39,7 +39,7 @@ impl DbScoreIndex {
     }
 
     pub fn delete_all(&self) {
-        use kaspa_database::prelude::DirectDbWriter;
+        use aero_database::prelude::DirectDbWriter;
         DirectDbWriter::new(&self.db).delete_range(vec![self.prefix], vec![self.prefix + 1]).unwrap();
     }
 
@@ -265,10 +265,10 @@ impl DbScoreIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_database::create_temp_db;
-    use kaspa_database::prelude::{ConnBuilder, DirectDbWriter};
+    use aero_database::create_temp_db;
+    use aero_database::prelude::{ConnBuilder, DirectDbWriter};
 
-    fn make_store() -> (kaspa_database::utils::DbLifetime, DbScoreIndex) {
+    fn make_store() -> (aero_database::utils::DbLifetime, DbScoreIndex) {
         let (lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         (lifetime, DbScoreIndex::new(db))
     }

@@ -43,14 +43,14 @@ RUN apk --no-cache add \
   libstdc++ \
   tini \
   ca-certificates \
-  && addgroup -S kaspa \
-  && adduser -S -G kaspa -h /home/kaspa -s /sbin/nologin kaspa \
-  && mkdir -p /home/kaspa /app \
-  && chown -R kaspa:kaspa /home/kaspa /app
+  && addgroup -S aero \
+  && adduser -S -G aero -h /home/aero -s /sbin/nologin aero \
+  && mkdir -p /home/aero /app \
+  && chown -R aero:aero /home/aero /app
 
-COPY --from=builder --chown=kaspa:kaspa /app/rothschild .
+COPY --from=builder --chown=aero:aero /app/rothschild .
 
-ENV HOME=/home/kaspa
-USER kaspa
+ENV HOME=/home/aero
+USER aero
 ENTRYPOINT [ "/sbin/tini", "--" ]
 CMD [ "/app/rothschild" ]

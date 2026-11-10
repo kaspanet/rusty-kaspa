@@ -4,17 +4,17 @@ use crate::{
     notifier::ConsensusNotifier,
     root::ConsensusNotificationRoot,
 };
-use async_channel::Receiver;
-use kaspa_core::{
+use aero_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace, warn,
 };
-use kaspa_notify::{
+use aero_notify::{
     events::{EVENT_TYPE_ARRAY, EventSwitches},
     subscriber::Subscriber,
     subscription::{MutationPolicies, UtxosChangedMutationPolicy, context::SubscriptionContext},
 };
-use kaspa_utils::triggers::SingleTrigger;
+use aero_utils::triggers::SingleTrigger;
+use async_channel::Receiver;
 use std::sync::Arc;
 
 const NOTIFY_SERVICE: &str = "notify-service";

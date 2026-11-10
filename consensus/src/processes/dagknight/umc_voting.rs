@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{BlueWorkType, KType};
-use kaspa_hashes::Hash;
-use kaspa_math::int::SignedInteger;
+use aero_consensus_core::{BlueWorkType, KType};
+use aero_hashes::Hash;
+use aero_math::int::SignedInteger;
 
 use crate::model::stores::ghostdag::GhostdagData;
 
@@ -66,12 +66,12 @@ pub struct CascadeResult {
 pub mod test_fixtures {
     use std::{collections::HashMap, sync::Arc};
 
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         BlockHashMap, HashKTypeMap, HashMapCustomHasher, KType,
         blockhash::{BlockHashes, ORIGIN},
         header::Header,
     };
-    use kaspa_hashes::Hash;
+    use aero_hashes::Hash;
     use parking_lot::RwLock;
     use serde::Deserialize;
 

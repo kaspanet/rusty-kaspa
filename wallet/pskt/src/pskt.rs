@@ -1,10 +1,10 @@
 //!
-//! Partially Signed Kaspa Transaction (PSKT)
+//! Partially Signed Aero Transaction (PSKT)
 //!
 
-use kaspa_bip32::{DerivationPath, KeyFingerprint, secp256k1};
-use kaspa_consensus_core::{Hash, hashing::sighash::SigHashReusedValuesUnsync};
-use kaspa_txscript::EngineCtx;
+use aero_bip32::{DerivationPath, KeyFingerprint, secp256k1};
+use aero_consensus_core::{Hash, hashing::sighash::SigHashReusedValuesUnsync};
+use aero_txscript::EngineCtx;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
@@ -14,15 +14,15 @@ pub use crate::global::{Global, GlobalBuilder};
 pub use crate::input::{Input, InputBuilder};
 pub use crate::output::{Output, OutputBuilder};
 pub use crate::role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
-use kaspa_consensus_core::config::params::Params;
-use kaspa_consensus_core::constants::TX_VERSION_TOCCATA;
-use kaspa_consensus_core::mass::{Gram, MassCalculator, NonContextualMasses};
-use kaspa_consensus_core::{
+use aero_consensus_core::config::params::Params;
+use aero_consensus_core::constants::TX_VERSION_TOCCATA;
+use aero_consensus_core::mass::{Gram, MassCalculator, NonContextualMasses};
+use aero_consensus_core::{
     hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{ComputeCommit, MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
 };
-use kaspa_txscript::{EngineFlags, TxScriptEngine, caches::Cache, covenants::CovenantsContext};
+use aero_txscript::{EngineFlags, TxScriptEngine, caches::Cache, covenants::CovenantsContext};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -59,7 +59,7 @@ impl Display for Version {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct KeySource {
-    #[serde(with = "kaspa_utils::serde_bytes_fixed")]
+    #[serde(with = "aero_utils::serde_bytes_fixed")]
     pub key_fingerprint: KeyFingerprint,
     pub derivation_path: DerivationPath,
 }
@@ -89,9 +89,9 @@ impl Signature {
 }
 
 ///
-/// A Partially Signed Kaspa Transaction (PSKT) is a standardized format
+/// A Partially Signed Aero Transaction (PSKT) is a standardized format
 /// that allows multiple participants to collaborate in creating and signing
-/// a Kaspa transaction. PSKT enables the exchange of incomplete transaction
+/// a Aero transaction. PSKT enables the exchange of incomplete transaction
 /// data between different wallets or entities, allowing each participant
 /// to add their signature or inputs in stages. This facilitates more complex
 /// transaction workflows, such as multi-signature setups or hardware wallet
@@ -483,13 +483,13 @@ impl PSKT<Extractor> {
 
     pub fn extract_tx(self, params: &Params) -> Result<MutableTransaction<Transaction>, ExtractError> {
         let tx = self.extract_tx_unchecked(params)?;
-        use kaspa_consensus_core::tx::VerifiableTransaction;
+        use aero_consensus_core::tx::VerifiableTransaction;
         {
             let tx = tx.as_verifiable();
             let cache = Cache::new(10_000);
             let reused_values = SigHashReusedValuesUnsync::new();
             let covenants_ctx = CovenantsContext::from_tx(&tx)
-                .map_err(|err| ExtractError::TxScriptError(kaspa_txscript_errors::TxScriptError::from(err)))?;
+                .map_err(|err| ExtractError::TxScriptError(aero_txscript_errors::TxScriptError::from(err)))?;
             let ctx = EngineCtx::new(&cache).with_reused(&reused_values).with_covenants_ctx(&covenants_ctx);
             let flags = EngineFlags { sigop_script_units: Gram(params.mass_per_sig_op).into() };
 
@@ -531,7 +531,7 @@ pub enum FinalizeError<E> {
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 pub enum ExtractError {
     #[error(transparent)]
-    TxScriptError(#[from] kaspa_txscript_errors::TxScriptError),
+    TxScriptError(#[from] aero_txscript_errors::TxScriptError),
     #[error(transparent)]
     TxNotFinalized(#[from] TxNotFinalized),
 }

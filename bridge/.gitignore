@@ -21,13 +21,13 @@ MULTI_INSTANCE_GUIDE.md
 INTEGRATION_GUIDE.md
 PACKAGE_CHECKLIST.md
 INTEGRATION_PLAN.md
-SETUP_RUSTY_KASPA.md
+SETUP_RUSTY_AERO.md
 README.md
 
 !docs/
 !docs/README.md
 
-# Configuration files (will use rusty-kaspa's instead)
+# Configuration files (will use rusty-aero's instead)
 rustfmt.toml
 clippy.toml
 

@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-txscript-errors"
-description = "Kaspa txscript errors"
+name = "aero-txscript-errors"
+description = "Aero txscript errors"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -15,7 +15,7 @@ repository.workspace = true
 thiserror.workspace = true
 secp256k1.workspace = true
 borsh.workspace = true
-kaspa-hashes.workspace = true
+aero-hashes.workspace = true
 
 [lints]
 workspace = true

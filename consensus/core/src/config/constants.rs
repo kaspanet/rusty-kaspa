@@ -3,7 +3,7 @@ pub mod consensus {
     //! A module for constants which directly impact consensus.
     //!
 
-    use kaspa_math::Uint256;
+    use aero_math::Uint256;
 
     //
     // ~~~~~~~~~~~~~~~~~~~~~~~~~ Network & Ghostdag ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -33,7 +33,7 @@ pub mod consensus {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~ Max difficulty target ~~~~~~~~~~~~~~~~~~~~~~~~~
     //
 
-    /// Highest proof of work difficulty target a Kaspa block can have for all networks.
+    /// Highest proof of work difficulty target a Aero block can have for all networks.
     /// This value is: 2^255 - 1.
     ///
     /// Computed value: `Uint256::from_u64(1).wrapping_shl(255) - 1.into()`
@@ -171,7 +171,7 @@ pub mod perf {
 #[cfg(test)]
 mod tests {
     use super::consensus::{MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
-    use kaspa_math::Uint256;
+    use aero_math::Uint256;
 
     #[test]
     fn test_difficulty_max_consts() {

@@ -9,7 +9,7 @@ import {
     Resolver,
     UtxoProcessor,
     UtxoContext,
-    kaspaToSompi,
+    aeroToSompi,
     createTransactions,
     initConsolePanicHook,
     IUtxoProcessorEvent,
@@ -18,7 +18,7 @@ import {
     IMaturityEvent,
     ITransactionRecord,
     UtxoProcessorEventType,
-} from "../../../../nodejs/kaspa";
+} from "../../../../nodejs/aero";
 
 import { parseArgs } from "./utils";
 
@@ -32,8 +32,8 @@ let { encoding, networkId, destinationAddress } = parseArgs();
 
     const privateKey = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
     const sourceAddress = privateKey.toKeypair().toAddress(networkId);
-    let address = new Address("kaspa:qrxkessyzxkv5ve7rj7u36nxxvtt08lsknnd8e8zw3p7xsf8ck0cqeuyrhkp0")
-    address = new Address("kaspa:qpamkvhgh0kzx50gwvvp5xs8ktmqutcy3dfs9dc3w7lm9rq0zs76vf959mmrp");
+    let address = new Address("aero:qrxkessyzxkv5ve7rj7u36nxxvtt08lsknnd8e8zw3p7xsf8ck0cqer9s8ud4")
+    address = new Address("aero:qpamkvhgh0kzx50gwvvp5xs8ktmqutcy3dfs9dc3w7lm9rq0zs76vf64kt30m");
     console.info(`Source address: ${sourceAddress}`);
     console.info(`address: ${address}`);
 

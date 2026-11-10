@@ -1,7 +1,7 @@
 use crate::model::stores::statuses::StatusesStoreReader;
-use kaspa_consensus_core::blockstatus::BlockStatus;
-use kaspa_database::prelude::StoreError;
-use kaspa_hashes::Hash;
+use aero_consensus_core::blockstatus::BlockStatus;
+use aero_database::prelude::StoreError;
+use aero_hashes::Hash;
 use parking_lot::RwLock;
 use std::sync::Arc;
 

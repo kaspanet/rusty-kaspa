@@ -1,17 +1,15 @@
 use crate::{
+    aeroapi::NODE_STATUS,
     errors::*,
     jsonrpc_event::{JsonRpcEvent, JsonRpcResponse},
-    kaspaapi::NODE_STATUS,
     log_colors::LogColors,
     mining_state::GetMiningState,
     prom::*,
     stratum_context::StratumContext,
 };
 
-#[cfg(feature = "rkstratum_cpu_miner")]
-use crate::rkstratum_cpu_miner::InternalMinerMetrics;
-use kaspa_consensus_core::block::Block;
-// kaspa_pow used inline for PoW validation
+use aero_consensus_core::block::Block;
+// aero_pow used inline for PoW validation
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, Zero};
 use once_cell::sync::Lazy;
@@ -116,15 +114,6 @@ struct StatsPrinterEntry {
 
 static STATS_PRINTER_REGISTRY: Lazy<Mutex<Vec<StatsPrinterEntry>>> = Lazy::new(|| Mutex::new(Vec::new()));
 pub static STATS_PRINTER_STARTED: AtomicBool = AtomicBool::new(false);
-
-#[cfg(feature = "rkstratum_cpu_miner")]
-pub static RKSTRATUM_CPU_MINER_METRICS: Lazy<parking_lot::Mutex<Option<Arc<InternalMinerMetrics>>>> =
-    Lazy::new(|| parking_lot::Mutex::new(None));
-
-#[cfg(feature = "rkstratum_cpu_miner")]
-pub fn set_rkstratum_cpu_miner_metrics(metrics: Arc<InternalMinerMetrics>) {
-    *RKSTRATUM_CPU_MINER_METRICS.lock() = Some(metrics);
-}
 
 #[derive(Clone)]
 pub struct WorkStats {
@@ -314,7 +303,7 @@ impl ShareHandler {
         &self,
         ctx: Arc<StratumContext>,
         event: JsonRpcEvent,
-        kaspa_api: Arc<dyn KaspaApiTrait + Send + Sync>,
+        aero_api: Arc<dyn AeroApiTrait + Send + Sync>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let prefix = self.log_prefix();
         debug!("{} [SUBMIT] ===== SHARE SUBMISSION FROM {} =====", prefix, ctx.remote_addr);
@@ -357,8 +346,8 @@ impl ShareHandler {
             let submitted_address = parts[0];
 
             // Check if submitted address matches authorized address (case-insensitive, ignore prefix)
-            let submitted_clean = submitted_address.trim_start_matches("kaspa:").trim_start_matches("kaspatest:");
-            let authorized_clean = wallet_addr.trim_start_matches("kaspa:").trim_start_matches("kaspatest:");
+            let submitted_clean = submitted_address.trim_start_matches("aero:").trim_start_matches("aerotest:");
+            let authorized_clean = wallet_addr.trim_start_matches("aero:").trim_start_matches("aerotest:");
 
             if submitted_clean.to_lowercase() != authorized_clean.to_lowercase() {
                 debug!(
@@ -567,8 +556,8 @@ impl ShareHandler {
                 format!("timestamp={}, nonce=0x{:x}, bits=0x{:08x}", header_clone.timestamp, header_clone.nonce, header_clone.bits)
             );
 
-            // Use kaspa_pow::State for PoW validation against the header's compact bits target.
-            use kaspa_pow::State as PowState;
+            // Use aero_pow::State for PoW validation against the header's compact bits target.
+            use aero_pow::State as PowState;
             let pow_state = PowState::new(&header_clone);
             let (check_passed, pow_value_uint256) = pow_state.check_pow(nonce_val);
 
@@ -588,7 +577,7 @@ impl ShareHandler {
 
             // Check if pow_value meets network target (lower hash is better)
             let meets_network_target = pow_value <= network_target;
-            // IMPORTANT: Use kaspa_pow's own compact-target handling as the source of truth.
+            // IMPORTANT: Use aero_pow's own compact-target handling as the source of truth.
             // This avoids any potential mismatch in our BigUint conversion/comparison path.
             pow_passed = check_passed;
 
@@ -599,7 +588,7 @@ impl ShareHandler {
             debug!("[SUBMIT]   - pow_value: {:x} ({} bytes)", pow_value, pow_value_bytes.len());
             debug!("[SUBMIT]   - network_target: {:x} ({} bytes)", network_target, network_target_bytes.len());
             debug!("[SUBMIT]   - meets_network_target(BigUint): {}", meets_network_target);
-            debug!("[SUBMIT]   - check_passed(kaspa_pow): {}", check_passed);
+            debug!("[SUBMIT]   - check_passed(aero_pow): {}", check_passed);
 
             debug!(
                 "[SUBMIT] PoW check result: passed={}, pow_value={:x}, network_target={:x}, header.bits={}",
@@ -692,12 +681,12 @@ impl ShareHandler {
 
                 // Block found - submit it
                 // Only set the nonce - keep all other header fields from the real block template
-                // The header comes directly from the Kaspa node via get_block_template_call()
+                // The header comes directly from the Aero node via get_block_template_call()
                 // We preserve: version, bits, timestamp, all hash fields, parents, scores, etc.
                 header_clone.nonce = nonce_val;
 
                 // Verify timestamp is still valid (not too old)
-                // Kaspa typically accepts blocks with timestamps within a reasonable window
+                // Aero typically accepts blocks with timestamps within a reasonable window
                 // Block templates are fetched frequently, so the timestamp should be recent
                 let current_time_ms =
                     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
@@ -709,7 +698,7 @@ impl ShareHandler {
                     "{} {} {}",
                     LogColors::block("[BLOCK]"),
                     LogColors::label("Header Verification:"),
-                    "Using REAL header from Kaspa node block template"
+                    "Using REAL header from Aero node block template"
                 );
                 debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("  - Header Version:"), header_version);
                 debug!(
@@ -748,9 +737,9 @@ impl ShareHandler {
                 let blue_score = block.header.blue_score;
 
                 // Calculate block hash immediately after block creation
-                // Use kaspa_consensus_core::hashing::header::hash() for block hash calculation
-                // In Kaspa, the block hash is the header hash (transactions are represented by hash_merkle_root in header)
-                use kaspa_consensus_core::hashing::header;
+                // Use aero_consensus_core::hashing::header::hash() for block hash calculation
+                // In Aero, the block hash is the header hash (transactions are represented by hash_merkle_root in header)
+                use aero_consensus_core::hashing::header;
                 let block_hash = header::hash(&block.header).to_string();
 
                 // Log prominent "Block Found" message with hash
@@ -787,10 +776,10 @@ impl ShareHandler {
                     format!("{}:{}", ctx.remote_addr(), ctx.remote_port())
                 );
                 debug!("{} {} {}", LogColors::block("[BLOCK]"), LogColors::label("Block Hash:"), block_hash);
-                debug!("{} {}", LogColors::block("[BLOCK]"), "Calling kaspa_api.submit_block()...");
+                debug!("{} {}", LogColors::block("[BLOCK]"), "Calling aero_api.submit_block()...");
 
                 // Submit block to node
-                let block_submit_result = kaspa_api.submit_block(block.clone()).await;
+                let block_submit_result = aero_api.submit_block(block.clone()).await;
 
                 match block_submit_result {
                     Ok(response) => {
@@ -838,12 +827,12 @@ impl ShareHandler {
 
                         record_block_accepted_by_node(&prom_worker);
 
-                        let kaspa_api = Arc::clone(&kaspa_api);
+                        let aero_api = Arc::clone(&aero_api);
                         let block_hash_for_confirm = block_hash.clone();
 
                         tokio::spawn(async move {
                             for _ in 0..BLOCK_CONFIRM_MAX_ATTEMPTS {
-                                match kaspa_api.get_current_block_color(&block_hash_for_confirm).await {
+                                match aero_api.get_current_block_color(&block_hash_for_confirm).await {
                                     Ok(true) => {
                                         *stats.blocks_found.lock() += 1;
                                         *overall.blocks_found.lock() += 1;
@@ -1278,12 +1267,6 @@ impl ShareHandler {
             }
 
             let mut interval = tokio::time::interval(STATS_PRINT_INTERVAL);
-            // Internal miner hashrate is based on hashes/sec (not Stratum shares), so we keep a
-            // last-sample snapshot to compute a stable, accurate rate (matching the dashboard).
-            #[cfg(feature = "rkstratum_cpu_miner")]
-            let mut last_internal_hashes: Option<u64> = None;
-            #[cfg(feature = "rkstratum_cpu_miner")]
-            let mut last_internal_sample = Instant::now();
             loop {
                 if let Some(ref mut rx) = shutdown_rx {
                     tokio::select! {
@@ -1461,68 +1444,6 @@ impl ShareHandler {
 
                 out.push(sep.clone());
 
-                // If present, we also fold the feature-gated internal miner into the TOTAL row.
-                // Note: Internal CPU mining doesn't produce Stratum shares; we treat accepted/submitted blocks
-                // as the closest analogue for the Acc/Stl columns (same as the InternalCPU row does).
-                let internal_totals: Option<(f64, i64, i64, i64, i64)> = {
-                    // Feature-gated internal miner row
-                    #[cfg(feature = "rkstratum_cpu_miner")]
-                    {
-                        let mut internal_totals: Option<(f64, i64, i64, i64, i64)> = None; // (ghs, acc, stl, inv, blocks)
-                        if let Some(metrics) = RKSTRATUM_CPU_MINER_METRICS.lock().as_ref() {
-                            let hashes = metrics.hashes_tried.load(Ordering::Relaxed);
-                            let submitted = metrics.blocks_submitted.load(Ordering::Relaxed);
-                            let accepted = metrics.blocks_accepted.load(Ordering::Relaxed);
-
-                            // Calculate hashrate based on hash delta
-                            let hashrate_ghs = if let Some(last_hashes) = last_internal_hashes {
-                                let dt = now.duration_since(last_internal_sample).as_secs_f64().max(0.000_001);
-                                let dh = hashes.saturating_sub(last_hashes);
-                                // Hashrate as GH/s (format_hashrate expects GH/s)
-                                (dh as f64 / dt) / 1e9
-                            } else {
-                                // First iteration: initialize but show 0 hashrate
-                                0.0
-                            };
-
-                            // Update tracking variables for next iteration
-                            last_internal_hashes = Some(hashes);
-                            last_internal_sample = now;
-                            internal_totals =
-                                Some((hashrate_ghs, accepted as i64, submitted.saturating_sub(accepted) as i64, 0, accepted as i64));
-                            let internal_line = format!(
-                                "| {:<WORKER_W$} | {:<INST_W$} | {:>HASH_W$} | {:>DIFF_W$} | {:>SPM_W$} | {:<TRND_W$} | {:>ACC_W$} | {:>BLK_W$} | {:>TBLK_W$} | {:>TIME_W$} |",
-                                "InternalCPU",
-                                "-",
-                                format_hashrate(hashrate_ghs),
-                                "-",
-                                "-",
-                                "-",
-                                format!("{}/{}/{}", accepted, submitted.saturating_sub(accepted), 0),
-                                accepted,
-                                accepted, // Total blocks (same as Blocks for InternalCPU)
-                                format_uptime(now.duration_since(start))
-                            );
-                            out.push(internal_line);
-                            out.push(sep.clone());
-                        }
-                        internal_totals
-                    }
-                    #[cfg(not(feature = "rkstratum_cpu_miner"))]
-                    {
-                        None
-                    }
-                };
-
-                if let Some((ghs, acc, stl, inv, blocks)) = internal_totals {
-                    total_rate += ghs;
-                    total_shares += acc;
-                    total_stales += stl;
-                    total_invalids += inv;
-                    total_blocks += blocks;
-                    total_blocks_all_time += blocks; // Also add to all-time total for the "Total" column
-                }
-
                 let overall_spm = average_worker_spm(total_worker_spm, total_worker_count);
                 let total_spm_tgt = match total_target {
                     Some(t) => format!("{:>4.1}/{:<4.1}", overall_spm, t),
@@ -1644,9 +1565,9 @@ fn format_hashrate(ghs: f64) -> String {
     }
 }
 
-// Trait for kaspa API operations
+// Trait for aero API operations
 #[async_trait::async_trait]
-pub trait KaspaApiTrait: Send + Sync {
+pub trait AeroApiTrait: Send + Sync {
     async fn get_block_template(
         &self,
         wallet_addr: &str,
@@ -1654,10 +1575,8 @@ pub trait KaspaApiTrait: Send + Sync {
         canxium_addr: &str,
     ) -> Result<Block, Box<dyn std::error::Error + Send + Sync>>;
 
-    async fn submit_block(
-        &self,
-        block: Block,
-    ) -> Result<kaspa_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>>;
+    async fn submit_block(&self, block: Block)
+    -> Result<aero_rpc_core::SubmitBlockResponse, Box<dyn std::error::Error + Send + Sync>>;
 
     /// Get balances by addresses (for Prometheus metrics)
     /// Get balances for addresses
@@ -1695,7 +1614,7 @@ mod retention_tests {
         let handler = ShareHandler::new("test-instance".to_string());
         let ctx = test_ctx();
         *ctx.worker_name.lock() = "ghost".to_string();
-        *ctx.wallet_addr.lock() = "kaspatest:ghost".to_string();
+        *ctx.wallet_addr.lock() = "aerotest:ghost".to_string();
 
         handler.get_create_stats(&ctx);
         assert_eq!(handler.stats.lock().len(), 1);

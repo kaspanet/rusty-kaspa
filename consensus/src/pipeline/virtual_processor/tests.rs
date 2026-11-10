@@ -1,5 +1,5 @@
 use crate::{consensus::test_consensus::TestConsensus, model::services::reachability::ReachabilityService};
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet,
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
     constants::BLOCK_VERSION,
     tx::{ScriptPublicKey, ScriptVec, Transaction},
 };
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 use std::{collections::VecDeque, thread::JoinHandle};
 
 struct OnetimeTxSelector {
@@ -31,7 +31,7 @@ impl TemplateTransactionSelector for OnetimeTxSelector {
         self.txs.take().unwrap()
     }
 
-    fn reject_selection(&mut self, _tx_id: kaspa_consensus_core::tx::TransactionId) {
+    fn reject_selection(&mut self, _tx_id: aero_consensus_core::tx::TransactionId) {
         unimplemented!()
     }
 
@@ -199,6 +199,21 @@ async fn testnet13_dagknight_4bps_sanity_test() {
     }
 }
 
+/// MAINNET runs at 4 BPS (250ms blocks) with Crescendo rules active from genesis (no DAGKnight).
+#[tokio::test]
+async fn mainnet_4bps_sanity_test() {
+    let params = MAINNET_PARAMS;
+    assert_eq!(params.bps_history().after(), 4);
+    assert_eq!(params.bps_history().before(), 4);
+    assert_eq!(params.blockrate.target_time_per_block, 250);
+    assert_eq!(params.ghostdag_k(), 55);
+    assert!(params.crescendo_activation.is_active(0));
+    assert!(!params.dagknight_activation.is_active(u64::MAX - 1));
+    // Bitcoin-style emission with a 100M ARO hard cap: 0.1 ARO per block, halving every 500M blocks
+    assert_eq!(params.pre_deflationary_phase_base_subsidy, 10_000_000);
+    assert_eq!(params.halving_interval, Some(500_000_000));
+}
+
 #[tokio::test]
 async fn block_template_uses_current_block_version() {
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
@@ -243,7 +258,7 @@ async fn antichain_merge_test() {
 
 #[tokio::test]
 async fn basic_utxo_disqualified_test() {
-    kaspa_core::log::try_init_logger("info");
+    aero_core::log::try_init_logger("info");
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -275,7 +290,7 @@ async fn basic_utxo_disqualified_test() {
 async fn double_search_disqualified_test() {
     // TODO: add non-coinbase transactions and concurrency in order to complicate the test
 
-    kaspa_core::log::try_init_logger("info");
+    aero_core::log::try_init_logger("info");
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -349,7 +364,7 @@ fn new_miner_data() -> MinerData {
     MinerData::new(ScriptPublicKey::new(0, script), vec![])
 }
 
-fn inactivity_shortcut_config() -> kaspa_consensus_core::config::Config {
+fn inactivity_shortcut_config() -> aero_consensus_core::config::Config {
     ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {

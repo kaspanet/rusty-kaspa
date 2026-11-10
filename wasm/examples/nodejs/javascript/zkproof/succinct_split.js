@@ -13,13 +13,13 @@
 // times. The journal is *caller-owned* — the SDK never pushes it for you.
 //
 // Run after building the wasm module (`./build-node` in wasm/). Requires a
-// devnet node at the RPC url below. If `./kaspa` does not resolve, point the
-// require at the build output (`../../../../nodejs/kaspa`).
+// devnet node at the RPC url below. If `./aero` does not resolve, point the
+// require at the build output (`../../../../nodejs/aero`).
 
 const { PrivateKey, RpcClient,
     ZkScriptBuilder, payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
-    Encoding } = require('./kaspa');
+    Encoding } = require('./aero');
 const fs = require('fs');
 const path = require('path');
 

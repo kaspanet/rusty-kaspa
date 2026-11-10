@@ -1,14 +1,14 @@
 use std::time::Duration;
 
 use super::IbdFlow;
-use kaspa_consensus_core::blockstatus::BlockStatus;
-use kaspa_consensusmanager::ConsensusProxy;
-use kaspa_core::{debug, warn};
-use kaspa_hashes::Hash;
-use kaspa_p2p_lib::{
+use aero_consensus_core::blockstatus::BlockStatus;
+use aero_consensusmanager::ConsensusProxy;
+use aero_core::{debug, warn};
+use aero_hashes::Hash;
+use aero_p2p_lib::{
     common::{DEFAULT_TIMEOUT, ProtocolError},
     dequeue_with_timeout, make_message,
-    pb::{RequestIbdChainBlockLocatorMessage, kaspad_message::Payload},
+    pb::{RequestIbdChainBlockLocatorMessage, aerod_message::Payload},
 };
 
 pub struct ChainNegotiationOutput {

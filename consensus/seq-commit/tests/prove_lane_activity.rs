@@ -15,13 +15,13 @@
 //! 3. **`verify_lane_activity`** — calls 1 and 2, then checks the result
 //!    against the expected `seq_commit` from the block header.
 
-use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::Transaction;
-use kaspa_hashes::{Hash, SeqCommitActiveNode};
-use kaspa_seq_commit::hashing::*;
-use kaspa_seq_commit::types::*;
-use kaspa_smt::proof::OwnedSmtProof;
-use kaspa_smt::tree::SparseMerkleTree;
+use aero_consensus_core::subnets::SubnetworkId;
+use aero_consensus_core::tx::Transaction;
+use aero_hashes::{Hash, SeqCommitActiveNode};
+use aero_seq_commit::hashing::*;
+use aero_seq_commit::types::*;
+use aero_smt::proof::OwnedSmtProof;
+use aero_smt::tree::SparseMerkleTree;
 
 type Smt = SparseMerkleTree<SeqCommitActiveNode>;
 
@@ -100,12 +100,12 @@ fn build_commitment(
     coinbase: &[u8],
 ) -> (Hash, Hash, Hash) {
     let ctx = mergeset_context_hash(context);
-    let bw = kaspa_consensus_core::BlueWorkType::from_u64(blue_work);
+    let bw = aero_consensus_core::BlueWorkType::from_u64(blue_work);
     let pl = miner_payload_leaf(MinerPayloadLeafInput { block_hash, blue_work_be_bytes: &bw.to_be_bytes(), payload: coinbase });
     let payload_root = miner_payload_root(core::iter::once(pl));
     let lanes_root = smt.root();
     let pd = payload_and_context_digest(&ctx, &payload_root);
-    let activity_root = activity_root_hash(&kaspa_hashes::ZERO_HASH, &lanes_root);
+    let activity_root = activity_root_hash(&aero_hashes::ZERO_HASH, &lanes_root);
     let sr = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &pd });
     let sc = seq_commit(&SeqCommitInput { parent_seq_commit, state_root: &sr });
     (sc, lanes_root, pd)
@@ -207,7 +207,7 @@ fn build_chain(n: usize) -> (Hash, Hash, Hash, Vec<BlockActivity>, CommitmentWit
         parent_seq_commit: last_parent_sc,
         smt_proof: last_smt_proof.unwrap(),
         blue_score: last_blue_score,
-        inactivity_shortcut: kaspa_hashes::ZERO_HASH,
+        inactivity_shortcut: aero_hashes::ZERO_HASH,
     };
 
     (last_sc, key_x, grandparent_commit, block_activities, witness)

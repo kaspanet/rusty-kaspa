@@ -6,8 +6,8 @@ use super::{
 };
 use crate::Result;
 use crate::{Error, KEY_SIZE};
+use aero_utils::hex::*;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_utils::hex::*;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -296,12 +296,12 @@ mod tests {
                 "xprv9s21ZrQH143K2YStJyGeTyoWRBu2N1wkamjidQSdxrVeDziGfvwkmP67L2xf6weijVapZxwi64pW8ywHDvCaBQA8PyrRHqkjuuPY9aapypz",
             ],
             [
-                // KPRV (kaspa mainnet xprv)
+                // KPRV (aero mainnet xprv)
                 "cruise village slam canyon monster scrub myself farm add riot large board sentence outer nice coast raven bird scheme undo december blanket trim hero",
                 "kprv5y2qurMHCsXYr8yytxy6ZwYWLtFbdtWWavDL6bPfz2fNLvnZymmNfE6KpQqNHHjb7mAWYCtuUkZPbkgUR19LSKS9VasqRR852L5GMVY8wf9",
             ],
             [
-                // KTRV (kaspa testnet xprv)
+                // KTRV (aero testnet xprv)
                 "short diagram life tip retreat nothing dynamic absent lamp carry mansion keen truck cram crash science liberty emotion live pepper orphan quiz wide prison",
                 "ktrv5himbbCxArFU23gGTxVHNKahNXXSETHjNWgwc5qm85nKS1p55FEb8DUdTd2CPvQvBUKYFRSjjXb5nagr7wXUE4eSaFSxof8cUd6Sm66NRjA",
             ],

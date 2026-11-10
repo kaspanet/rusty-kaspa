@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wallet-macros"
+name = "aero-wallet-macros"
 rust-version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -10,7 +10,7 @@ keywords = ["rpc"]
 categories = []
 exclude = ["/.*", "/test"]
 description = """
-Macros for the Kaspa Wallet infrastructure
+Macros for the Aero Wallet infrastructure
 """
 
 [lib]

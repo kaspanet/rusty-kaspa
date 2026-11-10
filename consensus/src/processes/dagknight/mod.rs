@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
-use kaspa_consensus_core::KType;
-use kaspa_hashes::Hash;
+use aero_consensus_core::KType;
+use aero_hashes::Hash;
 
 use crate::processes::ghostdag::ordering::SortableBlock;
 

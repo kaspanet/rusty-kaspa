@@ -13,7 +13,7 @@
 //!
 //! Rather than patching `UtxoEntry`'s serde, we keep the live types
 //! unchanged and let the DB access layer ([`CachedDbAccess`] in
-//! `kaspa-database`) dispatch to these shadow types when it reads a
+//! `aero-database`) dispatch to these shadow types when it reads a
 //! row whose key is missing the post-Toccata version suffix.
 //! [`PreToccataUtxoEntry`] derives a plain four-field `Deserialize` that
 //! composes cleanly inside `HashMap`, and [`PreToccataUtxoDiff`] uses it
@@ -23,7 +23,7 @@
 //! conversion, defaulting every entry's `covenant_id` to `None`.
 //!
 //! Visibility is `pub` at the crate root so `DbUtxoDiffsStore` in the
-//! `kaspa-consensus` crate can name it as the `TLegacy` type parameter
+//! `aero-consensus` crate can name it as the `TLegacy` type parameter
 //! on `CachedDbAccess`.
 
 use std::collections::HashMap;
@@ -86,7 +86,7 @@ impl From<PreToccataUtxoDiff> for Arc<UtxoDiff> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_hashes::Hash;
+    use aero_hashes::Hash;
     use smallvec::SmallVec;
 
     fn sample_pre_entry(amount: u64, daa: u64, coinbase: bool) -> PreToccataUtxoEntry {

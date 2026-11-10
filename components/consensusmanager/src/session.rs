@@ -2,7 +2,7 @@
 //!
 //! We use newtypes in order to simplify changing the underlying lock in the future
 
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet, BlueWorkType, ChainPath, Hash,
     acceptance_data::{AcceptanceData, MergedBlockContext, MergesetBlockAcceptanceData},
     api::{
@@ -19,7 +19,7 @@ use kaspa_consensus_core::{
     trusted::TrustedBlock,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, TransactionQueryResult, TransactionType, UtxoEntry},
 };
-use kaspa_utils::sync::rwlock::*;
+use aero_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
 
 pub use tokio::task::spawn_blocking;
@@ -520,7 +520,7 @@ impl ConsensusSessionOwned {
     pub fn import_pruning_point_smt(
         &self,
         new_pruning_point: Hash,
-        metadata: kaspa_consensus_core::api::SmtExportMetadata,
+        metadata: aero_consensus_core::api::SmtExportMetadata,
         inactivity_shortcut_block: Hash,
         mut rx: tokio::sync::mpsc::Receiver<Vec<ImportLane>>,
     ) -> PruningImportResult<()> {
@@ -533,7 +533,7 @@ impl ConsensusSessionOwned {
     pub async fn async_get_pruning_point_smt_metadata(
         &self,
         expected_pp: Hash,
-    ) -> ConsensusResult<kaspa_consensus_core::api::SmtExportMetadata> {
+    ) -> ConsensusResult<aero_consensus_core::api::SmtExportMetadata> {
         self.clone().spawn_blocking(move |c| c.get_pruning_point_smt_metadata(expected_pp)).await
     }
 

@@ -6,7 +6,7 @@ pub struct Import;
 
 impl Import {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
         let wallet = ctx.wallet();
 
         if argv.is_empty() {
@@ -38,9 +38,9 @@ impl Import {
                     let wallet_secret = Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                     wallet.import_gen0_keydata(import_secret, wallet_secret, None).await?;
                 } else if application_runtime::is_web() {
-                    return Err("'kaspanet' web wallet storage not found at this domain name".into());
+                    return Err("'aeronet' web wallet storage not found at this domain name".into());
                 } else {
-                    return Err("KDX/kaspanet keydata file not found".into());
+                    return Err("KDX/aeronet keydata file not found".into());
                 }
             }
             // todo "read-only" => {}
@@ -54,7 +54,7 @@ impl Import {
         Ok(())
     }
 
-    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>) -> Result<()> {
+    async fn display_help(self: Arc<Self>, ctx: Arc<AeroCli>) -> Result<()> {
         ctx.term().help(
             &[
                 (

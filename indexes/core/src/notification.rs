@@ -1,6 +1,5 @@
 use crate::indexed_utxos::{UtxoChanges, UtxoSetByScriptPublicKey};
-use derive_more::Display;
-use kaspa_notify::{
+use aero_notify::{
     events::EventType,
     full_featured,
     notification::Notification as NotificationTrait,
@@ -10,6 +9,7 @@ use kaspa_notify::{
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
+use derive_more::Display;
 use std::{collections::HashMap, sync::Arc};
 
 full_featured! {

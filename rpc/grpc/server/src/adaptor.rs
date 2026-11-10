@@ -1,9 +1,9 @@
 use crate::{connection_handler::ConnectionHandler, manager::Manager};
-use kaspa_core::debug;
-use kaspa_notify::{notifier::Notifier, subscription::context::SubscriptionContext};
-use kaspa_rpc_core::{Notification, RpcResult, api::rpc::DynRpcService, notify::connection::ChannelConnection};
-use kaspa_utils::networking::NetAddress;
-use kaspa_utils_tower::counters::TowerConnectionCounters;
+use aero_core::debug;
+use aero_notify::{notifier::Notifier, subscription::context::SubscriptionContext};
+use aero_rpc_core::{Notification, RpcResult, api::rpc::DynRpcService, notify::connection::ChannelConnection};
+use aero_utils::networking::NetAddress;
+use aero_utils_tower::counters::TowerConnectionCounters;
 use std::{ops::Deref, sync::Arc};
 use tokio::sync::{mpsc::channel as mpsc_channel, oneshot::Sender as OneshotSender};
 

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use kaspa_database::{
+use aero_database::{
     prelude::{CachedDbItem, DB, DirectDbWriter, StoreError, StoreResult},
     registry::DatabaseStorePrefixes,
 };
 
-use kaspa_consensus_core::BlockHashSet;
+use aero_consensus_core::BlockHashSet;
 
 /// Reader API for `UtxoIndexTipsStore`.
 pub trait UtxoIndexTipsStoreReader {

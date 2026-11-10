@@ -1,4 +1,4 @@
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 use zerocopy::byteorder::little_endian::U32 as U32LE;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes, Unaligned};
 

@@ -2,7 +2,7 @@ Before you start, you must configure the default network setting.  There are cur
 3 networks available.  `mainnet`, `testnet-10` and `testnet-11`.  If you wish to experiment,
 you should select `testnet-11` by entering `network testnet-11`
 
-The `server` command configures the target server.  You can connect to any Rusty Kaspa
+The `server` command configures the target server.  You can connect to any Rusty Aero
 node that has wRPC enabled with `--rpclisten-borsh=0.0.0.0`. If the server setting 
 is set to 'public' the node will connect to the public node infrastructure.
 
@@ -12,13 +12,13 @@ used when running a local node or connecting to a remote node.
 ---
 
 `wallet create [<name>]` Use this command to create a local wallet. The <name> argument 
-is optional (the default wallet name is "kaspa") and allows you to create multiple 
+is optional (the default wallet name is "aero") and allows you to create multiple 
 named wallets.  Only one wallet can be opened at a time. Keep in mind that a wallet can have multiple
 accounts, as such you only need one wallet, unless, for example, you want to separate wallets for 
 personal and business needs (but you can also create isolated accounts within a wallet).
 
 Make sure to record your mnemonic, even if working with a testnet, not to lose your
-testnet KAS.
+testnet ARO.
 
 `open <name>` - opens the wallet (the wallet is open automatically after creation).
 
@@ -36,7 +36,7 @@ are meant to update their state by monitoring event notifications. Mute allows y
 the terminal.  When mute is off, all events are displayed in the terminal.  When mute is on, you can use 'track'
 command to enable specific event notification.
 
-`transfer <account-name> <amount>` - Transfers from the active to a different account. For example 'transfer p 1' will transfer 1 KAS from
+`transfer <account-name> <amount>` - Transfers from the active to a different account. For example 'transfer p 1' will transfer 1 ARO from
 the selected account to an account named 'pete' (starts with a 'p' letter)
 
 `send <address> <amount>` - Send funds to a destination address .

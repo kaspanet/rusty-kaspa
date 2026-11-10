@@ -9,7 +9,7 @@ impl Help {
         let term = dyn_ctx.term();
         term.writeln("\nCommands:".crlf());
 
-        let ctx = dyn_ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = dyn_ctx.clone().downcast_arc::<AeroCli>()?;
         let handlers = ctx.handlers().collect();
         let handlers =
             handlers.into_iter().filter_map(|h| h.verb(dyn_ctx).map(|verb| (verb, get_handler_help(h, dyn_ctx)))).collect::<Vec<_>>();

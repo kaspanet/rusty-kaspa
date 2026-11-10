@@ -1,15 +1,15 @@
 //!
 //! Conversion functions for converting between
-//! the [`kaspa_consensus_client`], [`kaspa_consensus_core`]
-//! and [`kaspa_wallet_pskt`](crate) types.
+//! the [`aero_consensus_client`], [`aero_consensus_core`]
+//! and [`aero_wallet_pskt`](crate) types.
 //!
 
 use crate::error::Error;
 use crate::input::{Input, InputBuilder};
 use crate::output::{Output, OutputBuilder};
 use crate::pskt::{Global, Inner};
-use kaspa_consensus_client::{Transaction, TransactionInput, TransactionInputInner, TransactionOutput, TransactionOutputInner};
-use kaspa_consensus_core::tx as cctx;
+use aero_consensus_client::{Transaction, TransactionInput, TransactionInputInner, TransactionOutput, TransactionOutputInner};
+use aero_consensus_core::tx as cctx;
 
 impl TryFrom<Transaction> for Inner {
     type Error = Error;

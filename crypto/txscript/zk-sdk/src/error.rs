@@ -12,5 +12,5 @@ pub enum Error {
     ArkSerialization(#[from] ark_serialize::SerializationError),
 
     #[error("Script builder error: {0}")]
-    ScriptBuilder(#[from] kaspa_txscript::script_builder::ScriptBuilderError),
+    ScriptBuilder(#[from] aero_txscript::script_builder::ScriptBuilderError),
 }

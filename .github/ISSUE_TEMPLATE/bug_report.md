@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help improve Kaspad
+about: Create a report to help improve Aerod
 title: ''
 labels: ''
 assignees: ''
@@ -25,7 +25,7 @@ If applicable, add screenshots to help explain your problem.
 
 **Desktop (please complete the following information):**
  - OS: [e.g. Ubuntu 20.04]
- - Kaspad version: [e.g. 0.12.11]
+ - Aerod version: [e.g. 0.12.11]
 
 **Additional context**
 Add any other context about the problem here.

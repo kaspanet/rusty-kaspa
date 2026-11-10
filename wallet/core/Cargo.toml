@@ -1,7 +1,7 @@
 [package]
-name = "kaspa-wallet-core"
-description = "Kaspa wallet library"
-keywords = ["kaspa", "wallet"]
+name = "aero-wallet-core"
+description = "Aero wallet library"
+keywords = ["aero", "wallet"]
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -13,19 +13,19 @@ repository.workspace = true
 [features]
 multi-user = []
 wasm32-keygen = [
-    # "kaspa-consensus-wasm/wasm32-types",
+    # "aero-consensus-wasm/wasm32-types",
 ]
 wasm32-core = [
-    "kaspa-consensus-wasm/wasm32-sdk",
-    "kaspa-consensus-core/wasm32-sdk",
-    "kaspa-wrpc-client/wasm32-sdk",
-    "kaspa-wrpc-wasm/wasm32-sdk",
-    "kaspa-wasm-core/wasm32-sdk",
+    "aero-consensus-wasm/wasm32-sdk",
+    "aero-consensus-core/wasm32-sdk",
+    "aero-wrpc-client/wasm32-sdk",
+    "aero-wrpc-wasm/wasm32-sdk",
+    "aero-wasm-core/wasm32-sdk",
 ]
 wasm32-sdk = [
     "wasm32-core"
 ]
-git-hash = ["dep:kaspa-build-info"]
+git-hash = ["dep:aero-build-info"]
 default = ["wasm32-sdk"]
 # default = []
 
@@ -56,26 +56,26 @@ heapless.workspace = true
 hmac.workspace = true
 itertools.workspace = true
 js-sys.workspace = true
-kaspa-addresses.workspace = true
-kaspa-bip32.workspace = true
-kaspa-build-info = { workspace = true, optional = true }
-kaspa-consensus-client.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-wasm.workspace = true
-kaspa-core.workspace = true
-kaspa-hashes.workspace = true
-kaspa-metrics-core.workspace = true
-kaspa-notify.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-txscript-errors.workspace = true
-kaspa-txscript.workspace = true
-kaspa-utils = { workspace = true, features = ["hashmap"] }
-kaspa-wallet-keys.workspace = true
-kaspa-wallet-macros.workspace = true
-kaspa-wallet-pskt.workspace = true
-kaspa-wasm-core.workspace = true
-kaspa-wrpc-client.workspace = true
-kaspa-wrpc-wasm.workspace = true
+aero-addresses.workspace = true
+aero-bip32.workspace = true
+aero-build-info = { workspace = true, optional = true }
+aero-consensus-client.workspace = true
+aero-consensus-core.workspace = true
+aero-consensus-wasm.workspace = true
+aero-core.workspace = true
+aero-hashes.workspace = true
+aero-metrics-core.workspace = true
+aero-notify.workspace = true
+aero-rpc-core.workspace = true
+aero-txscript-errors.workspace = true
+aero-txscript.workspace = true
+aero-utils = { workspace = true, features = ["hashmap"] }
+aero-wallet-keys.workspace = true
+aero-wallet-macros.workspace = true
+aero-wallet-pskt.workspace = true
+aero-wasm-core.workspace = true
+aero-wrpc-client.workspace = true
+aero-wrpc-wasm.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true

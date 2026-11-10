@@ -4,8 +4,8 @@ use crate::{
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{Command, Compounded, Mutation, Subscription, context::SubscriptionContext},
 };
+use aero_addresses::{Address, Prefix};
 use itertools::Itertools;
-use kaspa_addresses::{Address, Prefix};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OverallSubscription {
@@ -247,7 +247,7 @@ impl Subscription for UtxosChangedSubscription {
 
 #[cfg(test)]
 mod tests {
-    use kaspa_core::trace;
+    use aero_core::trace;
 
     use super::super::*;
     use super::*;
@@ -356,7 +356,7 @@ mod tests {
     #[test]
     #[allow(clippy::redundant_clone)]
     fn test_utxos_changed_compounding() {
-        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        aero_core::log::try_init_logger("trace,aero_notify=trace");
         let a_stock = get_3_addresses(true);
 
         let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();

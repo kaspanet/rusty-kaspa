@@ -3,8 +3,8 @@
 //!
 
 use crate::imports::*;
-use kaspa_consensus_client::{CovenantBinding as ClientCovenantBinding, TransactionOutput, TransactionOutputInner};
-use kaspa_txscript::pay_to_address_script;
+use aero_consensus_client::{CovenantBinding as ClientCovenantBinding, TransactionOutput, TransactionOutputInner};
+use aero_txscript::pay_to_address_script;
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_PAYMENT_OUTPUTS: &'static str = r#"
@@ -18,7 +18,7 @@ const TS_PAYMENT_OUTPUTS: &'static str = r#"
 export interface IPaymentOutput {
     /**
      * Destination address. The address prefix must match the network
-     * you are transacting on (e.g. `kaspa:` for mainnet, `kaspatest:` for testnet, etc).
+     * you are transacting on (e.g. `aero:` for mainnet, `aerotest:` for testnet, etc).
      */
     address: Address | string;
     /**
@@ -95,7 +95,7 @@ impl TryCastFromJs for PaymentOutput {
                 let amount = object.get_u64("amount")?;
                 let covenant = object
                     .try_get_value("covenant")?
-                    .map(|v| v.try_into_owned().map_err(|err| kaspa_consensus_client::error::Error::convert("covenant", err)))
+                    .map(|v| v.try_into_owned().map_err(|err| aero_consensus_client::error::Error::convert("covenant", err)))
                     .transpose()?;
                 Ok(Self { address, amount, covenant })
             } else {

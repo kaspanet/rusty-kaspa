@@ -5,11 +5,11 @@
 use crate::account::{AsLegacyAccount, Inner};
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
-use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
+use aero_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
 const CACHE_ADDRESS_OFFSET: u32 = 2048;
 
-pub const LEGACY_ACCOUNT_KIND: &str = "kaspa-legacy-standard";
+pub const LEGACY_ACCOUNT_KIND: &str = "aero-legacy-standard";
 
 pub struct Ctor {}
 
@@ -20,7 +20,7 @@ impl Factory for Ctor {
     }
 
     fn description(&self) -> String {
-        "Kaspa Legacy Account (KDX, kaspanet.io Web Wallet)".to_string()
+        "Aero Legacy Account (KDX, kaspanet.io Web Wallet)".to_string()
     }
 
     async fn try_load(

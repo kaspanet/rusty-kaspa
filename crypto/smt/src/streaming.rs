@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use core::fmt;
 use core::marker::PhantomData;
 
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 use crate::store::{BranchKey, CollapsedLeaf};
 use crate::{DEPTH, SmtHasher, hash_node};
@@ -361,7 +361,7 @@ mod tests {
     use crate::bit_at;
     use crate::store::{BTreeSmtStore, LeafUpdate, SortedLeafUpdates};
     use crate::tree::compute_root_update;
-    use kaspa_hashes::SeqCommitActiveNode;
+    use aero_hashes::SeqCommitActiveNode;
 
     pub struct InlineMergeSink<H: SmtHasher> {
         pub nodes: Vec<(BranchKey, crate::store::Node)>,

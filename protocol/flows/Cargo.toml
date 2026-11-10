@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-p2p-flows"
-description = "Kaspa p2p flows"
+name = "aero-p2p-flows"
+description = "Aero p2p flows"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -10,22 +10,22 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-kaspa-core.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-consensus-notify.workspace = true
-kaspa-p2p-lib.workspace = true
-kaspa-p2p-mining.workspace = true
-kaspa-utils = { workspace = true, features = ["fd_budget"]}
-kaspa-utils-tower.workspace = true
-kaspa-hashes.workspace = true
-kaspa-muhash.workspace = true
-kaspa-seq-commit.workspace = true
-kaspa-smt.workspace = true
-kaspa-connectionmanager.workspace = true
-kaspa-addressmanager.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-mining.workspace = true
-kaspa-notify.workspace = true
+aero-core.workspace = true
+aero-consensus-core.workspace = true
+aero-consensus-notify.workspace = true
+aero-p2p-lib.workspace = true
+aero-p2p-mining.workspace = true
+aero-utils = { workspace = true, features = ["fd_budget"]}
+aero-utils-tower.workspace = true
+aero-hashes.workspace = true
+aero-muhash.workspace = true
+aero-seq-commit.workspace = true
+aero-smt.workspace = true
+aero-connectionmanager.workspace = true
+aero-addressmanager.workspace = true
+aero-consensusmanager.workspace = true
+aero-mining.workspace = true
+aero-notify.workspace = true
 
 async-trait.workspace = true
 futures = { workspace = true, features = ["alloc"] }

@@ -23,8 +23,8 @@ pub mod utxo_multisets;
 pub mod utxo_set;
 pub mod virtual_state;
 
-pub use kaspa_database;
-pub use kaspa_database::prelude::DB;
+pub use aero_database;
+pub use aero_database::prelude::DB;
 use std::fmt::Display;
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]

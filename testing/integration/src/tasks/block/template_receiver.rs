@@ -2,13 +2,13 @@ use crate::{
     common::client_notify::ChannelNotify,
     tasks::{Stopper, Task},
 };
+use aero_addresses::Address;
+use aero_core::warn;
+use aero_grpc_client::GrpcClient;
+use aero_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
+use aero_rpc_core::{GetBlockTemplateResponse, Notification, api::rpc::RpcApi};
+use aero_utils::{channel::Channel, triggers::SingleTrigger};
 use async_trait::async_trait;
-use kaspa_addresses::Address;
-use kaspa_core::warn;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{listener::ListenerId, scope::NewBlockTemplateScope};
-use kaspa_rpc_core::{GetBlockTemplateResponse, Notification, api::rpc::RpcApi};
-use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use tokio::task::JoinHandle;

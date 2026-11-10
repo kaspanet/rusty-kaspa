@@ -1,4 +1,4 @@
-use kaspa_utils::{fd_budget, hex::ToHex};
+use aero_utils::{fd_budget, hex::ToHex};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{File, read_to_string},

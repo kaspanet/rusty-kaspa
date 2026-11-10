@@ -2,20 +2,20 @@
 
 use std::sync::Arc;
 
-use kaspa_database::create_temp_db;
-use kaspa_database::prelude::{ConnBuilder, DB};
-use kaspa_hashes::{Hash, SeqCommitActiveCollapsedNode, SeqCommitActiveNode};
-use kaspa_seq_commit::hashing::{lane_key, smt_leaf_hash};
-use kaspa_seq_commit::types::SmtLeafInput;
-use kaspa_smt::SmtHasher;
-use kaspa_smt::store::{BTreeSmtStore, LeafUpdate, Node, SortedLeafUpdates};
-use kaspa_smt::tree::{SparseMerkleTree, compute_root_update};
+use aero_database::create_temp_db;
+use aero_database::prelude::{ConnBuilder, DB};
+use aero_hashes::{Hash, SeqCommitActiveCollapsedNode, SeqCommitActiveNode};
+use aero_seq_commit::hashing::{lane_key, smt_leaf_hash};
+use aero_seq_commit::types::SmtLeafInput;
+use aero_smt::SmtHasher;
+use aero_smt::store::{BTreeSmtStore, LeafUpdate, Node, SortedLeafUpdates};
+use aero_smt::tree::{SparseMerkleTree, compute_root_update};
 use rocksdb::WriteBatch;
 
-use kaspa_consensus_core::api::ImportLane;
-use kaspa_smt_store::cache::BranchEntity;
-use kaspa_smt_store::processor::{SmtProcessor, SmtReadBounds, SmtStores};
-use kaspa_smt_store::streaming_import::streaming_import;
+use aero_consensus_core::api::ImportLane;
+use aero_smt_store::cache::BranchEntity;
+use aero_smt_store::processor::{SmtProcessor, SmtReadBounds, SmtStores};
+use aero_smt_store::streaming_import::streaming_import;
 
 /// Build a reference SLO root from leaf updates using the in-memory store.
 fn slo_root(updates: Vec<LeafUpdate>) -> Hash {
@@ -464,7 +464,7 @@ fn flush_rebuild_roundtrip() {
 /// stores via streaming_import (the actual IBD path), and verify the roots match.
 #[test]
 fn export_import_roundtrip() {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -557,7 +557,7 @@ fn export_import_roundtrip() {
 /// treats ZERO_HASH as canonical (IBD sentinel).
 #[test]
 fn zero_hash_block_hash_lanes_are_readable() {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -574,7 +574,7 @@ fn zero_hash_block_hash_lanes_are_readable() {
     build.flush(&stores, &mut batch, bs, ZERO_HASH).unwrap();
     db.write(batch).unwrap();
 
-    let result = stores.get_lane(lk, (0..=u64::MAX).into(), |bh| bh == kaspa_hashes::ZERO_HASH);
+    let result = stores.get_lane(lk, (0..=u64::MAX).into(), |bh| bh == aero_hashes::ZERO_HASH);
     assert!(result.is_some());
     assert_eq!(*result.unwrap().data(), tip);
 }
@@ -583,7 +583,7 @@ fn zero_hash_block_hash_lanes_are_readable() {
 /// treats ZERO_HASH as canonical.
 #[test]
 fn zero_hash_block_hash_branches_are_readable() {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -602,14 +602,14 @@ fn zero_hash_block_hash_branches_are_readable() {
     db.write(batch).unwrap();
 
     let root_node = stores.get_node(BranchEntity { depth: 0, node_key: Hash::from_bytes([0; 32]) }, (0..=u64::MAX).into(), |bh| {
-        bh == kaspa_hashes::ZERO_HASH
+        bh == aero_hashes::ZERO_HASH
     });
     assert!(root_node.is_some());
 
     // With SLO, a single lane produces a Collapsed node at the root
     match root_node.unwrap().into_parts().0 {
         Some(Node::Collapsed(cl)) => {
-            let derived = kaspa_smt::hash_node::<SeqCommitActiveCollapsedNode>(cl.lane_key, cl.leaf_hash);
+            let derived = aero_smt::hash_node::<SeqCommitActiveCollapsedNode>(cl.lane_key, cl.leaf_hash);
             assert_eq!(derived, root);
         }
         Some(Node::Internal(hash)) => {
@@ -816,7 +816,7 @@ fn empty_subtree_then_resplit_uses_persisted_deletion_marker() {
 
 #[test]
 fn streaming_import_matches_export_roundtrip_root() {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -963,7 +963,7 @@ fn score_index_tracks_collapsed_node_split_and_merge() {
 /// understanding why the root changed: it is a protocol-affecting break.
 #[test]
 fn streaming_import_root_matches_golden_vector() {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -1032,7 +1032,7 @@ fn streaming_import_root_matches_golden_vector() {
 /// branch_version writes.
 #[test]
 fn prune_after_streaming_import_removes_all_imported_entries() {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -1093,7 +1093,7 @@ fn prune_after_streaming_import_removes_all_imported_entries() {
     // Branch entries for every lane's full prefix must be gone.
     for lane in &sorted {
         for depth in 0u8..=255 {
-            let bk = kaspa_smt::store::BranchKey::new(depth, &lane.lane_key);
+            let bk = aero_smt::store::BranchKey::new(depth, &lane.lane_key);
             assert!(
                 stores.branch_version.get_at(depth, bk.node_key, u64::MAX, 0).next().is_none(),
                 "branch_version entry must be pruned at depth={depth}, node_key={:?}",
@@ -1118,7 +1118,7 @@ fn prune_after_streaming_import_removes_all_imported_entries() {
 /// directly and asserting per-entry blue_scores.
 #[test]
 fn ibd_branch_entries_keyed_by_per_leaf_blue_score() {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -1211,7 +1211,7 @@ fn ibd_branch_entries_keyed_by_per_leaf_blue_score() {
 /// require absurd block counts.
 #[test]
 fn ibd_vs_live_root_after_chain_processing() {
-    use kaspa_hashes::ZERO_HASH;
+    use aero_hashes::ZERO_HASH;
 
     const TIGHT_THRESHOLD: u64 = 5;
     let tight_pov_bounds = |bs: u64| SmtReadBounds::for_pov(bs, TIGHT_THRESHOLD);
@@ -1400,7 +1400,7 @@ fn prune_removes_old_versions_keeps_new() {
 }
 
 fn count_branch_entries(db: &DB) -> usize {
-    let prefix: u8 = kaspa_database::registry::DatabaseStorePrefixes::SmtBranchVersions.into();
+    let prefix: u8 = aero_database::registry::DatabaseStorePrefixes::SmtBranchVersions.into();
     let mut iter = db.raw_iterator();
     iter.seek([prefix]);
     let mut count = 0usize;
@@ -1428,8 +1428,8 @@ fn count_branch_entries(db: &DB) -> usize {
 /// during finalize when its collapsed leaf is written at `BranchKey(1, ZERO)`.
 #[test]
 fn streaming_import_prune_clears_all_branches_after_deferred_merges() {
-    use kaspa_hashes::ZERO_HASH;
-    use kaspa_smt_store::streaming_import::streaming_import;
+    use aero_hashes::ZERO_HASH;
+    use aero_smt_store::streaming_import::streaming_import;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -1489,8 +1489,8 @@ fn streaming_import_prune_clears_all_branches_after_deferred_merges() {
 /// `max_depth` covers the lone branch at depth 0 and prune clears it.
 #[test]
 fn streaming_import_single_leaf_prunes_clean() {
-    use kaspa_hashes::ZERO_HASH;
-    use kaspa_smt_store::streaming_import::streaming_import;
+    use aero_hashes::ZERO_HASH;
+    use aero_smt_store::streaming_import::streaming_import;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -1523,8 +1523,8 @@ fn streaming_import_single_leaf_prunes_clean() {
 /// prune, every imported branch_version entry must be gone.
 #[test]
 fn streaming_import_multi_chunk_in_loop_flush_then_prune_clean() {
-    use kaspa_hashes::ZERO_HASH;
-    use kaspa_smt_store::streaming_import::streaming_import;
+    use aero_hashes::ZERO_HASH;
+    use aero_smt_store::streaming_import::streaming_import;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);
@@ -1566,8 +1566,8 @@ fn streaming_import_multi_chunk_in_loop_flush_then_prune_clean() {
 /// accumulator runs through the same loop.
 #[test]
 fn streaming_import_skips_empty_chunks() {
-    use kaspa_hashes::ZERO_HASH;
-    use kaspa_smt_store::streaming_import::streaming_import;
+    use aero_hashes::ZERO_HASH;
+    use aero_smt_store::streaming_import::streaming_import;
 
     let (_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let stores = make_stores(&db);

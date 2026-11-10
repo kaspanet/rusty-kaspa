@@ -1,11 +1,11 @@
 use crate::tasks::{Stopper, Task};
+use aero_addresses::Address;
+use aero_core::warn;
+use aero_grpc_client::GrpcClient;
+use aero_rpc_core::{GetBlockTemplateResponse, RpcRawBlock, api::rpc::RpcApi};
+use aero_utils::triggers::SingleTrigger;
 use async_channel::Sender;
 use async_trait::async_trait;
-use kaspa_addresses::Address;
-use kaspa_core::warn;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::{GetBlockTemplateResponse, RpcRawBlock, api::rpc::RpcApi};
-use kaspa_utils::triggers::SingleTrigger;
 use parking_lot::Mutex;
 use rand::thread_rng;
 use rand_distr::{Distribution, Exp};

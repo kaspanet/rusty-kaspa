@@ -58,7 +58,7 @@ pub struct TransactionOutputInner {
     pub covenant: Option<CovenantBinding>,
 }
 
-/// Represents a Kaspad transaction output
+/// Represents a Aerod transaction output
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]

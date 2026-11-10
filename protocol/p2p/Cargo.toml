@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-p2p-lib"
-description = "Kaspa p2p library"
+name = "aero-p2p-lib"
+description = "Aero p2p library"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
@@ -13,21 +13,21 @@ repository.workspace = true
 path = "./src/lib.rs"
 
 [[bin]]
-name = "kaspa_p2p_client"
+name = "aero_p2p_client"
 path = "./src/bin/client.rs"
 
 [[bin]]
-name = "kaspa_p2p_server"
+name = "aero_p2p_server"
 path = "./src/bin/server.rs"
 
 [dependencies]
-kaspa-core.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-mining-errors.workspace = true
-kaspa-hashes.workspace = true
-kaspa-math.workspace = true
-kaspa-utils = { workspace = true, features = ["peer-id"] }
-kaspa-utils-tower.workspace = true
+aero-core.workspace = true
+aero-consensus-core.workspace = true
+aero-mining-errors.workspace = true
+aero-hashes.workspace = true
+aero-math.workspace = true
+aero-utils = { workspace = true, features = ["peer-id"] }
+aero-utils-tower.workspace = true
 
 borsh.workspace = true
 ctrlc.workspace = true

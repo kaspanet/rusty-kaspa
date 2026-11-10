@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use kaspa_database::{
+use aero_database::{
     prelude::{CachedDbItem, DB, DirectDbWriter, StoreResult},
     registry::DatabaseStorePrefixes,
 };

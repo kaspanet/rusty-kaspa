@@ -2,7 +2,7 @@ use crate::mempool::{
     Mempool,
     errors::{RuleError, RuleResult},
 };
-use kaspa_consensus_core::{mass::NonContextualMasses, tx::MutableTransaction};
+use aero_consensus_core::{mass::NonContextualMasses, tx::MutableTransaction};
 
 impl Mempool {
     /// Validates non-contextual transaction dimensions against the consensus block limits.
@@ -48,14 +48,14 @@ impl Mempool {
 mod tests {
     use super::*;
     use crate::{MiningCounters, mempool::config::Config};
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         config::constants::consensus::DEFAULT_LANES_PER_BLOCK_LIMIT,
-        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
+        constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_AERO, TX_VERSION},
         mass::{BlockLaneLimits, BlockMassLimits},
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry, scriptvec},
     };
-    use kaspa_hashes::Hash;
+    use aero_hashes::Hash;
     use std::sync::Arc;
 
     const LIMITS: BlockMassLimits = BlockMassLimits { compute: 100, storage: 200, transient: 300 };
@@ -92,10 +92,10 @@ mod tests {
         let script_public_key = ScriptPublicKey::new(0, scriptvec![0x51]);
         let outpoint = TransactionOutpoint::new(Hash::from_u64_word(1), 0);
         let input = TransactionInput::new(outpoint, vec![], MAX_TX_IN_SEQUENCE_NUM, 0);
-        let output = TransactionOutput::new(SOMPI_PER_KASPA, script_public_key.clone());
+        let output = TransactionOutput::new(SOMPI_PER_AERO, script_public_key.clone());
         let tx = Transaction::new(TX_VERSION, vec![input], vec![output], 0, SUBNETWORK_ID_NATIVE, gas, vec![]);
         tx.set_storage_mass(storage_mass);
-        let entry = UtxoEntry::new(SOMPI_PER_KASPA, script_public_key, 0, false, None);
+        let entry = UtxoEntry::new(SOMPI_PER_AERO, script_public_key, 0, false, None);
         let mut tx = MutableTransaction::with_entries(tx.into(), vec![entry]);
         tx.calculated_non_contextual_masses = Some(NonContextualMasses::new(compute_mass, transient_mass));
         tx

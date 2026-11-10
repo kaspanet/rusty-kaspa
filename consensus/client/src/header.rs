@@ -5,11 +5,11 @@
 #![allow(non_snake_case)]
 
 use crate::error::Error;
+use aero_consensus_core::hashing;
+use aero_consensus_core::header as native;
+use aero_hashes::Hash;
+use aero_utils::hex::ToHex;
 use js_sys::{Array, Object};
-use kaspa_consensus_core::hashing;
-use kaspa_consensus_core::header as native;
-use kaspa_hashes::Hash;
-use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::*;
 use wasm_bindgen::prelude::*;
@@ -72,7 +72,7 @@ extern "C" {
     pub type HeaderT;
 }
 
-/// Kaspa Block Header
+/// Aero Block Header
 ///
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]

@@ -1,8 +1,8 @@
-use kaspa_consensus_core::BlockHasher;
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB, DirectDbWriter, StoreResult};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::MemSizeEstimator;
+use aero_consensus_core::BlockHasher;
+use aero_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DB, DirectDbWriter, StoreResult};
+use aero_database::registry::DatabaseStorePrefixes;
+use aero_hashes::Hash;
+use aero_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -75,8 +75,8 @@ impl DbSmtMetadataStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_database::create_temp_db;
-    use kaspa_database::prelude::ConnBuilder;
+    use aero_database::create_temp_db;
+    use aero_database::prelude::ConnBuilder;
 
     fn row_key(hash: Hash) -> Vec<u8> {
         let mut key = vec![DatabaseStorePrefixes::SmtSeqCommitMeta.into()];

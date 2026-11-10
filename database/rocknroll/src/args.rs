@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
+use aero_consensus_core::network::NetworkId;
+use aerod_lib::args::Args as AerodArgs;
 use clap::Args;
-use kaspa_consensus_core::network::NetworkId;
-use kaspad_lib::args::Args as KaspadArgs;
 
 use crate::{Error, Result};
 
@@ -22,13 +22,13 @@ pub struct NetworkArgs {
 }
 
 impl NetworkArgs {
-    pub fn to_kaspad_args(&self, appdir: Option<String>) -> Result<KaspadArgs> {
+    pub fn to_aerod_args(&self, appdir: Option<String>) -> Result<AerodArgs> {
         let selected = [self.testnet, self.devnet, self.simnet].into_iter().filter(|selected| *selected).count();
         if selected > 1 {
             return Err(Error::InvalidArgs("select at most one network flag: --testnet, --devnet, or --simnet".to_string()));
         }
 
-        Ok(KaspadArgs {
+        Ok(AerodArgs {
             appdir,
             testnet: self.testnet,
             testnet_suffix: self.netsuffix,
@@ -39,7 +39,7 @@ impl NetworkArgs {
     }
 
     pub fn network(&self) -> Result<NetworkId> {
-        Ok(self.to_kaspad_args(None)?.network())
+        Ok(self.to_aerod_args(None)?.network())
     }
 }
 
@@ -48,7 +48,7 @@ pub struct DbSourceArgs {
     #[command(flatten)]
     pub network: NetworkArgs,
 
-    #[arg(long, value_name = "APP_DIR", conflicts_with = "consensus_db", help = "Kaspad application directory")]
+    #[arg(long, value_name = "APP_DIR", conflicts_with = "consensus_db", help = "Aerod application directory")]
     pub appdir: Option<PathBuf>,
 
     #[arg(long, value_name = "CONSENSUS_DB", conflicts_with = "appdir", help = "Direct path to a consensus RocksDB directory")]

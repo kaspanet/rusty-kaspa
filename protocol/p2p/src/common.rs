@@ -1,6 +1,6 @@
-use crate::{KaspadMessagePayloadType, convert::error::ConversionError, core::peer::PeerKey};
-use kaspa_consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
-use kaspa_mining_errors::manager::MiningManagerError;
+use crate::{AerodMessagePayloadType, convert::error::ConversionError, core::peer::PeerKey};
+use aero_consensus_core::errors::{block::RuleError, consensus::ConsensusError, pruning::PruningImportError};
+use aero_mining_errors::manager::MiningManagerError;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -19,7 +19,7 @@ pub enum ProtocolError {
     WrongNetwork(String, String),
 
     #[error("expected message type/s {0} but got {1:?}")]
-    UnexpectedMessage(&'static str, Option<KaspadMessagePayloadType>),
+    UnexpectedMessage(&'static str, Option<AerodMessagePayloadType>),
 
     #[error("{0}")]
     ConversionError(#[from] ConversionError),
@@ -53,13 +53,13 @@ pub enum ProtocolError {
     ConnectionClosed,
 
     #[error("incoming route capacity for message type {0:?} has been reached (peer: {1})")]
-    IncomingRouteCapacityReached(KaspadMessagePayloadType, String),
+    IncomingRouteCapacityReached(AerodMessagePayloadType, String),
 
     #[error("outgoing route capacity has been reached (peer: {0})")]
     OutgoingRouteCapacityReached(String),
 
     #[error("no flow has been registered for message type {0:?}")]
-    NoRouteForMessageType(KaspadMessagePayloadType),
+    NoRouteForMessageType(AerodMessagePayloadType),
 
     #[error("peer {0} already exists")]
     PeerAlreadyExists(PeerKey),
@@ -115,7 +115,7 @@ impl ProtocolError {
     }
 }
 
-/// Wraps an inner payload message into a valid `KaspadMessage`.
+/// Wraps an inner payload message into a valid `AerodMessage`.
 /// Usage:
 /// ```ignore
 /// let msg = make_message!(Payload::Verack, verack_msg)
@@ -123,27 +123,27 @@ impl ProtocolError {
 #[macro_export]
 macro_rules! make_message {
     ($pattern:path, $msg:expr) => {{
-        $crate::pb::KaspadMessage {
+        $crate::pb::AerodMessage {
             payload: Some($pattern($msg)),
             response_id: $crate::BLANK_ROUTE_ID,
             request_id: $crate::BLANK_ROUTE_ID,
         }
     }};
 
-    ($pattern:path, $msg:expr, $response_id:expr, $request_id: expr) => {{ $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: $request_id } }};
+    ($pattern:path, $msg:expr, $response_id:expr, $request_id: expr) => {{ $crate::pb::AerodMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: $request_id } }};
 }
 
 #[macro_export]
 macro_rules! make_response {
-    ($pattern:path, $msg:expr, $response_id:expr) => {{ $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: 0 } }};
+    ($pattern:path, $msg:expr, $response_id:expr) => {{ $crate::pb::AerodMessage { payload: Some($pattern($msg)), response_id: $response_id, request_id: 0 } }};
 }
 
 #[macro_export]
 macro_rules! make_request {
-    ($pattern:path, $msg:expr, $request_id:expr) => {{ $crate::pb::KaspadMessage { payload: Some($pattern($msg)), response_id: 0, request_id: $request_id } }};
+    ($pattern:path, $msg:expr, $request_id:expr) => {{ $crate::pb::AerodMessage { payload: Some($pattern($msg)), response_id: 0, request_id: $request_id } }};
 }
 
-/// Macro to extract a specific payload type from an `Option<pb::KaspadMessage>`.
+/// Macro to extract a specific payload type from an `Option<pb::AerodMessage>`.
 /// Usage:
 /// ```ignore
 /// let res = unwrap_message!(op, Payload::Verack)
@@ -178,7 +178,7 @@ macro_rules! unwrap_message_with_request_id {
     }};
 }
 
-/// Macro to await a channel `Receiver<pb::KaspadMessage>::recv` call with a default/specified timeout and expect a specific payload type.
+/// Macro to await a channel `Receiver<pb::AerodMessage>::recv` call with a default/specified timeout and expect a specific payload type.
 /// Usage:
 /// ```ignore
 /// let res = dequeue_with_timeout!(receiver, Payload::Verack) // Uses the default timeout
@@ -205,7 +205,7 @@ macro_rules! dequeue_with_timeout {
     }};
 }
 
-/// Macro to indefinitely await a channel `Receiver<pb::KaspadMessage>::recv` call and expect a specific payload type (without a timeout).
+/// Macro to indefinitely await a channel `Receiver<pb::AerodMessage>::recv` call and expect a specific payload type (without a timeout).
 /// Usage:
 /// ```ignore
 /// let res = dequeue!(receiver, Payload::Verack)

@@ -1,5 +1,5 @@
-use kaspa_notify::events::EventType;
-use kaspa_utxoindex::errors::UtxoIndexError;
+use aero_notify::events::EventType;
+use aero_utxoindex::errors::UtxoIndexError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

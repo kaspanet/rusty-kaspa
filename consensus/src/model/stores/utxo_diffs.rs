@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{BlockHasher, utxo::pre_toccata::PreToccataUtxoDiff, utxo::utxo_diff::UtxoDiff};
-use kaspa_database::prelude::CachePolicy;
-use kaspa_database::prelude::DB;
-use kaspa_database::prelude::StoreError;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
+use aero_consensus_core::{BlockHasher, utxo::pre_toccata::PreToccataUtxoDiff, utxo::utxo_diff::UtxoDiff};
+use aero_database::prelude::CachePolicy;
+use aero_database::prelude::DB;
+use aero_database::prelude::StoreError;
+use aero_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use aero_database::registry::DatabaseStorePrefixes;
+use aero_hashes::Hash;
 use rocksdb::WriteBatch;
 
 /// Version suffix appended to every post-Toccata `UtxoDiffs` row's DB key.
@@ -34,7 +34,7 @@ pub trait UtxoDiffsStore: UtxoDiffsStoreReader {
 /// Reads transparently handle both layouts: pre-Toccata rows (no version suffix) are
 /// decoded via [`PreToccataUtxoDiff`] and converted to `Arc<UtxoDiff>` with every
 /// entry's `covenant_id` defaulting to `None`. See the module-level docs on
-/// `kaspa_database::prelude::CachedDbAccess` for the full semantics.
+/// `aero_database::prelude::CachedDbAccess` for the full semantics.
 #[derive(Clone)]
 pub struct DbUtxoDiffsStore {
     db: Arc<DB>,
@@ -98,11 +98,11 @@ mod tests {
     //! layer: the store's trait surface, the versioned access layer, the
     //! `PreToccataUtxoDiff` shadow decoder, and the row-level key layout.
     use super::*;
-    use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
-    use kaspa_consensus_core::utxo::utxo_diff::UtxoDiff;
-    use kaspa_database::create_temp_db;
-    use kaspa_database::prelude::ConnBuilder;
-    use kaspa_database::prelude::StoreErrorPredicates;
+    use aero_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+    use aero_consensus_core::utxo::utxo_diff::UtxoDiff;
+    use aero_database::create_temp_db;
+    use aero_database::prelude::ConnBuilder;
+    use aero_database::prelude::StoreErrorPredicates;
     use std::collections::HashMap;
 
     /// Hex bytes captured on the `master` worktree from a 2-add / 2-remove

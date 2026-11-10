@@ -5,10 +5,10 @@ use crate::common::{
     fee,
     utils::{fetch_spendable_utxos, mine_block, wait_for},
 };
-use kaspa_addresses::Address;
-use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_consensus::params::{Params, SIMNET_GENESIS, SIMNET_PARAMS};
-use kaspa_consensus_core::{
+use aero_addresses::Address;
+use aero_alloc::init_allocator_with_default_settings;
+use aero_consensus::params::{Params, SIMNET_GENESIS, SIMNET_PARAMS};
+use aero_consensus_core::{
     config::params::OverrideParams,
     constants::{TX_VERSION, TX_VERSION_TOCCATA},
     header::Header,
@@ -17,20 +17,20 @@ use kaspa_consensus_core::{
     subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId},
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
-use kaspa_consensusmanager::ConsensusManager;
-use kaspa_core::{task::runtime::AsyncRuntime, trace};
-use kaspa_grpc_client::GrpcClient;
-use kaspa_hashes::Hash;
-use kaspa_notify::{
+use aero_consensusmanager::ConsensusManager;
+use aero_core::{task::runtime::AsyncRuntime, trace};
+use aero_grpc_client::GrpcClient;
+use aero_hashes::Hash;
+use aero_notify::{
     events::EventType,
     scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
-use kaspa_rpc_core::{Notification, RpcTransaction, RpcTransactionId, api::rpc::RpcApi};
-use kaspa_txscript::{
+use aero_rpc_core::{Notification, RpcTransaction, RpcTransactionId, api::rpc::RpcApi};
+use aero_txscript::{
     opcodes::codes, pay_to_address_script, pay_to_script_hash_script, pay_to_script_hash_signature_script,
     script_builder::ScriptBuilder,
 };
-use kaspad_lib::args::Args;
+use aerod_lib::args::Args;
 use rand::thread_rng;
 use serde_json;
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
@@ -68,32 +68,32 @@ async fn is_ancestor_in_selected_parent_chain(client: &GrpcClient, mut descendan
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_sanity_test() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("INFO");
+    aero_core::log::try_init_logger("INFO");
 
-    // let total_fd_limit =  kaspa_utils::fd_budget::get_limit() / 2 - 128;
+    // let total_fd_limit =  aero_utils::fd_budget::get_limit() / 2 - 128;
     let total_fd_limit = 10;
-    let mut kaspad1 = Daemon::new_random(total_fd_limit);
-    let rpc_client1 = kaspad1.start().await;
+    let mut aerod1 = Daemon::new_random(total_fd_limit);
+    let rpc_client1 = aerod1.start().await;
     assert!(rpc_client1.handle_message_id() && rpc_client1.handle_stop_notify(), "the client failed to collect server features");
 
-    let mut kaspad2 = Daemon::new_random(total_fd_limit);
-    let rpc_client2 = kaspad2.start().await;
+    let mut aerod2 = Daemon::new_random(total_fd_limit);
+    let rpc_client2 = aerod2.start().await;
     assert!(rpc_client2.handle_message_id() && rpc_client2.handle_stop_notify(), "the client failed to collect server features");
 
     tokio::time::sleep(Duration::from_secs(1)).await;
     rpc_client1.disconnect().await.unwrap();
     drop(rpc_client1);
-    kaspad1.shutdown();
+    aerod1.shutdown();
 
     rpc_client2.disconnect().await.unwrap();
     drop(rpc_client2);
-    kaspad2.shutdown();
+    aerod2.shutdown();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_mining_test() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("INFO");
+    aero_core::log::try_init_logger("INFO");
 
     let args = Args {
         simnet: true,
@@ -102,15 +102,15 @@ async fn daemon_mining_test() {
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         ..Default::default()
     };
-    // let total_fd_limit = kaspa_utils::fd_budget::get_limit() / 2 - 128;
+    // let total_fd_limit = aero_utils::fd_budget::get_limit() / 2 - 128;
     let total_fd_limit = 10;
 
-    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
-    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
-    let rpc_client1 = kaspad1.start().await;
-    let rpc_client2 = kaspad2.start().await;
+    let mut aerod1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut aerod2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client1 = aerod1.start().await;
+    let rpc_client2 = aerod2.start().await;
 
-    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    rpc_client2.add_peer(format!("127.0.0.1:{}", aerod1.p2p_port).try_into().unwrap(), true).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
 
@@ -122,7 +122,7 @@ async fn daemon_mining_test() {
     let mut last_block_hash = None;
     for i in 0..10 {
         let template = rpc_client1
-            .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
+            .get_block_template(Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
         let header: Header = (&template.block.header).try_into().unwrap();
@@ -173,11 +173,11 @@ async fn daemon_mining_test() {
 /// connected peer, and that a node joining later syncs the same DAG. Every round submits two sibling blocks on top of the
 /// same template, so the DAG is wide and DAGKnight has to resolve real parallel blocks.
 ///
-/// `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_testnet13_dagknight_sync_test`
+/// `cargo test --release --package aero-testing-integration --lib -- daemon_integration_tests::daemon_testnet13_dagknight_sync_test`
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_testnet13_dagknight_sync_test() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("INFO");
+    aero_core::log::try_init_logger("INFO");
 
     const ROUNDS: u64 = 40;
     const WIDTH: usize = 2;
@@ -186,7 +186,7 @@ async fn daemon_testnet13_dagknight_sync_test() {
     async fn mine_round(client: &GrpcClient, pay_address: &Address, width: usize) {
         let template = client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
         let header: Header = (&template.block.header).try_into().unwrap();
-        let pow_state = kaspa_pow::State::new(&header);
+        let pow_state = aero_pow::State::new(&header);
         let nonces: Vec<u64> = (0u64..).filter(|&nonce| pow_state.check_pow(nonce).0).take(width).collect();
         for nonce in nonces {
             let mut block = template.block.clone();
@@ -214,17 +214,17 @@ async fn daemon_testnet13_dagknight_sync_test() {
     };
     let total_fd_limit = 10;
 
-    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
-    let mut kaspad2 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
-    let rpc_client1 = kaspad1.start().await;
-    let rpc_client2 = kaspad2.start().await;
+    let mut aerod1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut aerod2 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let rpc_client1 = aerod1.start().await;
+    let rpc_client2 = aerod2.start().await;
 
-    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    rpc_client2.add_peer(format!("127.0.0.1:{}", aerod1.p2p_port).try_into().unwrap(), true).await.unwrap();
     tokio::time::sleep(Duration::from_secs(1)).await; // Let it connect
     assert_eq!(rpc_client2.get_connected_peer_info().await.unwrap().peer_info.len(), 1);
 
     // Mine ROUNDS rounds of WIDTH sibling blocks (distinct valid PoW nonces over the same template) on daemon #1
-    let pay_address = Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
+    let pay_address = Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &[0; 32]);
     for _ in 0..ROUNDS {
         mine_round(&rpc_client1, &pay_address, WIDTH).await;
     }
@@ -237,30 +237,31 @@ async fn daemon_testnet13_dagknight_sync_test() {
 
     // A node joining after the fact IBDs to the same sink. IBD covers the past of the syncer sink, so the sibling tip left
     // unmerged by the sink (in its antipast) arrives later via relay.
-    let mut kaspad3 = Daemon::new_random_with_args(args, total_fd_limit);
-    let rpc_client3 = kaspad3.start().await;
-    rpc_client3.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
-    wait_for(500, 120, || same_sink(rpc_client1.clone(), rpc_client3.clone()), "late-joining daemon #3 did not reach the same sink").await;
+    let mut aerod3 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client3 = aerod3.start().await;
+    rpc_client3.add_peer(format!("127.0.0.1:{}", aerod1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    wait_for(500, 120, || same_sink(rpc_client1.clone(), rpc_client3.clone()), "late-joining daemon #3 did not reach the same sink")
+        .await;
 
     // The next block merges both sibling tips, so daemon #3 must resolve the missing one and fully converge
     mine_round(&rpc_client1, &pay_address, WIDTH).await;
     wait_for(500, 120, || same_dag(rpc_client1.clone(), rpc_client3.clone()), "daemon #3 did not converge after relay").await;
 
-    for (client, daemon) in [(rpc_client1, &mut kaspad1), (rpc_client2, &mut kaspad2), (rpc_client3, &mut kaspad3)] {
+    for (client, daemon) in [(rpc_client1, &mut aerod1), (rpc_client2, &mut aerod2), (rpc_client3, &mut aerod3)] {
         client.disconnect().await.unwrap();
         drop(client);
         daemon.shutdown();
     }
 }
 
-/// `cargo test --release --package kaspa-testing-integration --lib -- daemon_integration_tests::daemon_utxos_propagation_test`
+/// `cargo test --release --package aero-testing-integration --lib -- daemon_integration_tests::daemon_utxos_propagation_test`
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_utxos_propagation_test() {
     #[cfg(feature = "heap")]
-    let _profiler = dhat::Profiler::builder().file_name("kaspa-testing-integration-heap.json").build();
+    let _profiler = dhat::Profiler::builder().file_name("aero-testing-integration-heap.json").build();
 
-    kaspa_core::log::try_init_logger(
-        "INFO,kaspa_testing_integration=trace,kaspa_notify=debug,kaspa_rpc_core=debug,kaspa_grpc_client=debug",
+    aero_core::log::try_init_logger(
+        "INFO,aero_testing_integration=trace,aero_notify=debug,aero_rpc_core=debug,aero_grpc_client=debug",
     );
 
     let args = Args {
@@ -274,18 +275,18 @@ async fn daemon_utxos_propagation_test() {
     let total_fd_limit = 10;
 
     let coinbase_maturity = SIMNET_PARAMS.coinbase_maturity();
-    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
-    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
-    let rpc_client1 = kaspad1.start().await;
-    let rpc_client2 = kaspad2.start().await;
+    let mut aerod1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut aerod2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client1 = aerod1.start().await;
+    let rpc_client2 = aerod2.start().await;
 
     // Let rpc_client1 receive virtual DAA score changed notifications
     let (sender1, event_receiver1) = async_channel::unbounded();
     rpc_client1.start(Some(Arc::new(ChannelNotify::new(sender1)))).await;
     rpc_client1.start_notify(Default::default(), VirtualDaaScoreChangedScope {}.into()).await.unwrap();
 
-    // Connect kaspad2 to kaspad1
-    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    // Connect aerod2 to aerod1
+    rpc_client2.add_peer(format!("127.0.0.1:{}", aerod1.p2p_port).try_into().unwrap(), true).await.unwrap();
     let check_client = rpc_client2.clone();
     wait_for(
         50,
@@ -303,21 +304,21 @@ async fn daemon_utxos_propagation_test() {
     // Mining key and address
     let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let miner_address =
-        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+        Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
     let miner_spk = pay_to_address_script(&miner_address);
 
     // User key and address
     let (_user_sk, user_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let user_address =
-        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &user_pk.x_only_public_key().0.serialize());
+        Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &user_pk.x_only_public_key().0.serialize());
 
     // Some dummy non-monitored address
-    let blank_address = Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]);
+    let blank_address = Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &[0; 32]);
 
     // Create a multi-listener RPC client on each node. Multi-listener subscriptions are propagated
     // upstream asynchronously, so subscribe to the streams used by mine_block before the long initial
     // mining run and later verify that notifications actually flowed through both listeners.
-    let mut clients = vec![ListeningClient::connect(&kaspad2).await, ListeningClient::connect(&kaspad1).await];
+    let mut clients = vec![ListeningClient::connect(&aerod2).await, ListeningClient::connect(&aerod1).await];
     for x in clients.iter_mut() {
         x.start_notify(BlockAddedScope {}.into()).await.unwrap();
         x.start_notify(VirtualDaaScoreChangedScope {}.into()).await.unwrap();
@@ -532,7 +533,7 @@ async fn daemon_utxos_propagation_test() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_compute_budget_relay_test() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("INFO");
+    aero_core::log::try_init_logger("INFO");
 
     let compute_budget_relay_test_params =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
@@ -551,12 +552,12 @@ async fn daemon_compute_budget_relay_test() {
     let total_fd_limit = 10;
 
     let coinbase_maturity = 0;
-    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
-    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
-    let rpc_client1 = kaspad1.start().await;
-    let rpc_client2 = kaspad2.start().await;
+    let mut aerod1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let mut aerod2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client1 = aerod1.start().await;
+    let rpc_client2 = aerod2.start().await;
 
-    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    rpc_client2.add_peer(format!("127.0.0.1:{}", aerod1.p2p_port).try_into().unwrap(), true).await.unwrap();
     let check_client = rpc_client2.clone();
     wait_for(
         50,
@@ -573,10 +574,10 @@ async fn daemon_compute_budget_relay_test() {
 
     let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let miner_address =
-        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+        Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
     let (_user_sk, user_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let user_address =
-        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &user_pk.x_only_public_key().0.serialize());
+        Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &user_pk.x_only_public_key().0.serialize());
 
     let mut last_block_hash = None;
     for _ in 0..coinbase_maturity {
@@ -625,7 +626,7 @@ async fn daemon_compute_budget_relay_test() {
     .await;
 
     if rpc_client2.get_connected_peer_info().await.unwrap().peer_info.is_empty() {
-        rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+        rpc_client2.add_peer(format!("127.0.0.1:{}", aerod1.p2p_port).try_into().unwrap(), true).await.unwrap();
         let check_client = rpc_client2.clone();
         wait_for(
             50,
@@ -762,14 +763,14 @@ async fn daemon_compute_budget_relay_test() {
 
     rpc_client1.disconnect().await.unwrap();
     rpc_client2.disconnect().await.unwrap();
-    kaspad1.shutdown();
-    kaspad2.shutdown();
+    aerod1.shutdown();
+    aerod2.shutdown();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("INFO");
+    aero_core::log::try_init_logger("INFO");
 
     let compute_budget_relay_test_params =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/compute_budget_relay_test_params.json");
@@ -785,12 +786,12 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
         ..Default::default()
     };
 
-    let mut kaspad = Daemon::new_random_with_args(args, 10);
-    let rpc_client = kaspad.start().await;
+    let mut aerod = Daemon::new_random_with_args(args, 10);
+    let rpc_client = aerod.start().await;
 
     let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let miner_address =
-        Address::new(kaspad.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+        Address::new(aerod.network.into(), aero_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
     let pay_spk = pay_to_address_script(&miner_address);
     let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
 
@@ -840,13 +841,13 @@ async fn daemon_rejects_transactions_with_inconsistent_input_mass_and_version() 
     rpc_client.submit_transaction(valid_v0_rpc_tx, false).await.expect("expected the valid v0 transaction to be accepted");
 
     rpc_client.disconnect().await.unwrap();
-    kaspad.shutdown();
+    aerod.shutdown();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_pruning_seqcommit_sync_test() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("INFO,kaspa_testing_integration=trace,kaspa_rpc_core=debug");
+    aero_core::log::try_init_logger("INFO,aero_testing_integration=trace,aero_rpc_core=debug");
 
     let override_params_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/seqcommit_sync_test_params.json");
     let params = load_override_params(&override_params_path);
@@ -862,12 +863,12 @@ async fn daemon_pruning_seqcommit_sync_test() {
     };
 
     let total_fd_limit = 10;
-    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
-    let rpc_client1 = kaspad1.start().await;
+    let mut aerod1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let rpc_client1 = aerod1.start().await;
 
     let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let miner_address =
-        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+        Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
     let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
 
     // Step 1: advance the chain to ~1.5 * finality depth from genesis.
@@ -984,10 +985,10 @@ async fn daemon_pruning_seqcommit_sync_test() {
     }
 
     // Step 3: only now start the syncee and let it sync and validate the seqcommit flow.
-    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
-    let rpc_client2 = kaspad2.start().await;
+    let mut aerod2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client2 = aerod2.start().await;
 
-    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    rpc_client2.add_peer(format!("127.0.0.1:{}", aerod1.p2p_port).try_into().unwrap(), true).await.unwrap();
     let check_client = rpc_client2.clone();
     wait_for(
         50,
@@ -1031,8 +1032,8 @@ async fn daemon_pruning_seqcommit_sync_test() {
 
     rpc_client1.disconnect().await.unwrap();
     rpc_client2.disconnect().await.unwrap();
-    kaspad1.shutdown();
-    kaspad2.shutdown();
+    aerod1.shutdown();
+    aerod2.shutdown();
 }
 
 // IBD test focused on `sync_new_smt_state` (protocol/flows/src/ibd/flow.rs:635).
@@ -1049,7 +1050,7 @@ async fn daemon_ibd_smt_state_sync_test() {
     const SMT_ANTICONE_COUNT: usize = 4;
 
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("INFO,kaspa_testing_integration=trace,kaspa_rpc_core=debug");
+    aero_core::log::try_init_logger("INFO,aero_testing_integration=trace,aero_rpc_core=debug");
 
     let override_params_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/params/seqcommit_sync_test_params.json");
     let params = load_override_params(&override_params_path);
@@ -1065,12 +1066,12 @@ async fn daemon_ibd_smt_state_sync_test() {
     };
 
     let total_fd_limit = 10;
-    let mut kaspad1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
-    let rpc_client1 = kaspad1.start().await;
+    let mut aerod1 = Daemon::new_random_with_args(args.clone(), total_fd_limit);
+    let rpc_client1 = aerod1.start().await;
 
     let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let miner_address =
-        Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
+        Address::new(aerod1.network.into(), aero_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
     let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
 
     // Phase 1: mine enough blocks to mature SMT_LANE_COUNT coinbase outputs.
@@ -1201,10 +1202,10 @@ async fn daemon_ibd_smt_state_sync_test() {
     let target_pruning_point = dag_info.pruning_point_hash;
 
     // Phase 4: bring up the syncee and connect it to the syncer.
-    let mut kaspad2 = Daemon::new_random_with_args(args, total_fd_limit);
-    let rpc_client2 = kaspad2.start().await;
+    let mut aerod2 = Daemon::new_random_with_args(args, total_fd_limit);
+    let rpc_client2 = aerod2.start().await;
 
-    rpc_client2.add_peer(format!("127.0.0.1:{}", kaspad1.p2p_port).try_into().unwrap(), true).await.unwrap();
+    rpc_client2.add_peer(format!("127.0.0.1:{}", aerod1.p2p_port).try_into().unwrap(), true).await.unwrap();
     let check_client = rpc_client2.clone();
     wait_for(
         50,
@@ -1267,32 +1268,32 @@ async fn daemon_ibd_smt_state_sync_test() {
 
     rpc_client1.disconnect().await.unwrap();
     rpc_client2.disconnect().await.unwrap();
-    kaspad1.shutdown();
-    kaspad2.shutdown();
+    aerod1.shutdown();
+    aerod2.shutdown();
 }
 
 // The following test runtime parameters are required for a graceful shutdown of the gRPC server
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_cleaning_test() {
     init_allocator_with_default_settings();
-    kaspa_core::log::try_init_logger("info,kaspa_grpc_core=trace,kaspa_grpc_server=trace,kaspa_grpc_client=trace,kaspa_core=trace");
+    aero_core::log::try_init_logger("info,aero_grpc_core=trace,aero_grpc_server=trace,aero_grpc_client=trace,aero_core=trace");
     let args = Args { devnet: true, ..Default::default() };
     let consensus_manager;
     let async_runtime;
     let core;
     {
         let total_fd_limit = 10;
-        let mut kaspad1 = Daemon::new_random_with_args(args, total_fd_limit);
-        let dyn_consensus_manager = kaspad1.core.find(ConsensusManager::IDENT).unwrap();
-        let dyn_async_runtime = kaspad1.core.find(AsyncRuntime::IDENT).unwrap();
+        let mut aerod1 = Daemon::new_random_with_args(args, total_fd_limit);
+        let dyn_consensus_manager = aerod1.core.find(ConsensusManager::IDENT).unwrap();
+        let dyn_async_runtime = aerod1.core.find(AsyncRuntime::IDENT).unwrap();
         consensus_manager = Arc::downgrade(&Arc::downcast::<ConsensusManager>(dyn_consensus_manager.into_any_arc()).unwrap());
         async_runtime = Arc::downgrade(&Arc::downcast::<AsyncRuntime>(dyn_async_runtime.into_any_arc()).unwrap());
-        core = Arc::downgrade(&kaspad1.core);
+        core = Arc::downgrade(&aerod1.core);
 
-        let rpc_client1 = kaspad1.start().await;
+        let rpc_client1 = aerod1.start().await;
         rpc_client1.disconnect().await.unwrap();
         drop(rpc_client1);
-        kaspad1.shutdown();
+        aerod1.shutdown();
     }
     tokio::time::sleep(Duration::from_millis(200)).await;
 

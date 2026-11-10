@@ -1,14 +1,14 @@
 //!
-//! # Kaspa Wallet Core
+//! # Aero Wallet Core
 //!
-//! Multi-platform Rust framework for Kaspa Wallet.
+//! Multi-platform Rust framework for Aero Wallet.
 //!
 //! This framework provides a series of APIs and primitives
 //! to simplify building applications that interface with
-//! the Kaspa p2p network.
+//! the Aero p2p network.
 //!
 //! For key generation and derivation, please see the
-//! [`kaspa_wallet_keys`] crate.
+//! [`aero_wallet_keys`] crate.
 //!
 //! This crate included are low-level primitives
 //! such as [`UtxoProcessor`](crate::utxo::UtxoProcessor)
@@ -34,7 +34,7 @@
 //! allowed transaction mass.
 //!
 //! Key generation and derivation is available in the
-//! [`kaspa_wallet_keys`] crate.
+//! [`aero_wallet_keys`] crate.
 //!
 //! The framework can operate
 //! within native Rust applications as well as within NodeJS, Bun
@@ -55,22 +55,22 @@
 //! Latest development builds of the WASM32 SDK can be found at:
 //! <https://aspectron.org/en/projects/kaspa-wasm.html>
 //!
-//! The `kaspa-wasm` module is a pure WASM32 module that includes
+//! The `aero-wasm` module is a pure WASM32 module that includes
 //! the entire wallet framework, but does not support RPC due to an absence
 //! of a native WebSocket in NodeJs environment, while
-//! the `kaspa` module includes `websocket` module dependency simulating
+//! the `aero` module includes `websocket` module dependency simulating
 //! the W3C WebSocket and thus supports RPC.
 //!
 //! JavaScript examples for using this framework can be found at:
 //! <https://github.com/kaspanet/rusty-kaspa/tree/master/wasm/nodejs>
 //!
 //! For pre-built browser-compatible WASM32 redistributables of this
-//! framework please see the releases section of the Rusty Kaspa
+//! framework please see the releases section of the Rusty Aero
 //! repository at <https://github.com/kaspanet/rusty-kaspa/releases>.
 //!
 
 extern crate alloc;
-extern crate self as kaspa_wallet_core;
+extern crate self as aero_wallet_core;
 
 pub mod account;
 pub mod api;
@@ -108,7 +108,7 @@ pub fn version() -> String {
 /// Only available when the `git-hash` feature is enabled.
 #[cfg(feature = "git-hash")]
 pub fn version_with_git_hash() -> String {
-    kaspa_build_info::git::with_short_hash(env!("CARGO_PKG_VERSION")).to_string()
+    aero_build_info::git::with_short_hash(env!("CARGO_PKG_VERSION")).to_string()
 }
 
 #[cfg(test)]

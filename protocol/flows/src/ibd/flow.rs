@@ -3,9 +3,7 @@ use crate::{
     flow_trait::Flow,
     ibd::{HeadersChunkStream, TrustedEntryStream, negotiate::ChainNegotiationOutput},
 };
-use futures::future::{Either, join_all, select, try_join_all};
-use itertools::Itertools;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet,
     api::{BlockValidationFuture, ExternalGhostdagDataForHash},
     block::Block,
@@ -14,21 +12,23 @@ use kaspa_consensus_core::{
     trusted::TrustedBlock,
     tx::Transaction,
 };
-use kaspa_consensusmanager::{ConsensusProxy, StagingConsensus, spawn_blocking};
-use kaspa_core::{debug, info, time::unix_now, warn};
-use kaspa_hashes::Hash;
-use kaspa_muhash::MuHash;
-use kaspa_p2p_lib::{
+use aero_consensusmanager::{ConsensusProxy, StagingConsensus, spawn_blocking};
+use aero_core::{debug, info, time::unix_now, warn};
+use aero_hashes::Hash;
+use aero_muhash::MuHash;
+use aero_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message, make_request,
     pb::{
         RequestAntipastMessage, RequestBlockBodiesMessage, RequestHeadersMessage, RequestPruningPointAndItsAnticoneMessage,
-        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage, kaspad_message::Payload,
+        RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage, aerod_message::Payload,
     },
 };
-use kaspa_utils::channel::JobReceiver;
+use aero_utils::channel::JobReceiver;
+use futures::future::{Either, join_all, select, try_join_all};
+use itertools::Itertools;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -660,8 +660,8 @@ impl IbdFlow {
 
     async fn sync_new_smt_state(&mut self, consensus: &ConsensusProxy, pruning_point: Hash) -> Result<(), ProtocolError> {
         use super::streams::SmtStream;
-        use kaspa_p2p_lib::pb::RequestPruningPointSmtStateMessage;
-        use kaspa_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
+        use aero_p2p_lib::pb::RequestPruningPointSmtStateMessage;
+        use aero_seq_commit::verify::{SmtMetadata, verify_smt_metadata};
 
         let pp_header = consensus.async_get_header(pruning_point).await.unwrap();
 
@@ -709,7 +709,7 @@ impl IbdFlow {
 
         // Small queue of already-chunked batches: one in flight + one being processed
         // by the importer is enough headroom; each chunk holds up to SMT_CHUNK_SIZE lanes.
-        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<kaspa_consensus_core::api::ImportLane>>(2);
+        let (tx, rx) = tokio::sync::mpsc::channel::<Vec<aero_consensus_core::api::ImportLane>>(2);
 
         let consensus_for_import = consensus.clone();
         let builder_handle =

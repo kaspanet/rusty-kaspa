@@ -1,29 +1,29 @@
 use super::{
     handler_trait::Handler,
-    interface::{DynKaspadMethod, Interface},
+    interface::{DynAerodMethod, Interface},
 };
 use crate::{
     connection::{Connection, IncomingRoute},
     connection_handler::ServerContext,
     error::GrpcServerResult,
 };
-use kaspa_core::debug;
-use kaspa_grpc_core::{
-    ops::KaspadPayloadOps,
-    protowire::{KaspadRequest, KaspadResponse},
+use aero_core::debug;
+use aero_grpc_core::{
+    ops::AerodPayloadOps,
+    protowire::{AerodRequest, AerodResponse},
 };
 
 pub struct RequestHandler {
-    rpc_op: KaspadPayloadOps,
+    rpc_op: AerodPayloadOps,
     incoming_route: IncomingRoute,
     server_ctx: ServerContext,
-    method: DynKaspadMethod,
+    method: DynAerodMethod,
     connection: Connection,
 }
 
 impl RequestHandler {
     pub fn new(
-        rpc_op: KaspadPayloadOps,
+        rpc_op: AerodPayloadOps,
         incoming_route: IncomingRoute,
         server_context: ServerContext,
         interface: &Interface,
@@ -33,7 +33,7 @@ impl RequestHandler {
         Self { rpc_op, incoming_route, server_ctx: server_context, method, connection }
     }
 
-    pub async fn handle_request(&self, request: KaspadRequest) -> GrpcServerResult<KaspadResponse> {
+    pub async fn handle_request(&self, request: AerodRequest) -> GrpcServerResult<AerodResponse> {
         let id = request.id;
         let mut response = self.method.call(self.server_ctx.clone(), self.connection.clone(), request).await?;
         response.id = id;

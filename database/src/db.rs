@@ -2,14 +2,14 @@ use rocksdb::{DBWithThreadMode, MultiThreaded};
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 
+use aero_utils::fd_budget::FDGuard;
 pub use conn_builder::ConnBuilder;
-use kaspa_utils::fd_budget::FDGuard;
 pub use rocksdb_preset::RocksDbPreset;
 
 mod conn_builder;
 mod rocksdb_preset;
 
-/// The DB type used for Kaspad stores
+/// The DB type used for Aerod stores
 pub struct DB {
     inner: DBWithThreadMode<MultiThreaded>,
     _fd_guard: FDGuard,

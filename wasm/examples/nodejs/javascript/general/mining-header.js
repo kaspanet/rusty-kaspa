@@ -1,11 +1,11 @@
-const kaspa = require('../../../../nodejs/kaspa');
+const aero = require('../../../../nodejs/aero');
 const {parseArgs} = require("../utils");
-kaspa.initConsolePanicHook();
+aero.initConsolePanicHook();
 
 (async () => {
     const {} = parseArgs();
 
-    const header = new kaspa.Header({
+    const header = new aero.Header({
         // hash : "8e40af02265360d59f4ecf9ae9ebf8f00a3118408f5a9cdcbcc9c0f93642f3af",
         hashMerkleRoot: "bbb490cbce5dc392608000d3aa40e2bfb814c415eac7788237f4eb3467b82059",
         acceptedIdMerkleRoot: "ab7f8fd73cc7f55c3598de5cdd27ef697161879c3edf52488f2ce23054a3e2ed",
@@ -38,7 +38,7 @@ kaspa.initConsolePanicHook();
     const headerToJSON = header.toJSON();
     console.log("header JSON (via Serde):", typeof headerToJSON, headerToJSON);
 
-    const header_copy = new kaspa.Header(header);
+    const header_copy = new aero.Header(header);
     header_copy.version = 2;
     header_copy.finalize();
     console.log("header copy:", header_copy);

@@ -2,13 +2,13 @@ use crate::{
     common::daemon::{ClientManager, Daemon},
     tasks::Task,
 };
+use aero_addresses::Address;
+use aero_consensus_core::network::NetworkType;
+use aero_core::{trace, warn};
+use aero_utils::{fd_budget, triggers::SingleTrigger};
+use aerod_lib::args::Args;
 use async_trait::async_trait;
 use clap::Parser;
-use kaspa_addresses::Address;
-use kaspa_consensus_core::network::NetworkType;
-use kaspa_core::{trace, warn};
-use kaspa_utils::{fd_budget, triggers::SingleTrigger};
-use kaspad_lib::args::Args;
 use std::{iter::once, sync::Arc};
 use tokio::task::JoinHandle;
 
@@ -66,7 +66,7 @@ impl DaemonArgs {
         let mut args = vec![
             "test".to_owned(),
             "--package".to_owned(),
-            "kaspa-testing-integration".to_owned(),
+            "aero-testing-integration".to_owned(),
             "--lib".to_owned(),
             "--features".to_owned(),
             "devnet-prealloc".to_owned(),
@@ -101,7 +101,7 @@ impl DaemonArgs {
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap();
         Address::new(
             NetworkType::Simnet.into(),
-            kaspa_addresses::Version::PubKey,
+            aero_addresses::Version::PubKey,
             &schnorr_key.public_key().x_only_public_key().0.serialize(),
         )
     }

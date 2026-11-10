@@ -8,11 +8,11 @@ use crate::{
         },
     },
 };
+use aero_addresses::Address;
+use aero_notify::scope::Scope;
+use aero_utils::triggers::SingleTrigger;
 use async_trait::async_trait;
 use itertools::{Itertools, chain};
-use kaspa_addresses::Address;
-use kaspa_notify::scope::Scope;
-use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 

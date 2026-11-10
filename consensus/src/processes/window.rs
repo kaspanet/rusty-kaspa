@@ -7,14 +7,14 @@ use crate::{
     },
     processes::ghostdag::ordering::SortableBlock,
 };
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet, BlueWorkType, HashMapCustomHasher,
     blockhash::{BlockHashExtensions, ORIGIN},
     config::genesis::GenesisBlock,
     errors::{block::RuleError, difficulty::DifficultyResult},
 };
-use kaspa_hashes::Hash;
-use kaspa_math::Uint256;
+use aero_hashes::Hash;
+use aero_math::Uint256;
 use once_cell::unsync::Lazy;
 use std::{
     cmp::Reverse,

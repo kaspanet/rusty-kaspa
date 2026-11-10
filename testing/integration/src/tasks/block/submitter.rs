@@ -2,12 +2,12 @@ use crate::{
     common::daemon::ClientManager,
     tasks::{Stopper, Task},
 };
+use aero_core::warn;
+use aero_grpc_client::ClientPool;
+use aero_rpc_core::{RpcRawBlock, api::rpc::RpcApi};
+use aero_utils::triggers::SingleTrigger;
 use async_channel::Sender;
 use async_trait::async_trait;
-use kaspa_core::warn;
-use kaspa_grpc_client::ClientPool;
-use kaspa_rpc_core::{RpcRawBlock, api::rpc::RpcApi};
-use kaspa_utils::triggers::SingleTrigger;
 use std::{sync::Arc, time::Duration};
 use tokio::{task::JoinHandle, time::sleep};
 
@@ -39,7 +39,7 @@ impl Task for BlockSubmitterTask {
             loop {
                 match c.submit_block(block.clone(), false).await {
                     Ok(response) => {
-                        assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
+                        assert_eq!(response.report, aero_rpc_core::SubmitBlockReport::Success);
                         break;
                     }
                     Err(_) => {

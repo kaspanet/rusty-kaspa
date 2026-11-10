@@ -1,13 +1,11 @@
-use crate::matrix::Matrix;
+use aero_consensus_client::Header;
+use aero_consensus_client::HeaderT;
+use aero_consensus_core::hashing;
+use aero_hashes::Hash;
+use aero_math::Uint256;
+use aero_utils::hex::FromHex;
+use aero_utils::hex::ToHex;
 use js_sys::BigInt;
-use kaspa_consensus_client::Header;
-use kaspa_consensus_client::HeaderT;
-use kaspa_consensus_core::hashing;
-use kaspa_hashes::Hash;
-use kaspa_hashes::PowHash;
-use kaspa_math::Uint256;
-use kaspa_utils::hex::FromHex;
-use kaspa_utils::hex::ToHex;
 use num::Float;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::TryCastFromJs;
@@ -20,7 +18,7 @@ extern "C" {
     pub type WorkT;
 }
 
-/// Represents a Kaspa header PoW manager
+/// Represents a Aero header PoW manager
 /// @category Mining
 #[wasm_bindgen(inspectable)]
 pub struct PoW {
@@ -43,11 +41,10 @@ impl PoW {
         let target = Uint256::from_compact_target_bits(header.bits);
         // Zero out the time and nonce.
         let pre_pow_hash = hashing::header::hash_override_nonce_time(header, 0, 0);
-        // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
-        let hasher = PowHash::new(pre_pow_hash, timestamp.unwrap_or(header.timestamp));
-        let matrix = Matrix::generate(pre_pow_hash);
 
-        Ok(Self { inner: crate::State { matrix, target, hasher }, pre_pow_hash })
+        let inner = crate::State::from_parts(pre_pow_hash, timestamp.unwrap_or(header.timestamp), target);
+
+        Ok(Self { inner, pre_pow_hash })
     }
 
     /// The target based on the provided bits.
@@ -60,12 +57,21 @@ impl PoW {
     /// @returns A boolean indicating if it reached the target and a bigint representing the reached target.
     #[wasm_bindgen(js_name=checkWork)]
     pub fn check_work(&self, nonce: u64) -> Result<WorkT> {
-        let (c, v) = self.inner.check_pow(nonce);
-        let array = js_sys::Array::new();
-        array.push(&JsValue::from(c));
-        array.push(&v.to_bigint().map_err(|err| Error::custom(format!("{err:?}")))?.into());
+        // RandomX is a C++ library and is not available when compiled to WebAssembly.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = nonce;
+            Err(Error::custom("RandomX proof-of-work is not available in WebAssembly"))
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let (c, v) = self.inner.check_pow(nonce);
+            let array = js_sys::Array::new();
+            array.push(&JsValue::from(c));
+            array.push(&v.to_bigint().map_err(|err| Error::custom(format!("{err:?}")))?.into());
 
-        Ok(array.unchecked_into())
+            Ok(array.unchecked_into())
+        }
     }
 
     /// Hash of the header without timestamp and nonce.
@@ -83,11 +89,9 @@ impl PoW {
         // Generate the target from compact target bits if provided
         let target = Uint256::from_compact_target_bits(target_bits.unwrap_or_default());
 
-        // Initialize the matrix and hasher using pre_pow_hash and timestamp
-        let matrix = Matrix::generate(pre_pow_hash);
-        let hasher = PowHash::new(pre_pow_hash, timestamp);
+        let inner = crate::State::from_parts(pre_pow_hash, timestamp, target);
 
-        Ok(PoW { inner: crate::State { matrix, target, hasher }, pre_pow_hash })
+        Ok(PoW { inner, pre_pow_hash })
     }
 }
 

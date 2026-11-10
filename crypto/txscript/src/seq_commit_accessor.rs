@@ -1,4 +1,4 @@
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 pub trait SeqCommitAccessor: Sync {
     fn is_chain_ancestor_from_pov(&self, block_hash: Hash) -> Option<bool>;

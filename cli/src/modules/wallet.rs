@@ -7,7 +7,7 @@ pub struct Wallet;
 
 impl Wallet {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, mut argv: Vec<String>, cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
 
         let guard = ctx.wallet().guard();
         let guard = guard.lock().await;
@@ -101,7 +101,7 @@ impl Wallet {
         Ok(())
     }
 
-    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
+    async fn display_help(self: Arc<Self>, ctx: Arc<AeroCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
                 ("list", "List available local wallet files"),
@@ -109,7 +109,7 @@ impl Wallet {
                 (
                     "import [<name>]",
                     "Create a wallet from an existing mnemonic (bip32 only). \r\n\r\n\
-                To import legacy wallets (KDX or kaspanet) please create \
+                To import legacy wallets (KDX or aeronet) please create \
                 a new bip32 wallet and use the 'account import' command. \
                 Legacy wallets can only be imported as accounts. \
                 \r\n",

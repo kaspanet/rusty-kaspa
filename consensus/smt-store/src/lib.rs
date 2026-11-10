@@ -1,4 +1,4 @@
-use kaspa_hashes::Hash;
+use aero_hashes::Hash;
 
 pub mod branch_version_store;
 pub mod cache;
@@ -19,7 +19,7 @@ pub type LaneKey = Hash;
 pub type BlockHash = Hash;
 
 /// Re-export node changes map type.
-pub use kaspa_smt::tree::SmtNodeChanges;
+pub use aero_smt::tree::SmtNodeChanges;
 
 /// Re-export Node enum.
-pub use kaspa_smt::store::Node;
+pub use aero_smt::store::Node;

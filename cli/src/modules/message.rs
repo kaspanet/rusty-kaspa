@@ -1,7 +1,7 @@
-use kaspa_addresses::Version;
-use kaspa_bip32::secp256k1::XOnlyPublicKey;
-use kaspa_wallet_core::message::SignMessageOptions;
-use kaspa_wallet_core::{
+use aero_addresses::Version;
+use aero_bip32::secp256k1::XOnlyPublicKey;
+use aero_wallet_core::message::SignMessageOptions;
+use aero_wallet_core::{
     account::{BIP32_ACCOUNT_KIND, KEYPAIR_ACCOUNT_KIND},
     message::{PersonalMessage, sign_message, verify_message},
 };
@@ -22,13 +22,13 @@ impl Handler for Message {
     }
 
     async fn handle(self: Arc<Self>, ctx: &Arc<dyn Context>, argv: Vec<String>, cmd: &str) -> cli::Result<()> {
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
         self.main(ctx, argv, cmd).await.map_err(|e| e.into())
     }
 }
 
 impl Message {
-    async fn main(self: Arc<Self>, ctx: Arc<KaspaCli>, argv: Vec<String>, _cmd: &str) -> Result<()> {
+    async fn main(self: Arc<Self>, ctx: Arc<AeroCli>, argv: Vec<String>, _cmd: &str) -> Result<()> {
         if argv.is_empty() {
             return self.display_help(ctx, argv).await;
         }
@@ -39,22 +39,22 @@ impl Message {
                     return self.display_help(ctx, argv).await;
                 }
 
-                let kaspa_address = argv[1].as_str();
+                let aero_address = argv[1].as_str();
                 let asked_message = ctx.term().ask(false, "Message: ").await?;
                 let message = asked_message.as_str();
 
-                self.sign(ctx, kaspa_address, message).await?;
+                self.sign(ctx, aero_address, message).await?;
             }
             "verify" => {
                 if argv.len() != 3 {
                     return self.display_help(ctx, argv).await;
                 }
-                let kaspa_address = argv[1].as_str();
+                let aero_address = argv[1].as_str();
                 let signature = argv[2].as_str();
                 let asked_message = ctx.term().ask(false, "Message: ").await?;
                 let message = asked_message.as_str();
 
-                self.verify(ctx, kaspa_address, signature, message).await?;
+                self.verify(ctx, aero_address, signature, message).await?;
             }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
@@ -65,13 +65,13 @@ impl Message {
         Ok(())
     }
 
-    async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
+    async fn display_help(self: Arc<Self>, ctx: Arc<AeroCli>, _argv: Vec<String>) -> Result<()> {
         ctx.term().help(
             &[
-                ("sign <kaspa_address>", "Sign a message with the private key that matches the given address. Prompts for message."),
+                ("sign <aero_address>", "Sign a message with the private key that matches the given address. Prompts for message."),
                 (
-                    "verify <kaspa_address> <signature>",
-                    "Verify the signature against the message and kaspa_address. Prompts for message.",
+                    "verify <aero_address> <signature>",
+                    "Verify the signature against the message and aero_address. Prompts for message.",
                 ),
             ],
             None,
@@ -80,14 +80,14 @@ impl Message {
         Ok(())
     }
 
-    async fn sign(self: Arc<Self>, ctx: Arc<KaspaCli>, kaspa_address: &str, message: &str) -> Result<()> {
-        let kaspa_address = Address::try_from(kaspa_address)?;
-        if kaspa_address.version != Version::PubKey {
+    async fn sign(self: Arc<Self>, ctx: Arc<AeroCli>, aero_address: &str, message: &str) -> Result<()> {
+        let aero_address = Address::try_from(aero_address)?;
+        if aero_address.version != Version::PubKey {
             return Err(Error::custom("Address not supported for message signing. Only supports PubKey addresses"));
         }
 
         let pm = PersonalMessage(message);
-        let privkey = self.get_address_private_key(&ctx, kaspa_address).await?;
+        let privkey = self.get_address_private_key(&ctx, aero_address).await?;
         let sign_options = SignMessageOptions { no_aux_rand: false };
 
         let sig_result = sign_message(&pm, &privkey, &sign_options);
@@ -102,13 +102,13 @@ impl Message {
         }
     }
 
-    async fn verify(self: Arc<Self>, ctx: Arc<KaspaCli>, kaspa_address: &str, signature: &str, message: &str) -> Result<()> {
-        let kaspa_address = Address::try_from(kaspa_address)?;
-        if kaspa_address.version != Version::PubKey {
+    async fn verify(self: Arc<Self>, ctx: Arc<AeroCli>, aero_address: &str, signature: &str, message: &str) -> Result<()> {
+        let aero_address = Address::try_from(aero_address)?;
+        if aero_address.version != Version::PubKey {
             return Err(Error::custom("Address not supported for message signing. Only supports PubKey addresses"));
         }
 
-        let pubkey = XOnlyPublicKey::from_slice(&kaspa_address.payload[0..32]).unwrap();
+        let pubkey = XOnlyPublicKey::from_slice(&aero_address.payload[0..32]).unwrap();
 
         let mut signature_hex = [0u8; 64];
         faster_hex::hex_decode(signature.as_bytes(), &mut signature_hex)?;
@@ -128,7 +128,7 @@ impl Message {
         Ok(())
     }
 
-    async fn get_address_private_key(self: Arc<Self>, ctx: &Arc<KaspaCli>, kaspa_address: Address) -> Result<[u8; 32]> {
+    async fn get_address_private_key(self: Arc<Self>, ctx: &Arc<AeroCli>, aero_address: Address) -> Result<[u8; 32]> {
         let account = ctx.wallet().account()?;
 
         match account.account_kind().as_ref() {
@@ -137,10 +137,10 @@ impl Message {
                 let keydata = account.prv_key_data(wallet_secret).await?;
                 let account = account.clone().as_derivation_capable().expect("expecting derivation capable");
 
-                let (receive, change) = account.derivation().addresses_indexes(&[&kaspa_address])?;
+                let (receive, change) = account.derivation().addresses_indexes(&[&aero_address])?;
                 let private_keys = account.create_private_keys(&keydata, &payment_secret, &receive, &change)?;
                 for (address, private_key) in private_keys {
-                    if kaspa_address == *address {
+                    if aero_address == *address {
                         return Ok(private_key.secret_bytes());
                     }
                 }

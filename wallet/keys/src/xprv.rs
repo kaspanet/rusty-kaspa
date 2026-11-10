@@ -2,7 +2,7 @@
 //! Extended private key ([`XPrv`]).
 //!
 
-use kaspa_bip32::{ChainCode, KeyFingerprint};
+use aero_bip32::{ChainCode, KeyFingerprint};
 
 use crate::imports::*;
 
@@ -12,7 +12,7 @@ use crate::imports::*;
 /// This class allows accepts a master seed and provides
 /// functions for derivation of dependent child private keys.
 ///
-/// Please note that Kaspa extended private keys use `kprv` prefix.
+/// Please note that Aero extended private keys use `kprv` prefix.
 ///
 /// @see {@link PrivateKeyGenerator}, {@link PublicKeyGenerator}, {@link XPub}, {@link Mnemonic}
 /// @category Wallet SDK
@@ -93,7 +93,7 @@ impl XPrv {
 
     #[wasm_bindgen(getter, js_name = "privateKey")]
     pub fn private_key_as_hex_string(&self) -> String {
-        use kaspa_bip32::PrivateKey;
+        use aero_bip32::PrivateKey;
         self.inner.private_key().to_bytes().to_vec().to_hex()
     }
 

@@ -2,7 +2,7 @@
 //! Extended public key ([`XPub`]).
 //!
 
-use kaspa_bip32::{ChainCode, KeyFingerprint, Prefix};
+use aero_bip32::{ChainCode, KeyFingerprint, Prefix};
 use std::{fmt, str::FromStr};
 
 use crate::imports::*;
@@ -13,7 +13,7 @@ use crate::imports::*;
 /// This class allows accepts another XPub and and provides
 /// functions for derivation of dependent child public keys.
 ///
-/// Please note that Kaspa extended public keys use `kpub` prefix.
+/// Please note that Aero extended public keys use `kpub` prefix.
 ///
 /// @see {@link PrivateKeyGenerator}, {@link PublicKeyGenerator}, {@link XPrv}, {@link Mnemonic}
 /// @category Wallet SDK

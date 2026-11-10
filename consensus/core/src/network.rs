@@ -11,8 +11,8 @@
 
 #![allow(non_snake_case)]
 
+use aero_addresses::Prefix;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_addresses::Prefix;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
@@ -156,7 +156,7 @@ impl TryFrom<&NetworkTypeT> for Prefix {
 
 #[derive(thiserror::Error, Debug, Clone)]
 pub enum NetworkIdError {
-    #[error("Invalid network name prefix: {0}. The expected prefix is 'kaspa'.")]
+    #[error("Invalid network name prefix: {0}. The expected prefix is 'aero'.")]
     InvalidPrefix(String),
 
     #[error(transparent)]
@@ -188,7 +188,7 @@ impl From<NetworkIdError> for JsValue {
 }
 
 ///
-/// NetworkId is a unique identifier for a kaspa network instance.
+/// NetworkId is a unique identifier for a aero network instance.
 /// It is composed of a network type and an optional suffix.
 ///
 /// @category Consensus
@@ -264,13 +264,13 @@ impl NetworkId {
         NETWORK_IDS.iter().copied()
     }
 
-    /// Returns a textual description of the network prefixed with `kaspa-`
+    /// Returns a textual description of the network prefixed with `aero-`
     pub fn to_prefixed(&self) -> String {
-        format!("kaspa-{}", self)
+        format!("aero-{}", self)
     }
 
     pub fn from_prefixed(prefixed: &str) -> Result<Self, NetworkIdError> {
-        if let Some(stripped) = prefixed.strip_prefix("kaspa-") {
+        if let Some(stripped) = prefixed.strip_prefix("aero-") {
             Self::from_str(stripped)
         } else {
             Err(NetworkIdError::InvalidPrefix(prefixed.to_string()))

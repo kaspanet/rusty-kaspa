@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-utils-tower"
-description = "Kaspa utilities and middleware for Tower HTTP"
+name = "aero-utils-tower"
+description = "Aero utilities and middleware for Tower HTTP"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true

@@ -11,7 +11,7 @@ macro_rules! route {
             )]
             fn $fn<'life0, 'life1, 'async_trait>(
                 &'life0 self,
-                _connection : ::core::option::Option<&'life1 Arc<dyn kaspa_rpc_core::api::connection::RpcConnection>>,
+                _connection : ::core::option::Option<&'life1 Arc<dyn aero_rpc_core::api::connection::RpcConnection>>,
                 request: [<$name Request>],
             ) -> ::core::pin::Pin<Box<dyn ::core::future::Future<Output = RpcResult<[<$name Response>]>> + ::core::marker::Send + 'async_trait>>
             where
@@ -25,7 +25,7 @@ macro_rules! route {
                     }
                     let __self = self;
                     let __ret: RpcResult<[<$name Response>]> =
-                        { __self.inner.call(KaspadPayloadOps::$name, request).await?.as_ref().try_into() };
+                        { __self.inner.call(AerodPayloadOps::$name, request).await?.as_ref().try_into() };
                     #[allow(unreachable_code)]
                     __ret
                 })

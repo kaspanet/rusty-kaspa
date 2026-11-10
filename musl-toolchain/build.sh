@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-UPSTREAM_REPO="kaspanet/rusty-kaspa"
+UPSTREAM_REPO="aeronet/rusty-aero"
 TOOLCHAIN_TAG="musl-toolchain-v1"
 
 # Calculate the hash of the preset file

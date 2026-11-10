@@ -1,10 +1,10 @@
 // @ts-ignore
 globalThis.WebSocket = require("websocket").w3cwebsocket; // W3C WebSocket module shim
 
-const kaspa = require("../../../../nodejs/kaspa");
-const { RpcClient, Encoding } = kaspa;
+const aero = require("../../../../nodejs/aero");
+const { RpcClient, Encoding } = aero;
 
-kaspa.initConsolePanicHook();
+aero.initConsolePanicHook();
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 

@@ -1,10 +1,10 @@
 use crate::address::error::{Error, Result};
+use aero_addresses::{Address, Prefix};
+use aero_consensus_core::tx::ScriptPublicKey;
+use aero_core::{debug, trace};
+use aero_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use indexmap::{IndexMap, map::Entry};
 use itertools::Itertools;
-use kaspa_addresses::{Address, Prefix};
-use kaspa_consensus_core::tx::ScriptPublicKey;
-use kaspa_core::{debug, trace};
-use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     collections::{HashMap, HashSet, hash_map, hash_set},
@@ -388,7 +388,7 @@ impl Inner {
 ///
 /// #### Implementation design
 ///
-/// Each [`Address`] is stored internally as a [`ScriptPubKey`](kaspa_consensus_core::tx::ScriptPublicKey).
+/// Each [`Address`] is stored internally as a [`ScriptPubKey`](aero_consensus_core::tx::ScriptPublicKey).
 /// This prevents inter-network duplication and optimizes UTXOs filtering efficiency.
 ///
 /// But consequently the address network prefix gets lost and must be globally provided when querying for addresses by indexes.
@@ -610,11 +610,11 @@ impl<'a> TrackerReadGuard<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_math::Uint256;
+    use aero_math::Uint256;
 
     fn create_addresses(start: usize, count: usize) -> Vec<Address> {
         (start..start + count)
-            .map(|i| Address::new(Prefix::Mainnet, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
+            .map(|i| Address::new(Prefix::Mainnet, aero_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
             .collect()
     }
 

@@ -6,7 +6,7 @@ pub struct List;
 
 impl List {
     async fn main(self: Arc<Self>, ctx: &Arc<dyn Context>, _argv: Vec<String>, _cmd: &str) -> Result<()> {
-        let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
+        let ctx = ctx.clone().downcast_arc::<AeroCli>()?;
 
         ctx.list().await?;
 
@@ -14,7 +14,7 @@ impl List {
             tprintln!(ctx, "{}", style("Wallet is not connected to the network").magenta());
             tprintln!(ctx);
         } else if !ctx.wallet().is_synced() {
-            tprintln!(ctx, "{}", style("Kaspa node is currently syncing").magenta());
+            tprintln!(ctx, "{}", style("Aero node is currently syncing").magenta());
             tprintln!(ctx);
         }
 

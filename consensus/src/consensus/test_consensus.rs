@@ -1,19 +1,19 @@
-use async_channel::Sender;
-use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::mining_rules::MiningRules;
-use kaspa_consensus_core::tx::ScriptPublicKey;
-use kaspa_consensus_core::{
+use aero_consensus_core::coinbase::MinerData;
+use aero_consensus_core::mining_rules::MiningRules;
+use aero_consensus_core::tx::ScriptPublicKey;
+use aero_consensus_core::{
     api::ConsensusApi, block::MutableBlock, blockstatus::BlockStatus, header::Header, merkle::calc_hash_merkle_root,
     subnets::SUBNETWORK_ID_COINBASE, tx::Transaction,
 };
-use kaspa_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
-use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
-use kaspa_core::{core::Core, service::Service};
-use kaspa_database::utils::DbLifetime;
-use kaspa_hashes::Hash;
-use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_smt::proof::OwnedSmtProof;
-use kaspa_smt_store::processor::SmtReadBounds;
+use aero_consensus_notify::{notification::Notification, root::ConsensusNotificationRoot};
+use aero_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCtl};
+use aero_core::{core::Core, service::Service};
+use aero_database::utils::DbLifetime;
+use aero_hashes::Hash;
+use aero_notify::subscription::context::SubscriptionContext;
+use aero_smt::proof::OwnedSmtProof;
+use aero_smt_store::processor::SmtReadBounds;
+use async_channel::Sender;
 use parking_lot::RwLock;
 
 use super::Consensus;
@@ -34,9 +34,9 @@ use crate::{
     pipeline::{ProcessingCounters, body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor},
     test_helpers::header_from_precomputed_hash,
 };
-use kaspa_consensus_core::api::SeqCommitLaneEntry;
-use kaspa_database::create_temp_db;
-use kaspa_database::prelude::ConnBuilder;
+use aero_consensus_core::api::SeqCommitLaneEntry;
+use aero_database::create_temp_db;
+use aero_database::prelude::ConnBuilder;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
@@ -169,7 +169,7 @@ impl TestConsensus {
     /// # Panics
     ///
     /// Panics if block builder validation rules are violated.
-    /// See `kaspa_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
+    /// See `aero_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
     pub fn add_utxo_valid_block_with_parents(
         &self,
         hash: Hash,
@@ -194,7 +194,7 @@ impl TestConsensus {
     /// # Panics
     ///
     /// Panics if block builder validation rules are violated.
-    /// See `kaspa_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
+    /// See `aero_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
     pub fn build_utxo_valid_block_with_parents(
         &self,
         hash: Hash,

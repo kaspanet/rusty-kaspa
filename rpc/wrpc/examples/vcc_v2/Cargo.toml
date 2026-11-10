@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-wrpc-vcc-v2"
-description = "Kaspa VCCV2 example"
+name = "aero-wrpc-vcc-v2"
+description = "Aero VCCV2 example"
 publish = false
 rust-version.workspace = true
 version.workspace = true
@@ -12,10 +12,10 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-wrpc-client.workspace = true
-kaspa-addresses.workspace = true
-kaspa-consensus-core.workspace = true
+aero-rpc-core.workspace = true
+aero-wrpc-client.workspace = true
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
 tokio.workspace = true
 
 

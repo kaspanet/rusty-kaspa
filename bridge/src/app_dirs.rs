@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-const BRIDGE_APP_FOLDER_NAME: &str = "kaspa-stratum-bridge";
+const BRIDGE_APP_FOLDER_NAME: &str = "aero-stratum-bridge";
 
 fn get_home_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
@@ -21,6 +21,6 @@ pub(crate) fn get_bridge_logs_dir() -> PathBuf {
     get_bridge_app_dir().join("logs")
 }
 
-pub(crate) fn default_inprocess_kaspad_appdir() -> PathBuf {
-    get_bridge_app_dir().join("kaspad")
+pub(crate) fn default_inprocess_aerod_appdir() -> PathBuf {
+    get_bridge_app_dir().join("aerod")
 }

@@ -1,13 +1,13 @@
+use aero_consensus_core::BlockHashSet;
+use aero_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher, blockhash::BlockHashes};
+use aero_database::prelude::{BatchDbWriter, CachePolicy, DbWriter};
+use aero_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
+use aero_database::prelude::{DB, StoreResult};
+use aero_database::prelude::{DirectWriter, MemoryWriter};
+use aero_database::prelude::{ReadLock, StoreError};
+use aero_database::registry::{DatabaseStorePrefixes, SEPARATOR};
+use aero_hashes::Hash;
 use itertools::Itertools;
-use kaspa_consensus_core::BlockHashSet;
-use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher, blockhash::BlockHashes};
-use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DbWriter};
-use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
-use kaspa_database::prelude::{DB, StoreResult};
-use kaspa_database::prelude::{DirectWriter, MemoryWriter};
-use kaspa_database::prelude::{ReadLock, StoreError};
-use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
-use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::collections::HashSet;
 use std::collections::hash_map::Entry;
@@ -338,7 +338,7 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
             .parents_access
             .iterator()
             .map(|r| r.unwrap().0)
-            .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
+            .map(|k| <[u8; aero_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
             .map(Hash::from_bytes)
             .chain(self.parents_overrides.keys().copied())
             .collect::<BlockHashSet>()
@@ -449,8 +449,8 @@ impl RelationsStore for MemoryRelationsStore {
 mod tests {
     use super::*;
     use crate::processes::relations::RelationsStoreExtensions;
-    use kaspa_database::create_temp_db;
-    use kaspa_utils::mem_size::MemMode;
+    use aero_database::create_temp_db;
+    use aero_utils::mem_size::MemMode;
 
     #[test]
     fn test_memory_relations_store() {
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn test_db_relations_store() {
-        let (lt, db) = create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10));
+        let (lt, db) = create_temp_db!(aero_database::prelude::ConnBuilder::default().with_files_limit(10));
         test_relations_store(DbRelationsStore::new(
             db,
             0,

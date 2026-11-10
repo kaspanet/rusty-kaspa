@@ -71,8 +71,7 @@ pub fn multisig_redeem_script_ecdsa(pub_keys: impl Iterator<Item = impl Borrow<[
 mod tests {
     use super::*;
     use crate::{EngineContext, TxScriptEngine, caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script};
-    use core::str::FromStr;
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         hashing::{
             sighash::{SigHashReusedValuesUnsync, calc_ecdsa_signature_hash, calc_schnorr_signature_hash},
             sighash_type::SIG_HASH_ALL,
@@ -80,7 +79,8 @@ mod tests {
         subnets::SubnetworkId,
         tx::*,
     };
-    use kaspa_utils::hex::FromHex;
+    use aero_utils::hex::FromHex;
+    use core::str::FromStr;
     use rand::thread_rng;
     use secp256k1::Keypair;
     use std::{iter, iter::empty};

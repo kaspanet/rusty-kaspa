@@ -1,8 +1,8 @@
 //!
-//! # Standardized JSON serialization and deserialization of Kaspa transactions.
+//! # Standardized JSON serialization and deserialization of Aero transactions.
 //!
 //! This module provides standardized JSON serialization and deserialization of
-//! Kaspa transactions. There are two sub-modules: `numeric` and `string`.
+//! Aero transactions. There are two sub-modules: `numeric` and `string`.
 //!
 //! The `numeric` module provides serialization and deserialization of transactions
 //! with all large integer values as `bigint` types in WASM or numerical values that
@@ -13,7 +13,7 @@
 //! via JSON in JavaScript environments and later conversion to `bigint` types.
 //!
 //! These data structures can be used for manual transport of transactions using JSON.
-//! For more advanced use cases, please refer to `PSKT` in the [`kaspa_wallet_pskt`](https://docs.rs/kaspa_wallet_pskt)
+//! For more advanced use cases, please refer to `PSKT` in the [`aero_wallet_pskt`](https://docs.rs/kaspa_wallet_pskt)
 //! crate.
 //!
 

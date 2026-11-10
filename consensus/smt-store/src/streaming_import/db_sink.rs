@@ -2,11 +2,11 @@
 
 use std::collections::HashMap;
 
-use kaspa_database::prelude::{BatchDbWriter, DB, StoreError, StoreResult};
-use kaspa_hashes::{Hash, SeqCommitActiveNode};
-use kaspa_smt::store::{BranchKey, CollapsedLeaf, Node};
-use kaspa_smt::streaming::{ChildInfo, MergeSink};
-use kaspa_smt::{DEPTH, SmtHasher, bit_at, hash_node};
+use aero_database::prelude::{BatchDbWriter, DB, StoreError, StoreResult};
+use aero_hashes::{Hash, SeqCommitActiveNode};
+use aero_smt::store::{BranchKey, CollapsedLeaf, Node};
+use aero_smt::streaming::{ChildInfo, MergeSink};
+use aero_smt::{DEPTH, SmtHasher, bit_at, hash_node};
 use rocksdb::WriteBatch;
 
 use crate::BlockHash;

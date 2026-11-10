@@ -5,10 +5,10 @@ use crate::{
         tx::{sender::TransactionSenderTask, submitter::TransactionSubmitterTask},
     },
 };
+use aero_consensus_core::tx::Transaction;
+use aero_utils::triggers::SingleTrigger;
 use async_trait::async_trait;
 use itertools::chain;
-use kaspa_consensus_core::tx::Transaction;
-use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 

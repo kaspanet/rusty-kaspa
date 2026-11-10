@@ -28,9 +28,7 @@ use crate::{
         reachability::inquirer as reachability, relations,
     },
 };
-use crossbeam_channel::Receiver as CrossbeamReceiver;
-use itertools::Itertools;
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel,
     blockhash::ORIGIN,
     blockstatus::BlockStatus::StatusHeaderOnly,
@@ -39,12 +37,14 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
 };
-use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, trace, warn};
-use kaspa_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
-use kaspa_hashes::{Hash, ZERO_HASH};
-use kaspa_muhash::MuHash;
-use kaspa_utils::iter::IterExtensions;
+use aero_consensusmanager::SessionLock;
+use aero_core::{debug, info, trace, warn};
+use aero_database::prelude::{BatchDbWriter, DB, MemoryWriter, StoreResultExt};
+use aero_hashes::{Hash, ZERO_HASH};
+use aero_muhash::MuHash;
+use aero_utils::iter::IterExtensions;
+use crossbeam_channel::Receiver as CrossbeamReceiver;
+use itertools::Itertools;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
@@ -756,7 +756,7 @@ impl PruningProcessor {
 
     fn assert_smt_rebuilding(&self, new_pruning_point: Hash, pruning_point_blue_score: u64) {
         info!("Rebuilding pruning point SMT root after pruning data (sanity test)");
-        let bounds = kaspa_smt_store::processor::SmtReadBounds::for_pov(pruning_point_blue_score, self.config.params.finality_depth());
+        let bounds = aero_smt_store::processor::SmtReadBounds::for_pov(pruning_point_blue_score, self.config.params.finality_depth());
         let expected_root = self.smt_stores.get_lanes_root(bounds, |bh| self.is_smt_canonical(bh, new_pruning_point));
         let expected_count = self.smt_metadata_store.get(new_pruning_point).unwrap().active_lanes_count();
         let (root, count) = self

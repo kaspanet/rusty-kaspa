@@ -1,5 +1,5 @@
 use super::ProcessingCounters;
-use kaspa_core::{
+use aero_core::{
     info,
     task::{
         service::{AsyncService, AsyncServiceFuture},

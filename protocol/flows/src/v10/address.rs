@@ -1,20 +1,20 @@
 use crate::{flow_context::FlowContext, flow_trait::Flow};
-use itertools::Itertools;
-use kaspa_addressmanager::NetAddress;
-use kaspa_p2p_lib::{
+use aero_addressmanager::NetAddress;
+use aero_p2p_lib::{
     IncomingRoute, Router,
     common::ProtocolError,
     dequeue, dequeue_with_timeout, make_message,
-    pb::{AddressesMessage, RequestAddressesMessage, kaspad_message::Payload},
+    pb::{AddressesMessage, RequestAddressesMessage, aerod_message::Payload},
 };
-use kaspa_utils::networking::IpAddress;
+use aero_utils::networking::IpAddress;
+use itertools::Itertools;
 use rand::seq::SliceRandom;
 use std::sync::Arc;
 
-/// The maximum number of addresses that are sent in a single kaspa Addresses message.
+/// The maximum number of addresses that are sent in a single aero Addresses message.
 const MAX_ADDRESSES_SEND: usize = 1000;
 
-/// The maximum number of addresses that can be received in a single kaspa Addresses response.
+/// The maximum number of addresses that can be received in a single aero Addresses response.
 /// If a peer exceeds this value we consider it a protocol error.
 const MAX_ADDRESSES_RECEIVE: usize = 2500;
 

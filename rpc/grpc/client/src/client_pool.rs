@@ -1,9 +1,9 @@
 use super::GrpcClient;
+use aero_core::trace;
+use aero_utils::{any::type_name_short, channel::Channel, triggers::SingleTrigger};
 use async_channel::{SendError, Sender};
 use futures_util::Future;
 use itertools::Itertools;
-use kaspa_core::trace;
-use kaspa_utils::{any::type_name_short, channel::Channel, triggers::SingleTrigger};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},

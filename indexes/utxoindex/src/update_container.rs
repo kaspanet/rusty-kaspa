@@ -1,10 +1,10 @@
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashSet, HashMapCustomHasher,
     tx::{TransactionOutpoint, UtxoEntry},
     utxo::utxo_diff::UtxoDiff,
 };
-use kaspa_hashes::Hash;
-use kaspa_utils::hashmap::NestedHashMapExtensions;
+use aero_hashes::Hash;
+use aero_utils::hashmap::NestedHashMapExtensions;
 
 use crate::model::{CirculatingSupplyDiff, CompactUtxoEntry, UtxoChanges, UtxoSetByScriptPublicKey};
 

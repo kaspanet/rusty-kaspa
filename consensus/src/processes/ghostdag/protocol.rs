@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlockLevel, BlueWorkType, HashMapCustomHasher,
     blockhash::{self, BlockHashExtensions, BlockHashes},
 };
-use kaspa_hashes::Hash;
-use kaspa_utils::refs::Refs;
+use aero_hashes::Hash;
+use aero_utils::refs::Refs;
 
 use crate::{
     model::{

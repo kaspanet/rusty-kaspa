@@ -2,11 +2,11 @@
 //! [`RpcError`] enum used by RPC primitives.
 //!
 
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     errors::header::CompressedParentsError, subnets::SubnetworkConversionError, tx::TransactionId,
     utxo::utxo_inquirer::UtxoInquirerError,
 };
-use kaspa_utils::networking::IpAddress;
+use aero_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 use workflow_core::channel::ChannelError;
@@ -91,25 +91,25 @@ pub enum RpcError {
     SubmitBlockError(SubmitBlockRejectReason),
 
     #[error(transparent)]
-    AddressError(#[from] kaspa_addresses::AddressError),
+    AddressError(#[from] aero_addresses::AddressError),
 
     #[error(transparent)]
-    NetworkTypeError(#[from] kaspa_consensus_core::network::NetworkTypeError),
+    NetworkTypeError(#[from] aero_consensus_core::network::NetworkTypeError),
 
     #[error(transparent)]
-    NetworkIdError(#[from] kaspa_consensus_core::network::NetworkIdError),
+    NetworkIdError(#[from] aero_consensus_core::network::NetworkIdError),
 
     #[error(transparent)]
-    NotificationError(#[from] kaspa_notify::error::Error),
+    NotificationError(#[from] aero_notify::error::Error),
 
     #[error(transparent)]
-    MiningManagerError(#[from] kaspa_mining_errors::manager::MiningManagerError),
+    MiningManagerError(#[from] aero_mining_errors::manager::MiningManagerError),
 
     #[error(transparent)]
-    ConsensusError(#[from] kaspa_consensus_core::errors::consensus::ConsensusError),
+    ConsensusError(#[from] aero_consensus_core::errors::consensus::ConsensusError),
 
     #[error(transparent)]
-    ScriptClassError(#[from] kaspa_txscript::script_class::Error),
+    ScriptClassError(#[from] aero_txscript::script_class::Error),
 
     #[error(transparent)]
     NodeIdError(#[from] uuid::Error),
@@ -136,7 +136,7 @@ pub enum RpcError {
     SerdeWasmBindgen(String),
 
     #[error(transparent)]
-    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+    ConsensusClient(#[from] aero_consensus_client::error::Error),
 
     #[error("utxo return address could not be found -> {0}")]
     UtxoReturnAddressNotFound(UtxoInquirerError),

@@ -1,6 +1,6 @@
-use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
-use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::MemSizeEstimator;
+use aero_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+use aero_hashes::Hash;
+use aero_utils::mem_size::MemSizeEstimator;
 use serde::de::{Error as DeError, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollecti
 /// A map of balance by script public key
 pub type BalanceByScriptPublicKey = HashMap<ScriptPublicKey, u64>;
 
-// Note: memory optimization compared to go-lang kaspad:
+// Note: memory optimization compared to go-lang aerod:
 // Unlike `consensus_core::tx::UtxoEntry` the utxoindex utilizes a compacted utxo form, where `script_public_key` field is removed.
 // This utxo structure can be utilized in the utxoindex, since utxos are implicitly key'd via its script public key (and outpoint) at all times.
 /// A compacted form of [`UtxoEntry`] without reference to [`ScriptPublicKey`] or [`TransactionOutpoint`]

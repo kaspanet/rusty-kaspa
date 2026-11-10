@@ -1,14 +1,14 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use kaspa_consensus_core::{BlockHashMap, HashMapCustomHasher};
-use kaspa_consensus_core::{BlockHasher, BlockLevel, header::Header};
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
-use kaspa_database::prelude::{CachePolicy, DB};
-use kaspa_database::prelude::{StoreError, StoreResult};
-use kaspa_database::registry::DatabaseStorePrefixes;
-use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::MemSizeEstimator;
+use aero_consensus_core::{BlockHashMap, HashMapCustomHasher};
+use aero_consensus_core::{BlockHasher, BlockLevel, header::Header};
+use aero_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
+use aero_database::prelude::{CachePolicy, DB};
+use aero_database::prelude::{StoreError, StoreResult};
+use aero_database::registry::DatabaseStorePrefixes;
+use aero_hashes::Hash;
+use aero_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
@@ -54,7 +54,7 @@ struct Header2 {
     pub bits: u32,
     pub nonce: u64,
     pub daa_score: u64,
-    pub blue_work: kaspa_consensus_core::BlueWorkType,
+    pub blue_work: aero_consensus_core::BlueWorkType,
     pub blue_score: u64,
     pub pruning_point: Hash,
 }
@@ -227,7 +227,7 @@ impl HeaderStore for DbHeadersStore {
 
 #[derive(Clone)]
 pub struct MemoryHeaderStore {
-    header_map: RefCell<BlockHashMap<Arc<kaspa_consensus_core::header::Header>>>,
+    header_map: RefCell<BlockHashMap<Arc<aero_consensus_core::header::Header>>>,
 }
 
 impl Default for MemoryHeaderStore {
@@ -281,7 +281,7 @@ impl HeaderStoreReader for MemoryHeaderStore {
         Err(StoreError::KeyNotFound(DbKey::new(DatabaseStorePrefixes::Headers.as_ref(), hash)))
     }
 
-    fn get_header(&self, hash: Hash) -> std::result::Result<Arc<kaspa_consensus_core::header::Header>, StoreError> {
+    fn get_header(&self, hash: Hash) -> std::result::Result<Arc<aero_consensus_core::header::Header>, StoreError> {
         let map = self.header_map.borrow();
         if let Some(h) = map.get(&hash) {
             return Ok(Arc::clone(h));

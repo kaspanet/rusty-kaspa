@@ -1,7 +1,7 @@
+use aero_grpc_client::GrpcClient;
+use aero_notify::{connection::ChannelType, events::EventType, listener::ListenerId, scope::Scope, subscription::Command};
+use aero_rpc_core::{Notification, RpcResult, api::rpc::RpcApi, notify::connection::ChannelConnection};
 use async_channel::Receiver;
-use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{connection::ChannelType, events::EventType, listener::ListenerId, scope::Scope, subscription::Command};
-use kaspa_rpc_core::{Notification, RpcResult, api::rpc::RpcApi, notify::connection::ChannelConnection};
 
 /// An event type bound notification listener
 #[derive(Clone)]

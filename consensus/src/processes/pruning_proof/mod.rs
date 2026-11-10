@@ -14,7 +14,7 @@ use itertools::Itertools;
 use parking_lot::{Mutex, RwLock};
 use rocksdb::WriteBatch;
 
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
     blockhash::{self, BlockHashExtensions},
     errors::{
@@ -25,10 +25,10 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::{TrustedGhostdagData, TrustedHeader},
 };
-use kaspa_core::info;
-use kaspa_database::prelude::StoreResultExt;
-use kaspa_hashes::Hash;
-use kaspa_pow::calc_block_level;
+use aero_core::info;
+use aero_database::prelude::StoreResultExt;
+use aero_hashes::Hash;
+use aero_pow::calc_block_level;
 use thiserror::Error;
 
 use crate::{
@@ -297,9 +297,9 @@ impl PruningProofManager {
                     let topology_ghostdag = self.topology_ghostdag_store.get_data(hash).unwrap();
                     e.insert(((&*coloring_ghostdag).into(), (&*topology_ghostdag).into()));
 
-                    // We fill `ghostdag_blocks` only for kaspad-go legacy reasons, but the real set we
+                    // We fill `ghostdag_blocks` only for aerod-go legacy reasons, but the real set we
                     // send is `daa_window_blocks` which represents the full trusted sub-DAG in the antifuture
-                    // of the pruning point which kaspad-rust nodes expect to get when synced with headers proof
+                    // of the pruning point which aerod-rust nodes expect to get when synced with headers proof
                     //
                     // TODO(post-toccata): remove the redundant `ghostdag_blocks` field as part of cleaning up old P2P versions
                     if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {

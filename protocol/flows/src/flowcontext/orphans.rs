@@ -1,11 +1,11 @@
-use indexmap::{IndexMap, map::Entry::Occupied};
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     api::{BlockValidationFuture, BlockValidationFutures},
     block::Block,
 };
-use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
-use kaspa_core::debug;
-use kaspa_hashes::Hash;
+use aero_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
+use aero_core::debug;
+use aero_hashes::Hash;
+use indexmap::{IndexMap, map::Entry::Occupied};
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -273,14 +273,14 @@ impl OrphanBlocksPool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::future::try_join_all;
-    use kaspa_consensus_core::{
+    use aero_consensus_core::{
         api::{BlockValidationFutures, ConsensusApi},
         blockstatus::BlockStatus,
         errors::block::BlockProcessResult,
     };
-    use kaspa_consensusmanager::{ConsensusInstance, SessionLock};
-    use kaspa_core::assert_match;
+    use aero_consensusmanager::{ConsensusInstance, SessionLock};
+    use aero_core::assert_match;
+    use futures::future::try_join_all;
     use parking_lot::RwLock;
     use std::sync::Arc;
 

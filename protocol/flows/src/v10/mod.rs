@@ -30,8 +30,8 @@ pub(crate) mod txrelay;
 use request_pruning_point_smt_state::RequestPruningPointSmtStateFlow;
 
 use crate::{flow_context::FlowContext, flow_trait::Flow, ibd::IbdFlow};
-use kaspa_p2p_lib::{KaspadMessagePayloadType, Router, SharedIncomingRoute};
-use kaspa_utils::channel;
+use aero_p2p_lib::{AerodMessagePayloadType, Router, SharedIncomingRoute};
+use aero_utils::channel;
 use std::sync::Arc;
 
 pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
@@ -41,69 +41,69 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![
-                KaspadMessagePayloadType::BlockHeaders,
-                KaspadMessagePayloadType::DoneHeaders,
-                KaspadMessagePayloadType::IbdBlockLocatorHighestHash,
-                KaspadMessagePayloadType::IbdBlockLocatorHighestHashNotFound,
-                KaspadMessagePayloadType::BlockWithTrustedDataV4,
-                KaspadMessagePayloadType::DoneBlocksWithTrustedData,
-                KaspadMessagePayloadType::IbdChainBlockLocator,
-                KaspadMessagePayloadType::BlockBody,
-                KaspadMessagePayloadType::TrustedData,
-                KaspadMessagePayloadType::PruningPoints,
-                KaspadMessagePayloadType::PruningPointProof,
-                KaspadMessagePayloadType::UnexpectedPruningPoint,
-                KaspadMessagePayloadType::PruningPointUtxoSetChunk,
-                KaspadMessagePayloadType::DonePruningPointUtxoSetChunks,
-                KaspadMessagePayloadType::SmtMetadata,
-                KaspadMessagePayloadType::SmtLaneChunk,
+                AerodMessagePayloadType::BlockHeaders,
+                AerodMessagePayloadType::DoneHeaders,
+                AerodMessagePayloadType::IbdBlockLocatorHighestHash,
+                AerodMessagePayloadType::IbdBlockLocatorHighestHashNotFound,
+                AerodMessagePayloadType::BlockWithTrustedDataV4,
+                AerodMessagePayloadType::DoneBlocksWithTrustedData,
+                AerodMessagePayloadType::IbdChainBlockLocator,
+                AerodMessagePayloadType::BlockBody,
+                AerodMessagePayloadType::TrustedData,
+                AerodMessagePayloadType::PruningPoints,
+                AerodMessagePayloadType::PruningPointProof,
+                AerodMessagePayloadType::UnexpectedPruningPoint,
+                AerodMessagePayloadType::PruningPointUtxoSetChunk,
+                AerodMessagePayloadType::DonePruningPointUtxoSetChunks,
+                AerodMessagePayloadType::SmtMetadata,
+                AerodMessagePayloadType::SmtLaneChunk,
             ]),
             relay_receiver,
         )),
         Box::new(HandleRelayBlockRequests::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestRelayBlocks]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestRelayBlocks]),
         )),
-        Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Ping]))),
-        Box::new(SendPingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Pong]))),
+        Box::new(ReceivePingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![AerodMessagePayloadType::Ping]))),
+        Box::new(SendPingsFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![AerodMessagePayloadType::Pong]))),
         Box::new(RequestHeadersFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestHeaders, KaspadMessagePayloadType::RequestNextHeaders]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestHeaders, AerodMessagePayloadType::RequestNextHeaders]),
         )),
         Box::new(RequestPruningPointProofFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestPruningPointProof]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestPruningPointProof]),
         )),
         Box::new(RequestIbdChainBlockLocatorFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestIbdChainBlockLocator]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestIbdChainBlockLocator]),
         )),
         Box::new(PruningPointAndItsAnticoneRequestsFlow::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![
-                KaspadMessagePayloadType::RequestPruningPointAndItsAnticone,
-                KaspadMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
+                AerodMessagePayloadType::RequestPruningPointAndItsAnticone,
+                AerodMessagePayloadType::RequestNextPruningPointAndItsAnticoneBlocks,
             ]),
         )),
         Box::new(RequestPruningPointUtxoSetFlow::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![
-                KaspadMessagePayloadType::RequestPruningPointUtxoSet,
-                KaspadMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
+                AerodMessagePayloadType::RequestPruningPointUtxoSet,
+                AerodMessagePayloadType::RequestNextPruningPointUtxoSetChunk,
             ]),
         )),
         Box::new(RequestPruningPointSmtStateFlow::new(
             ctx.clone(),
             router.clone(),
             router.subscribe(vec![
-                KaspadMessagePayloadType::RequestPruningPointSmtState,
-                KaspadMessagePayloadType::RequestNextPruningPointSmtChunk,
+                AerodMessagePayloadType::RequestPruningPointSmtState,
+                AerodMessagePayloadType::RequestNextPruningPointSmtChunk,
             ]),
         )),
         // The IBD client flow currently requests block bodies only. Keep serving full-block
@@ -111,47 +111,46 @@ pub fn register(ctx: FlowContext, router: Arc<Router>) -> Vec<Box<dyn Flow>> {
         Box::new(HandleIbdBlockRequests::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestIbdBlocks]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestIbdBlocks]),
         )),
         Box::new(HandleBlockBodyRequests::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestBlockBodies]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestBlockBodies]),
         )),
         Box::new(HandleAntipastRequests::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestAntipast]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestAntipast]),
         )),
         Box::new(RelayTransactionsFlow::new(
             ctx.clone(),
             router.clone(),
-            router
-                .subscribe_with_capacity(vec![KaspadMessagePayloadType::InvTransactions], RelayTransactionsFlow::invs_channel_size()),
+            router.subscribe_with_capacity(vec![AerodMessagePayloadType::InvTransactions], RelayTransactionsFlow::invs_channel_size()),
             router.subscribe_with_capacity(
-                vec![KaspadMessagePayloadType::Transaction, KaspadMessagePayloadType::TransactionNotFound],
+                vec![AerodMessagePayloadType::Transaction, AerodMessagePayloadType::TransactionNotFound],
                 RelayTransactionsFlow::txs_channel_size(),
             ),
         )),
         Box::new(RequestTransactionsFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestTransactions]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestTransactions]),
         )),
-        Box::new(ReceiveAddressesFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![KaspadMessagePayloadType::Addresses]))),
+        Box::new(ReceiveAddressesFlow::new(ctx.clone(), router.clone(), router.subscribe(vec![AerodMessagePayloadType::Addresses]))),
         Box::new(SendAddressesFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestAddresses]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestAddresses]),
         )),
         Box::new(RequestBlockLocatorFlow::new(
             ctx.clone(),
             router.clone(),
-            router.subscribe(vec![KaspadMessagePayloadType::RequestBlockLocator]),
+            router.subscribe(vec![AerodMessagePayloadType::RequestBlockLocator]),
         )),
     ];
 
-    let invs_route = router.subscribe_with_capacity(vec![KaspadMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
+    let invs_route = router.subscribe_with_capacity(vec![AerodMessagePayloadType::InvRelayBlock], ctx.block_invs_channel_size());
     let shared_invs_route = SharedIncomingRoute::new(invs_route);
 
     let num_relay_flows = (ctx.config.bps() as usize / 2).max(1);

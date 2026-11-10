@@ -1,0 +1,18 @@
+[package]
+name = "aero-randomx"
+description = "Aero RandomX: thin FFI over the vendored RandomX CPU proof-of-work library"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+build = "build.rs"
+# Vendored RandomX (BSD-3-Clause, tevador / The Monero Project) lives in ./RandomX.
+include = ["src", "RandomX/CMakeLists.txt", "RandomX/LICENSE", "RandomX/src", "build.rs", "Cargo.toml"]
+
+[build-dependencies]
+cmake.workspace = true
+
+[lints]
+workspace = true

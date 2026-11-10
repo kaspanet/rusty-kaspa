@@ -6,7 +6,7 @@ use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
 
-pub const BIP32_ACCOUNT_KIND: &str = "kaspa-bip32-standard";
+pub const BIP32_ACCOUNT_KIND: &str = "aero-bip32-standard";
 
 pub struct Ctor {}
 
@@ -17,7 +17,7 @@ impl Factory for Ctor {
     }
 
     fn description(&self) -> String {
-        "Kaspa Core HD Wallet Account".to_string()
+        "Aero Core HD Wallet Account".to_string()
     }
 
     async fn try_load(

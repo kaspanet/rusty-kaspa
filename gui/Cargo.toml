@@ -1,0 +1,35 @@
+[package]
+name = "aero-core-gui"
+description = "Aero Core: desktop node and wallet application"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "aero-core"
+path = "src/main.rs"
+
+[dependencies]
+aero-addresses.workspace = true
+aero-consensus-core.workspace = true
+aero-core.workspace = true
+aero-grpc-client.workspace = true
+aero-notify.workspace = true
+aero-rpc-core.workspace = true
+aero-txscript.workspace = true
+
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow"] }
+itertools.workspace = true
+log.workspace = true
+rand.workspace = true
+secp256k1 = { workspace = true, features = ["global-context", "rand-std"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time", "sync"] }
+
+[lints]
+workspace = true

@@ -4,7 +4,7 @@ set -e
 
 # Parse command line arguments for --tag and --repo
 ARCHES="linux/amd64 linux/arm64"
-ARTIFACT="kaspad"
+ARTIFACT="aerod"
 while [ $# -gt 0 ]; do
   case "$1" in
     --tag)

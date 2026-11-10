@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-utils"
-description = "Kaspa utilities"
+name = "aero-utils"
+description = "Aero utilities"
 rust-version.workspace = true
 version.workspace = true
 edition.workspace = true

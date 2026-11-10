@@ -1,19 +1,19 @@
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
-use kaspa_consensus_core::hashing::tx::transaction_v0_id_preimage;
-use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx::{
+use aero_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+use aero_consensus_core::hashing::tx::transaction_v0_id_preimage;
+use aero_consensus_core::subnets::SubnetworkId;
+use aero_consensus_core::tx::{
     PopulatedTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
-use kaspa_hashes::Hash;
-use kaspa_txscript::caches::Cache;
-use kaspa_txscript::opcodes::codes::{
+use aero_hashes::Hash;
+use aero_txscript::caches::Cache;
+use aero_txscript::opcodes::codes::{
     Op1Add, OpBlake2bWithKey, OpCat, OpDup, OpEqual, OpEqualVerify, OpOutpointTxId, OpRot, OpTxInputIndex, OpTxInputSpk,
     OpTxOutputCount, OpTxOutputSpk, OpTxPayloadLen, OpTxPayloadSubstr,
 };
-use kaspa_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
-use kaspa_txscript::{EngineCtx, pay_to_script_hash_script};
-use kaspa_txscript::{EngineFlags, TxScriptEngine};
-use kaspa_txscript_errors::TxScriptError;
+use aero_txscript::script_builder::{ScriptBuilder, ScriptBuilderResult};
+use aero_txscript::{EngineCtx, pay_to_script_hash_script};
+use aero_txscript::{EngineFlags, TxScriptEngine};
+use aero_txscript_errors::TxScriptError;
 
 fn main() -> ScriptBuilderResult<()> {
     counter_example()
@@ -86,13 +86,13 @@ struct CovenantState {
 }
 
 impl CovenantState {
-    fn new(counter: u8, spk: &kaspa_consensus_core::tx::ScriptPublicKey) -> Self {
+    fn new(counter: u8, spk: &aero_consensus_core::tx::ScriptPublicKey) -> Self {
         let payload = encode_counter(counter);
         let tx = genesis_tx(&payload, spk.clone());
         Self::from_tx(tx, spk, counter)
     }
 
-    fn from_tx(tx: Transaction, spk: &kaspa_consensus_core::tx::ScriptPublicKey, counter: u8) -> Self {
+    fn from_tx(tx: Transaction, spk: &aero_consensus_core::tx::ScriptPublicKey, counter: u8) -> Self {
         let preimage = transaction_v0_id_preimage(&tx);
         let payload_len = tx.payload.len();
         let (rest, payload) = preimage.split_at(preimage.len() - payload_len);
@@ -137,7 +137,7 @@ fn build_covenant_script() -> ScriptBuilderResult<Vec<u8>> {
 fn build_spend_tx(
     state: &CovenantState,
     next_counter: u8,
-    spk: &kaspa_consensus_core::tx::ScriptPublicKey,
+    spk: &aero_consensus_core::tx::ScriptPublicKey,
     covenant_script: &[u8],
 ) -> Transaction {
     let payload = encode_counter(next_counter);
@@ -163,7 +163,7 @@ fn build_spend_tx(
 fn run_vm(
     tx: &Transaction,
     utxo_entry: &UtxoEntry,
-    sig_cache: &Cache<kaspa_txscript::SigCacheKey, bool>,
+    sig_cache: &Cache<aero_txscript::SigCacheKey, bool>,
     reused_values: &SigHashReusedValuesUnsync,
     flags: EngineFlags,
 ) -> Result<(), TxScriptError> {
@@ -180,7 +180,7 @@ fn run_vm(
 }
 
 /// Create a genesis-style transaction that seeds the first covenant UTXO.
-fn genesis_tx(payload: &[u8], spk: kaspa_consensus_core::tx::ScriptPublicKey) -> Transaction {
+fn genesis_tx(payload: &[u8], spk: aero_consensus_core::tx::ScriptPublicKey) -> Transaction {
     let dummy_input = TransactionInput::new(TransactionOutpoint::new(Hash::from_u64_word(0), 0), vec![], 0, 0);
     let output = TransactionOutput::new(1_000_000, spk);
     let mut tx = Transaction::new(0, vec![dummy_input], vec![output], 0, SubnetworkId::default(), 0, payload.to_vec());

@@ -1,7 +1,7 @@
 const { PrivateKey, RpcClient, ScriptBuilder, Opcodes,
     payToScriptHashScript, addressFromScriptPublicKey,
     createTransaction, signTransaction,
-    Encoding} = require('./kaspa');
+    Encoding} = require('./aero');
 
 // Configuration
 const NETWORK_ID = 'devnet';

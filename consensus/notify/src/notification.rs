@@ -1,7 +1,6 @@
-use derive_more::Display;
-use kaspa_consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff};
-use kaspa_hashes::Hash;
-use kaspa_notify::{
+use aero_consensus_core::{acceptance_data::AcceptanceData, block::Block, utxo::utxo_diff::UtxoDiff};
+use aero_hashes::Hash;
+use aero_notify::{
     events::EventType,
     full_featured,
     notification::Notification as NotificationTrait,
@@ -11,6 +10,7 @@ use kaspa_notify::{
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
     },
 };
+use derive_more::Display;
 use std::sync::Arc;
 
 full_featured! {

@@ -1,11 +1,11 @@
 //! IBD SMT verification: metadata check.
 //!
 //! Proof verification with branch caching uses [`SmtProof::compute_root_with_visitor`]
-//! from `kaspa-smt` with `&mut ProofBranchCache` as the visitor.
+//! from `aero-smt` with `&mut ProofBranchCache` as the visitor.
 
 use crate::hashing::{activity_root_hash, seq_state_root};
 use crate::types::SeqState;
-use kaspa_hashes::{Hash, HasherBase, SeqCommitMerkleBranch};
+use aero_hashes::{Hash, HasherBase, SeqCommitMerkleBranch};
 
 /// Metadata sent before lane entries, verified against the pruning point header.
 #[derive(Clone, Copy, Debug)]
@@ -31,7 +31,7 @@ pub enum SmtVerifyError {
     RootMismatch { expected: Hash, computed: Hash },
 
     #[error("proof error: {0}")]
-    ProofError(#[from] kaspa_smt::proof::SmtProofError),
+    ProofError(#[from] aero_smt::proof::SmtProofError),
 }
 
 /// Verify that the metadata is consistent with the header's `accepted_id_merkle_root` (= seq_commit).
@@ -69,9 +69,9 @@ mod tests {
     use super::*;
     use crate::hashing::{activity_root_hash, lane_key, smt_leaf_hash};
     use crate::types::{LaneId, SmtLeafInput};
-    use kaspa_hashes::{SeqCommitActiveNode, ZERO_HASH};
-    use kaspa_smt::proof::ProofBranchCache;
-    use kaspa_smt::tree::SparseMerkleTree;
+    use aero_hashes::{SeqCommitActiveNode, ZERO_HASH};
+    use aero_smt::proof::ProofBranchCache;
+    use aero_smt::tree::SparseMerkleTree;
 
     type Smt = SparseMerkleTree<SeqCommitActiveNode>;
 

@@ -1,6 +1,6 @@
-# Kaspa Toccata Hardfork Node Setup Guide
+# Aero Toccata Hardfork Node Setup Guide
 
-Kaspa is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md), [KIP20](https://github.com/kaspanet/kips/blob/master/kip-0020.md), and [KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), bringing native L1 covenant programming and infrastructure for based ZK applications to Kaspa. The hard fork is scheduled to activate on mainnet at DAA score `474,165,565`, roughly on June 30, 2026, at 16:15 UTC.
+Aero is about to take a significant leap with the **Toccata Hardfork**, as detailed in [KIP16](https://github.com/kaspanet/kips/blob/master/kip-0016.md), [KIP17](https://github.com/kaspanet/kips/blob/master/kip-0017.md), [KIP20](https://github.com/kaspanet/kips/blob/master/kip-0020.md), and [KIP21](https://github.com/kaspanet/kips/blob/master/kip-0021.md), bringing native L1 covenant programming and infrastructure for based ZK applications to Aero. The hard fork is scheduled to activate on mainnet at DAA score `474,165,565`, roughly on June 30, 2026, at 16:15 UTC.
 
 As with any consensus change, **failing to upgrade can cause your node to split off from the network**. Exchanges may record incorrect balances, and miners may produce invalid blocks.
 
@@ -51,25 +51,25 @@ There are two reasons for the change:
 
 ## Running Your Node
 
-1. **Obtain Kaspa v2.0.1 binaries**  
+1. **Obtain Aero v2.0.1 binaries**  
    Download and extract the official [2.0.1 or newer release](https://github.com/kaspanet/rusty-kaspa/releases/latest), or build from the `stable` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
 
    ```
-   kaspad --utxoindex
+   aerod --utxoindex
    ```
 
    *(If running from source code:)*  
 
    ```
-   cargo run --bin kaspad --release -- --utxoindex
+   cargo run --bin aerod --release -- --utxoindex
    ```
 
    To run on testnet, simply add `--testnet` at the end. For example:
 
    ```
-   kaspad --utxoindex --testnet
+   aerod --utxoindex --testnet
    ```
 
 Leave this process running. Closing it will stop your node. If you have other flags that you use for your current node, you may continue to use those.
@@ -77,10 +77,10 @@ Leave this process running. Closing it will stop your node. If you have other fl
 - **Advanced Command-Line Options**:
   - `--disable-upnp` if you don't want your node to be automatically publicly connectable (if your router supports UPnP). Recommended for pools and exchanges.
   - `--rpclisten=0.0.0.0` to listen for RPC connections on all network interfaces (public RPC). Use `--rpclisten=127.0.0.1` if you are running your pool/exchange software on the same machine.
-  - `--rpclisten-borsh` for local Borsh RPC access from the `kaspa-cli` binary.
+  - `--rpclisten-borsh` for local Borsh RPC access from the `aero-cli` binary.
   - `--unsaferpc` to allow P2P peer query and management via RPC (recommended only when RPC is not exposed publicly).
-  - `--perf-metrics --loglevel=info,kaspad_lib::daemon=debug,kaspa_mining::monitor=debug` for detailed performance logs.
-  - `--loglevel=kaspa_grpc_server=warn` to suppress most RPC connect/disconnect log reports.
+  - `--perf-metrics --loglevel=info,aerod_lib::daemon=debug,aero_mining::monitor=debug` for detailed performance logs.
+  - `--loglevel=aero_grpc_server=warn` to suppress most RPC connect/disconnect log reports.
   - `--ram-scale=3.0` to increase cache size threefold (relevant for utilizing large RAM; can be set between 0.1 and 10).
 
 ## Block Reward Info RPC for Pools and Miners
@@ -105,7 +105,7 @@ Ideally, this includes deposit and withdrawal flows, block template handling, mi
 
 On Toccata activation, the minimum fee rate will increase from 1 sompi/gram to 100 sompi/gram. If you use the RPC fee estimation API to set your fees (most wallets do), you don't need to change anything. Otherwise, you'll need to update your code to create transactions with the correct fee rate.
 
-If you use `kaspawallet` from the Go Kaspad repo, download the new [v0.12.23 release](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23), which is adapted to the new minimum fee rate.
+If you use `aerowallet` from the Go Aerod repo, download the new [v0.12.23 release](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23), which is adapted to the new minimum fee rate.
 
 ## Deprecation of `Transaction.mass` in Transaction APIs
 
@@ -129,7 +129,7 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 ### Network users
 
 - If you run a node, upgrade to the [2.0.1 or newer release](https://github.com/kaspanet/rusty-kaspa/releases/latest) before activation.
-- If you do not operate a node, wallet, exchange, pool, explorer, or other Kaspa infrastructure, no action is required.
+- If you do not operate a node, wallet, exchange, pool, explorer, or other Aero infrastructure, no action is required.
 
 ### Wallet software
 
@@ -140,7 +140,7 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 ### Exchanges
 
 - Upgrade all nodes before activation.
-- Use an updated SDK: [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
+- Use an updated SDK: [rusty-aero v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Aerod v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
 - Test deposit, withdrawal, indexing, balance tracking, and fee-estimation flows against Testnet-10.
 - If transaction submission does not use the RPC fee estimation API, update fee calculation to `100 sompi * max(compute grams, 2 * transaction bytes)`.
 - Update transaction parsing to accept transaction version `1` and write `storageMass` / `storage_mass` instead of `mass`.
@@ -155,7 +155,7 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 ### Pools
 
 - Upgrade all nodes before activation.
-- Use an updated SDK: [rusty-kaspa v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Kaspad v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
+- Use an updated SDK: [rusty-aero v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Aerod v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
 - Update pool, job-generation, and block-submission code to preserve post-Toccata template fields while building the solved block. In particular, do not drop or overwrite `RpcBlockHeader.version`, transaction version `1`, `RpcTransaction.storage_mass`, `RpcTransactionInput.computeBudget`, or `RpcTransactionOutput.covenant`.
 - If your software serializes block-template transactions into custom job messages, extend those messages and their block-reconstruction path to round-trip the new fields.
 - Test `GetBlockTemplate` -> mining work distribution -> solved block reconstruction -> `SubmitBlock` on Testnet-10 with post-activation templates. After Toccata activates, blocks that strip the new fields can be invalid.

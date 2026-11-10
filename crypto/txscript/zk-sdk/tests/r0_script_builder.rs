@@ -1,15 +1,15 @@
-use ark_bn254::{Bn254, G1Affine};
-use ark_groth16::Proof;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use kaspa_consensus_core::{
+use aero_consensus_core::{
     hashing::sighash::SigHashReusedValuesUnsync,
     subnets::SubnetworkId,
     tx::{PopulatedTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
-use kaspa_hashes::Hash;
-use kaspa_txscript::{EngineCtx, EngineFlags, SigCacheKey, TxScriptEngine, caches::Cache, hex, pay_to_script_hash_script};
-use kaspa_txscript_errors::TxScriptError;
-use kaspa_txscript_zk_sdk::{ZkScriptBuilder, prepare_r0_groth16_proof};
+use aero_hashes::Hash;
+use aero_txscript::{EngineCtx, EngineFlags, SigCacheKey, TxScriptEngine, caches::Cache, hex, pay_to_script_hash_script};
+use aero_txscript_errors::TxScriptError;
+use aero_txscript_zk_sdk::{ZkScriptBuilder, prepare_r0_groth16_proof};
+use ark_bn254::{Bn254, G1Affine};
+use ark_groth16::Proof;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use risc0_zkvm::{Digest, Groth16Receipt, ReceiptClaim, SuccinctReceipt};
 
 fn zk_test_flags() -> EngineFlags {

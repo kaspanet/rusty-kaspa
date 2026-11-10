@@ -1,10 +1,10 @@
 // Example of VCCv2 endpoint
 
-use kaspa_addresses::Address;
-use kaspa_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
-use kaspa_rpc_core::{RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction, api::rpc::RpcApi};
-use kaspa_wrpc_client::{
-    KaspaRpcClient, WrpcEncoding,
+use aero_addresses::Address;
+use aero_consensus_core::subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE};
+use aero_rpc_core::{RpcDataVerbosityLevel, RpcHash, RpcOptionalTransaction, api::rpc::RpcApi};
+use aero_wrpc_client::{
+    AeroRpcClient, WrpcEncoding,
     client::{ConnectOptions, ConnectStrategy},
     prelude::NetworkId,
     prelude::NetworkType,
@@ -17,7 +17,7 @@ use std::{collections::HashSet, process::ExitCode};
 async fn main() -> ExitCode {
     match get_vcc_v2().await {
         Ok(_) => {
-            println!("Well done! You successfully completed your first client connection to Kaspa node!");
+            println!("Well done! You successfully completed your first client connection to Aero node!");
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -49,7 +49,7 @@ async fn get_vcc_v2() -> Result<()> {
     let subscription_context = None;
 
     // Create new wRPC client with parameters defined above
-    let client = KaspaRpcClient::new(encoding, url, resolver, selected_network, subscription_context)?;
+    let client = AeroRpcClient::new(encoding, url, resolver, selected_network, subscription_context)?;
 
     // Advanced connection options
     let timeout = 5_000;
@@ -60,7 +60,7 @@ async fn get_vcc_v2() -> Result<()> {
         ..Default::default()
     };
 
-    // Connect to selected Kaspa node
+    // Connect to selected Aero node
     client.connect(Some(options)).await?;
 
     let dag_info = client.get_block_dag_info().await?;
@@ -116,7 +116,7 @@ async fn get_vcc_v2() -> Result<()> {
 
     println!("total transactions count: {}", global_seen_tx.len());
 
-    // Disconnect client from Kaspa node
+    // Disconnect client from Aero node
     client.disconnect().await?;
 
     // Return function result

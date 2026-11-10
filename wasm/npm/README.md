@@ -1,15 +1,15 @@
-# Kaspa WASM SDK
+# Aero WASM SDK
 
-An integration wrapper around [`kaspa-wasm`](https://www.npmjs.com/package/kaspa-wasm) module that uses [`websocket`](https://www.npmjs.com/package/websocket) W3C adaptor for WebSocket communication.
+An integration wrapper around [`aero-wasm`](https://www.npmjs.com/package/kaspa-wasm) module that uses [`websocket`](https://www.npmjs.com/package/websocket) W3C adaptor for WebSocket communication.
 
-This is a Node.js module that provides bindings to the Kaspa WASM SDK strictly for use in the Node.js environment. The web browser version of the SDK is available as part of official SDK releases at [https://github.com/kaspanet/rusty-kaspa/releases](https://github.com/kaspanet/rusty-kaspa/releases)
+This is a Node.js module that provides bindings to the Aero WASM SDK strictly for use in the Node.js environment. The web browser version of the SDK is available as part of official SDK releases at [https://github.com/kaspanet/rusty-kaspa/releases](https://github.com/kaspanet/rusty-kaspa/releases)
 
 ## Usage
 
-Kaspa NPM module exports include all WASM32 bindings.
+Aero NPM module exports include all WASM32 bindings.
 ```javascript
-const kaspa = require('kaspa');
-console.log(kaspa.version());
+const aero = require('aero');
+console.log(aero.version());
 ```
 
 ## Documentation

@@ -1,5 +1,5 @@
-use kaspa_consensus_core::mass::ScriptUnits;
-use kaspa_txscript_errors::TxScriptError;
+use aero_consensus_core::mass::ScriptUnits;
+use aero_txscript_errors::TxScriptError;
 
 /// Tracks resource consumption (signature operations and pushed bytes, both expressed
 /// as script units) during script execution against a committed budget.
@@ -52,7 +52,7 @@ impl RuntimeResourceMeter {
 
 #[cfg(test)]
 mod tests {
-    use kaspa_core::assert_match;
+    use aero_core::assert_match;
 
     use super::*;
 

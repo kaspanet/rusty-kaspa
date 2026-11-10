@@ -4,8 +4,8 @@ use crate::{
     header::Header,
     tx::{Transaction, TransactionId},
 };
-use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::MemSizeEstimator;
+use aero_hashes::Hash;
+use aero_utils::mem_size::MemSizeEstimator;
 use std::sync::Arc;
 
 /// A mutable block structure where header and transactions within can still be mutated.

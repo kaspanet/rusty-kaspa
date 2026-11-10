@@ -1,9 +1,9 @@
 use std::{path::PathBuf, sync::Arc};
 
-use kaspa_consensus::consensus::factory::MultiConsensusManagementStore;
-use kaspa_consensus_core::network::NetworkId;
-use kaspa_database::prelude::{ConnBuilder, DB};
-use kaspad_lib::daemon::get_app_dir_from_args;
+use aero_consensus::consensus::factory::MultiConsensusManagementStore;
+use aero_consensus_core::network::NetworkId;
+use aero_database::prelude::{ConnBuilder, DB};
+use aerod_lib::daemon::get_app_dir_from_args;
 
 use crate::{Error, Result, args::DbSourceArgs};
 
@@ -42,8 +42,8 @@ pub fn resolve_consensus_db(args: &DbSourceArgs) -> Result<ResolvedConsensusDb> 
         });
     }
 
-    let kaspad_args = args.network.to_kaspad_args(args.appdir.as_ref().map(|path| path.display().to_string()))?;
-    let app_dir = get_app_dir_from_args(&kaspad_args);
+    let aerod_args = args.network.to_aerod_args(args.appdir.as_ref().map(|path| path.display().to_string()))?;
+    let app_dir = get_app_dir_from_args(&aerod_args);
     let db_dir = app_dir.join(network.to_prefixed()).join(DEFAULT_DATA_DIR);
     let meta_db_path = db_dir.join(META_DB);
     let consensus_db_root = db_dir.join(CONSENSUS_DB);
@@ -72,7 +72,7 @@ pub fn resolve_consensus_db(args: &DbSourceArgs) -> Result<ResolvedConsensusDb> 
 ///
 /// RocksDB documents read-only opens against a concurrently open read-write DB
 /// as undefined. This diagnostic still uses read-only mode because secondary
-/// opens can stall on large kaspad DBs; live-node scans are therefore best-effort.
+/// opens can stall on large aerod DBs; live-node scans are therefore best-effort.
 ///
 /// Custom WAL directories are not wired here, so scan such nodes only after a
 /// clean shutdown if authoritative results are required.
