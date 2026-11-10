@@ -193,9 +193,10 @@ async fn protocol_violations_disconnect_without_banning_and_rpc_bans_both_transp
                         _ => None,
                     };
                     if let Some(response) = response
-                        && router.enqueue(response).await.is_err() {
-                            break;
-                        }
+                        && router.enqueue(response).await.is_err()
+                    {
+                        break;
+                    }
                 }
             });
             Ok(())

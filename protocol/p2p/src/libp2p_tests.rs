@@ -116,9 +116,10 @@ mod tests {
             while closing > 0 {
                 let (_, e) = next(&mut nodes).await;
                 if let SwarmEvent::ConnectionClosed { endpoint, .. } = e
-                    && endpoint.is_relayed() {
-                        closing -= 1;
-                    }
+                    && endpoint.is_relayed()
+                {
+                    closing -= 1;
+                }
             }
             let protocol = StreamProtocol::new("/kaspa/prototype/1");
             let mut incoming = nodes[2].behaviour().streams.new_control().accept(protocol.clone()).unwrap();
