@@ -79,6 +79,7 @@ async fn main() {
             wait(async || a.get_block_dag_info().await.unwrap().sink != sink).await;
             // The caller has isolated other Kaspa peers and blocked TCP and direct
             // UDP. libp2p relay access remains available, but must not carry blocks.
+            #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(TIMESTAMP)")]
             let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
             while tokio::time::Instant::now() < deadline {
                 assert_eq!(b.get_block_dag_info().await.unwrap().sink, sink, "block propagated with all direct Kaspa paths blocked");

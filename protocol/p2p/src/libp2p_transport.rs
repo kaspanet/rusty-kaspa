@@ -1111,6 +1111,7 @@ fn is_relayed(address: &Multiaddr) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, reason = "Test code is exempt under docs/ARITH-SAFETY.md.")]
 mod session_tests {
     use super::*;
     use crate::{

@@ -502,6 +502,7 @@ impl ConnectionManager {
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, reason = "Test code is exempt under docs/ARITH-SAFETY.md.")]
 mod libp2p_tests {
     use super::*;
     use kaspa_addressmanager::DbAddressesStore;
