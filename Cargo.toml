@@ -79,7 +79,7 @@ rust-version = "1.91.0"
 version = "2.0.1"
 authors = ["Aero developers"]
 license = "ISC"
-repository = "https://github.com/kaspanet/rusty-kaspa"
+repository = "https://github.com/arkunati-png/rusty-aero"
 edition = "2024"
 include = [
     "src/**/*.rs",

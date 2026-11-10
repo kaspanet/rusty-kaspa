@@ -62,11 +62,11 @@
 //! the W3C WebSocket and thus supports RPC.
 //!
 //! JavaScript examples for using this framework can be found at:
-//! <https://github.com/kaspanet/rusty-kaspa/tree/master/wasm/nodejs>
+//! <https://github.com/arkunati-png/rusty-aero/tree/master/wasm/nodejs>
 //!
 //! For pre-built browser-compatible WASM32 redistributables of this
 //! framework please see the releases section of the Rusty Aero
-//! repository at <https://github.com/kaspanet/rusty-kaspa/releases>.
+//! repository at <https://github.com/arkunati-png/rusty-aero/releases>.
 //!
 
 extern crate alloc;

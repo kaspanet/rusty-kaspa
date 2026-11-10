@@ -1,7 +1,7 @@
 /*!
 # Rusty Aero WASM32 bindings
 
-[<img alt="github" src="https://img.shields.io/badge/github-kaspanet/rusty--kaspa-8da0cb?style=for-the-badge&labelColor=555555&color=8da0cb&logo=github" height="20">](https://github.com/kaspanet/rusty-kaspa/tree/master/wasm)
+[<img alt="github" src="https://img.shields.io/badge/github-arkunati-png/rusty--aero-8da0cb?style=for-the-badge&labelColor=555555&color=8da0cb&logo=github" height="20">](https://github.com/arkunati-png/rusty-aero/tree/master/wasm)
 [<img alt="crates.io" src="https://img.shields.io/crates/v/kaspa-wasm.svg?maxAge=2592000&style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/kaspa-wasm)
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-kaspa--wasm-56c2a5?maxAge=2592000&style=for-the-badge&logo=docs.rs" height="20">](https://docs.rs/kaspa-wasm)
 <img alt="license" src="https://img.shields.io/crates/l/kaspa-wasm.svg?maxAge=2592000&color=6ac&style=for-the-badge&logoColor=fff" height="20">
@@ -50,13 +50,13 @@ download pre-built redistributables from releases or development builds.
 ## Examples
 
 JavaScript examples for using this framework can be found at:
-<https://github.com/kaspanet/rusty-kaspa/tree/master/wasm/nodejs>
+<https://github.com/arkunati-png/rusty-aero/tree/master/wasm/nodejs>
 
 ## WASM32 Binaries
 
 For pre-built browser-compatible WASM32 redistributables of this
 framework please see the releases section of the Rusty Aero
-repository at <https://github.com/kaspanet/rusty-kaspa/releases>.
+repository at <https://github.com/arkunati-png/rusty-aero/releases>.
 
 ## Development Builds
 

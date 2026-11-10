@@ -26,7 +26,7 @@ While the minimum specs suffice to sync and maintain a TN10 node with the accele
 ## 1. Install & Run Your TN10 Node
 
 1. **Obtain the latest Aero binaries**  
-   Download and extract the latest [official release](https://github.com/kaspanet/rusty-kaspa/releases/), or build from the `master` branch by following the instructions in the project README.
+   Download and extract the latest [official release](https://github.com/arkunati-png/rusty-aero/releases/), or build from the `master` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
    While TN10 is the default netsuffix, specifying it explicitly is recommended:

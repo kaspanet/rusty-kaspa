@@ -27,7 +27,7 @@ If you can meaningfully review a pull request, please do so even if you have not
 ## How to get started
 
 1. Find an issue (or open one) — good first issues are a great first step.
-2. Fork the repo (See [Installation](https://github.com/kaspanet/rusty-kaspa?tab=readme-ov-file#installation) guide) and create a feature branch with a short, descriptive name.
+2. Fork the repo (See [Installation](https://github.com/arkunati-png/rusty-aero?tab=readme-ov-file#installation) guide) and create a feature branch with a short, descriptive name.
 3. Implement your change and include tests where appropriate.
 4. Make each commit atomic and focused. Update tests or add new ones in the same commit that changes behaviour.
 5. Push to your fork and open a Pull Request against the `master` branch (or the branch named in the issue).

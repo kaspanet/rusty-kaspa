@@ -52,7 +52,7 @@ There are two reasons for the change:
 ## Running Your Node
 
 1. **Obtain Aero v2.0.1 binaries**  
-   Download and extract the official [2.0.1 or newer release](https://github.com/kaspanet/rusty-kaspa/releases/latest), or build from the `stable` branch by following the instructions in the project README.
+   Download and extract the official [2.0.1 or newer release](https://github.com/arkunati-png/rusty-aero/releases/latest), or build from the `stable` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
 
@@ -128,7 +128,7 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 
 ### Network users
 
-- If you run a node, upgrade to the [2.0.1 or newer release](https://github.com/kaspanet/rusty-kaspa/releases/latest) before activation.
+- If you run a node, upgrade to the [2.0.1 or newer release](https://github.com/arkunati-png/rusty-aero/releases/latest) before activation.
 - If you do not operate a node, wallet, exchange, pool, explorer, or other Aero infrastructure, no action is required.
 
 ### Wallet software
@@ -140,7 +140,7 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 ### Exchanges
 
 - Upgrade all nodes before activation.
-- Use an updated SDK: [rusty-aero v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Aerod v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
+- Use an updated SDK: [rusty-aero v2.0.1 or newer](https://github.com/arkunati-png/rusty-aero/releases/latest) or [Go Aerod v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
 - Test deposit, withdrawal, indexing, balance tracking, and fee-estimation flows against Testnet-10.
 - If transaction submission does not use the RPC fee estimation API, update fee calculation to `100 sompi * max(compute grams, 2 * transaction bytes)`.
 - Update transaction parsing to accept transaction version `1` and write `storageMass` / `storage_mass` instead of `mass`.
@@ -155,7 +155,7 @@ Updated proto files: [`messages.proto`](../rpc/grpc/core/proto/messages.proto), 
 ### Pools
 
 - Upgrade all nodes before activation.
-- Use an updated SDK: [rusty-aero v2.0.1 or newer](https://github.com/kaspanet/rusty-kaspa/releases/latest) or [Go Aerod v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
+- Use an updated SDK: [rusty-aero v2.0.1 or newer](https://github.com/arkunati-png/rusty-aero/releases/latest) or [Go Aerod v0.12.23](https://github.com/kaspanet/kaspad/releases/tag/v0.12.23). If you generate your own RPC bindings, regenerate them after reviewing [gRPC/protobuf Changes](#grpcprotobuf-changes).
 - Update pool, job-generation, and block-submission code to preserve post-Toccata template fields while building the solved block. In particular, do not drop or overwrite `RpcBlockHeader.version`, transaction version `1`, `RpcTransaction.storage_mass`, `RpcTransactionInput.computeBudget`, or `RpcTransactionOutput.covenant`.
 - If your software serializes block-template transactions into custom job messages, extend those messages and their block-reconstruction path to round-trip the new fields.
 - Test `GetBlockTemplate` -> mining work distribution -> solved block reconstruction -> `SubmitBlock` on Testnet-10 with post-activation templates. After Toccata activates, blocks that strip the new fields can be invalid.

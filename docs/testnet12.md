@@ -32,7 +32,7 @@ We reiterate that only the included miner should be used to maintain a level pla
 First, we set-up a node:
 1. Clone the `tn12` branch of the `aerod` repository:
 ```
-git clone --branch tn12 https://github.com/kaspanet/rusty-kaspa.git
+git clone --branch tn12 https://github.com/arkunati-png/rusty-aero.git
 ```
 2. Start the ``aerod`` client with ``utxoindex`` enabled:
 

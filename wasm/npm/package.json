@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kaspanet/rusty-kaspa.git"
+    "url": "git+https://github.com/arkunati-png/rusty-aero.git"
   },
   "keywords": [
     "aero",
@@ -18,9 +18,9 @@
   "author": "Aero developers",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/kaspanet/rusty-kaspa/issues"
+    "url": "https://github.com/arkunati-png/rusty-aero/issues"
   },
-  "homepage": "https://github.com/kaspanet/rusty-kaspa#readme",
+  "homepage": "https://github.com/arkunati-png/rusty-aero#readme",
   "dependencies": {
     "websocket": "1.0.34",
     "aero-wasm": "0.13.5"

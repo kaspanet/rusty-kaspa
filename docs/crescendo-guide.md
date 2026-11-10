@@ -23,7 +23,7 @@ If you are a pool operator, it is _strongly recommended_ that you pick specs tha
 ## Running Your Node
 
 1. **Obtain Aero v1.0.0 binaries**  
-    Download and extract the official [1.0.0 release](https://github.com/kaspanet/rusty-kaspa/releases/tag/v1.0.0), or build from the `master` branch by following the instructions in the project README.
+    Download and extract the official [1.0.0 release](https://github.com/arkunati-png/rusty-aero/releases/tag/v1.0.0), or build from the `master` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
     ```
@@ -62,7 +62,7 @@ Ensure your pool/stratum is updated to preserve this field in the transactions b
 
 #### Updating GRPC proto
 
-Make sure that you get the updated `message.proto` and `rpc.proto` from the rusty-aero repo at https://github.com/kaspanet/rusty-kaspa/tree/master/rpc/grpc/core/proto
+Make sure that you get the updated `message.proto` and `rpc.proto` from the rusty-aero repo at https://github.com/arkunati-png/rusty-aero/tree/master/rpc/grpc/core/proto
 
 #### Using the golang Aerod repo as an SDK
 

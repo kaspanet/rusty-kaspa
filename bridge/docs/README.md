@@ -2,7 +2,7 @@
 
 This Stratum Bridge is currently in BETA. Support is available in the Aero Discord’s [#mining-and-hardware](https://discord.com/channels/599153230659846165/910178666099646584) channel.
 
-For bug reports or feature request, please open an issue at [`aeronet/rusty-aero` issues](https://github.com/kaspanet/rusty-kaspa/issues) and prefix your issue title with `[Bridge]`.
+For bug reports or feature request, please open an issue at [`aeronet/rusty-aero` issues](https://github.com/arkunati-png/rusty-aero/issues) and prefix your issue title with `[Bridge]`.
 
 This repository contains a standalone Stratum bridge binary at:
 
