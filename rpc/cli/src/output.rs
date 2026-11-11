@@ -59,7 +59,7 @@ fn render_text(value: &Value, level: usize, out: &mut String) {
                     let _ = writeln!(out, "{k}: {}", scalar(v));
                 } else {
                     let _ = writeln!(out, "{k}:");
-                    render_text(v, level + 1, out);
+                    render_text(v, level.saturating_add(1), out);
                 }
             }
         }
@@ -75,7 +75,7 @@ fn render_text(value: &Value, level: usize, out: &mut String) {
                 } else {
                     indent(level, out);
                     out.push_str("-\n");
-                    render_text(item, level + 1, out);
+                    render_text(item, level.saturating_add(1), out);
                 }
             }
         }
