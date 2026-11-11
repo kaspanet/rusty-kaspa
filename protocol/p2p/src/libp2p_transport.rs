@@ -131,6 +131,8 @@ pub struct Libp2pTransport {
     failure: Mutex<Option<TransportError>>,
     /// Configured QUIC UDP listener port, fixed at construction.
     relay_port: u16,
+    /// Maximum established inbound Swarm connections, including relay clients.
+    inbound_limit: u32,
     /// Enables actual private candidates in simnet/devnet.
     allow_private: bool,
     /// Cancels the Swarm, handshakes and session tasks.
@@ -155,10 +157,17 @@ impl Libp2pTransport {
             address_changed: Notify::new(),
             failure: Mutex::new(None),
             relay_port,
+            inbound_limit: 16,
             allow_private,
             cancel: CancellationToken::new(),
             tasks: TaskTracker::new(),
         })
+    }
+
+    /// Sets the maximum number of established incoming libp2p connections before startup.
+    pub fn with_inbound_limit(mut self, inbound_limit: u32) -> Self {
+        self.inbound_limit = inbound_limit;
+        self
     }
 
     pub fn spawn(&self, task: impl std::future::Future<Output = ()> + Send + 'static) {
@@ -397,6 +406,7 @@ impl Driver {
                     libp2p::connection_limits::ConnectionLimits::default()
                         .with_max_pending_incoming_per_source(Some(32))
                         .with_max_pending_outgoing(Some(32))
+                        .with_max_established_incoming(Some(state.inbound_limit))
                         .with_max_established(Some(512))
                         .with_max_established_per_peer(Some(4)),
                 ),
@@ -1192,12 +1202,12 @@ mod session_tests {
         .unwrap();
     }
 
-    async fn node() -> Node {
+    async fn node_with_inbound_limit(inbound_limit: u32) -> Node {
         let (sent, received) = mpsc::channel(32);
         let initializer = Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received: sent });
         let port = free_port_pair();
         let listen = NetAddress::from(SocketAddr::from(([127, 0, 0, 1], port + 1)));
-        let state = Arc::new(Libp2pTransport::new(listen.port, true).unwrap());
+        let state = Arc::new(Libp2pTransport::new(listen.port, true).unwrap().with_inbound_limit(inbound_limit));
         let id = state.id();
         let adaptor = Adaptor::client_only(Hub::new(), initializer, Default::default(), state.clone());
         assert_eq!(state.id(), id);
@@ -1209,6 +1219,10 @@ mod session_tests {
         assert!(state.is_ready());
         wait_until(|| state.direct_address().is_some()).await;
         Node { adaptor, state, received }
+    }
+
+    async fn node() -> Node {
+        node_with_inbound_limit(16).await
     }
 
     async fn relay_route(destination: &Node, relay: &Node) -> EndpointAddress {
@@ -1223,6 +1237,25 @@ mod session_tests {
         assert!(!node.state.is_ready());
         assert_eq!(node.state.outbound_sessions(), 0);
         assert!(node.state.take_failure().is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn inbound_connection_limit_rejects_excess_relay_clients_and_releases_capacity() {
+        let relay = node_with_inbound_limit(1).await;
+        let first = node().await;
+        let second = node().await;
+        let address = LibP2pAddress { address: relay.state.direct_address().unwrap(), id: relay.state.id() };
+
+        first.state.register_relay(address).await.unwrap();
+        assert!(first.state.has_relay_reservation(address));
+        assert!(second.state.register_relay(address).await.is_err());
+        assert!(!second.state.has_relay_reservation(address));
+
+        close(&first).await;
+        second.state.register_relay(address).await.unwrap();
+        assert!(second.state.has_relay_reservation(address));
+        close(&second).await;
+        close(&relay).await;
     }
 
     #[tokio::test]

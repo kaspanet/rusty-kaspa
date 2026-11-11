@@ -719,6 +719,7 @@ Do you confirm? (y/n)";
         p2p_server_addr,
         outbound_target,
         inbound_limit,
+        args.libp2p_inbound_limit,
         dns_seeders,
         config.default_p2p_port(),
         p2p_tower_counters.clone(),

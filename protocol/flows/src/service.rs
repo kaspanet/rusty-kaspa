@@ -32,6 +32,7 @@ pub struct P2pService {
     listen: NetAddress,
     outbound_target: usize,
     inbound_limit: usize,
+    libp2p_inbound_limit: u32,
     dns_seeders: &'static [&'static str],
     default_port: u16,
     shutdown: SingleTrigger,
@@ -47,6 +48,7 @@ impl P2pService {
         listen: NetAddress,
         outbound_target: usize,
         inbound_limit: usize,
+        libp2p_inbound_limit: u32,
         dns_seeders: &'static [&'static str],
         default_port: u16,
         counters: Arc<TowerConnectionCounters>,
@@ -60,6 +62,7 @@ impl P2pService {
             listen,
             outbound_target,
             inbound_limit,
+            libp2p_inbound_limit,
             dns_seeders,
             default_port,
             counters,
@@ -121,7 +124,10 @@ impl AsyncService for P2pService {
         Box::pin(async move {
             let startup = async {
                 let allow_private = matches!(self.flow_context.config.net.network_type, NetworkType::Simnet | NetworkType::Devnet);
-                let transport = Arc::new(Libp2pTransport::new(self.flow_context.config.relay_port, allow_private)?);
+                let transport = Arc::new(
+                    Libp2pTransport::new(self.flow_context.config.relay_port, allow_private)?
+                        .with_inbound_limit(self.libp2p_inbound_limit),
+                );
                 self.flow_context.address_manager.lock().set_local_libp2p_id(transport.id());
 
                 let p2p_adaptor = if self.inbound_limit == 0 {

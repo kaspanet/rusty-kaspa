@@ -52,6 +52,7 @@ pub struct Args {
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub listen: Option<ContextualNetAddress>,
     pub relay_port: Option<u16>,
+    pub libp2p_inbound_limit: u32,
     #[serde(rename = "uacomment")]
     pub user_agent_comments: Vec<String>,
     pub ua_rule: Vec<String>,
@@ -135,6 +136,7 @@ impl Default for Args {
             add_peers: vec![],
             listen: None,
             relay_port: None,
+            libp2p_inbound_limit: 16,
             user_agent_comments: vec![],
             ua_rule: vec![],
             yes: false,
@@ -322,6 +324,15 @@ pub fn cli() -> Command {
                 .require_equals(true)
                 .value_parser(clap::value_parser!(u16).range(1..))
                 .help("QUIC UDP port for libp2p sessions and relay service (default: network-specific, independent of --listen)."),
+        )
+        .arg(
+            Arg::new("libp2p-inbound-limit")
+                .long("libp2p-inbound-limit")
+                .env("KASPAD_LIBP2P_INBOUND_LIMIT")
+                .value_name("COUNT")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(u32))
+                .help("Maximum established inbound libp2p connections, including relay clients (default: 16)."),
         )
         .arg(
             Arg::new("outpeers")
@@ -538,6 +549,7 @@ impl Args {
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
             relay_port: m.get_one::<u16>("relay-port").copied().or(defaults.relay_port),
+            libp2p_inbound_limit: arg_match_unwrap_or::<u32>(&m, "libp2p-inbound-limit", defaults.libp2p_inbound_limit),
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
@@ -635,6 +647,14 @@ mod tests {
         for port in ["0", "65536"] {
             assert!(Args::parse(["kaspad", &format!("--relay-port={port}")]).is_err());
         }
+    }
+
+    #[test]
+    fn libp2p_inbound_limit_defaults_to_16_and_supports_overrides() {
+        assert_eq!(Args::parse(["kaspad"]).unwrap().libp2p_inbound_limit, 16);
+        assert_eq!(Args::parse(["kaspad", "--libp2p-inbound-limit=3"]).unwrap().libp2p_inbound_limit, 3);
+        assert_eq!(Args::parse(["kaspad", "--libp2p-inbound-limit=0"]).unwrap().libp2p_inbound_limit, 0);
+        assert_eq!(toml::from_str::<Args>("libp2p-inbound-limit = 5").unwrap().libp2p_inbound_limit, 5);
     }
 
     #[test]

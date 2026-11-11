@@ -83,6 +83,11 @@ outlive individual circuits, so closing a circuit does not remove the node's
 standing route through its home relay. These allowances apply per circuit;
 opening a new circuit starts a new allowance.
 
+`--libp2p-inbound-limit=COUNT` caps established incoming libp2p QUIC connections
+at 16 by default. The cap includes relay clients as well as direct peers, so it
+can restrict the number of usable reservations below the relay's 256-reservation
+setting. Set it to `0` to reject incoming libp2p connections.
+
 ## Ports and node identity
 
 The libp2p UDP listener handles relay service, address observations and direct
