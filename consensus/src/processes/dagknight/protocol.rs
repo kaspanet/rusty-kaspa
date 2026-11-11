@@ -370,7 +370,7 @@ impl<
         let virtual_cd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
         let cascade_result =
-            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_cd.clone(), k_to_check, &conflict_zone_manager);
+            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_cd.clone(), k_to_check, conflict_zone_manager);
 
         #[cfg(feature = "baseline-debugging")]
         {
