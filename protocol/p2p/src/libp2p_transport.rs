@@ -30,7 +30,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::{
-        Arc,
+        Arc, Weak,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     task::{Context, Poll},
@@ -124,7 +124,7 @@ pub struct Libp2pTransport {
     /// Ensures startup happens only once.
     started: AtomicBool,
     /// Outbound Kaspa sessions, including those whose hub registration is still queued.
-    outbound_sessions: AtomicUsize,
+    outbound_sessions: Arc<AtomicUsize>,
     /// Wakes the service to reconcile initialization or a changed home relay; no polling is needed.
     address_changed: Notify,
     /// Fatal listener failure, consumed by the P2P service before normal daemon shutdown.
@@ -151,7 +151,7 @@ impl Libp2pTransport {
             home: Default::default(),
             commands: Default::default(),
             started: AtomicBool::new(false),
-            outbound_sessions: AtomicUsize::new(0),
+            outbound_sessions: Arc::new(AtomicUsize::new(0)),
             address_changed: Notify::new(),
             failure: Mutex::new(None),
             relay_port,
@@ -312,7 +312,6 @@ enum Command {
     Dial(EndpointAddress, Reply<Libp2pStream>),
     RegisterRelay(LibP2pAddress, PeerId, Reply<()>),
     RemoveRelay(LibP2pAddress),
-    Close(ConnectionId),
 }
 
 /// Tracks a peer dial until an authenticated direct stream is returned or the attempt expires.
@@ -338,8 +337,17 @@ struct TransportConnection {
     peer: PeerId,
     address: SocketAddr,
     cancel: CancellationToken,
-    /// Whether this connection has opened an outbound Kaspa stream.
-    outbound_session: bool,
+    /// Weak handles let connection loss release slots even while tonic or a caller retains a stream.
+    sessions: Vec<Weak<SessionHandle>>,
+}
+
+impl Drop for TransportConnection {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+        for session in self.sessions.iter().filter_map(Weak::upgrade) {
+            session.close();
+        }
+    }
 }
 
 /// Owns the Swarm, connections, pending dials, and relay reservation in one async task.
@@ -347,7 +355,6 @@ struct TransportConnection {
 struct Driver {
     state: Arc<Libp2pTransport>,
     swarm: Swarm<Behaviour>,
-    sender: mpsc::Sender<Command>,
     handler: ConnectionHandler,
     pending: HashMap<PeerId, PendingDial>,
     connections: HashMap<ConnectionId, TransportConnection>,
@@ -408,12 +415,11 @@ impl Driver {
             source,
         })?;
         let (sender, commands) = mpsc::channel(64);
-        *state.commands.write() = Some(sender.clone());
+        *state.commands.write() = Some(sender);
         info!("libp2p endpoint started: {}", hex::encode(state.id()));
         let driver = Self {
             state,
             swarm,
-            sender,
             handler,
             pending: HashMap::new(),
             connections: HashMap::new(),
@@ -435,13 +441,10 @@ impl Driver {
                 _ = ticker.tick() => self.cleanup_cancelled(),
             }
         }
-        for (_, direct) in self.connections.drain() {
-            direct.cancel.cancel();
-        }
-        self.state.outbound_sessions.store(0, Ordering::Relaxed);
+        self.connections.clear();
     }
 
-    /// Handles peer connection requests, home-relay reservation changes, and connection closure.
+    /// Handles peer connection requests and home-relay reservation changes.
     fn command(&mut self, command: Command) {
         match command {
             Command::Dial(record, reply) => {
@@ -484,9 +487,6 @@ impl Driver {
                 if self.reservation.as_ref().is_some_and(|reservation| reservation.relay == relay) {
                     self.remove_registration();
                 }
-            }
-            Command::Close(connection) => {
-                self.swarm.close_connection(connection);
             }
         }
     }
@@ -556,12 +556,7 @@ impl Driver {
                 {
                     self.connections.insert(
                         connection_id,
-                        TransportConnection {
-                            peer: peer_id,
-                            address: socket,
-                            cancel: CancellationToken::new(),
-                            outbound_session: false,
-                        },
+                        TransportConnection { peer: peer_id, address: socket, cancel: CancellationToken::new(), sessions: Vec::new() },
                     );
                     self.open(peer_id, connection_id);
                     // The relay connection is shared: resume all destinations that were waiting to open circuits through it.
@@ -580,14 +575,9 @@ impl Driver {
                     }
                 }
             }
-            // Cancel work using the lost connection and release any outbound slot it held, allowing replacement sessions.
+            // Dropping the lost connection closes all its Kaspa streams and releases their outbound slots.
             SwarmEvent::ConnectionClosed { connection_id, .. } => {
-                if let Some(direct) = self.connections.remove(&connection_id) {
-                    direct.cancel.cancel();
-                    if direct.outbound_session {
-                        self.state.outbound_sessions.fetch_sub(1, Ordering::Relaxed);
-                    }
-                }
+                self.connections.remove(&connection_id);
             }
             // Reuse the existing gRPC/Kaspa handshake and message flows over the negotiated stream:
             // return outbound results to their caller, or start an inbound server.
@@ -813,19 +803,16 @@ impl Driver {
                 return;
             }
         };
-        // Tonic needs the verified socket and identity for admission and peer bookkeeping,
-        // and a close handle to release the transport connection when the Kaspa session ends.
-        let handle = ConnectionHandle { connection, sender: self.sender.clone(), cancel: direct.cancel.clone() };
-        let info = Libp2pConnectInfo { address: direct.address, id, request_started: CancellationToken::new(), connection: handle };
-        // Count the outbound session before hub registration so concurrent dials see the occupied
-        // slot even while the Kaspa handshake is still running.
-        if outbound && !direct.outbound_session {
-            direct.outbound_session = true;
-            self.state.outbound_sessions.fetch_add(1, Ordering::Relaxed);
-        }
-        // Adapt the stream to Tokio I/O, with reads and writes interrupted when the connection closes.
+        // Give each Kaspa stream its own cancellation token and outbound slot. A
+        // rejected handshake must not close other sessions sharing this QUIC connection.
+        let session =
+            Arc::new(SessionHandle::new(direct.cancel.child_token(), outbound.then(|| self.state.outbound_sessions.clone())));
+        direct.sessions.retain(|session| session.strong_count() != 0);
+        direct.sessions.push(Arc::downgrade(&session));
+        let info = Libp2pConnectInfo { address: direct.address, id, request_started: CancellationToken::new(), session };
+        // Adapt the stream to Tokio I/O, interrupted by either session closure or loss of its parent connection.
         info!("libp2p peer {} direct connection: {} (QUIC)", hex::encode(id), direct.address);
-        let stream = Libp2pStream { io: stream.compat(), cancelled: Box::pin(info.connection.cancel.clone().cancelled_owned()), info };
+        let stream = Libp2pStream { io: stream.compat(), cancelled: Box::pin(info.session.cancel.clone().cancelled_owned()), info };
         // Outbound callers perform the client-side gRPC setup; inbound streams need a server here.
         if outbound {
             self.finish_dial(peer, Ok(stream));
@@ -840,16 +827,11 @@ impl Driver {
         }
     }
 
-    /// Completes an outbound attempt and releases its temporary circuit and any failed direct connection.
+    /// Completes an outbound attempt and releases its temporary circuit, leaving shared direct connections intact.
     fn finish_dial(&mut self, peer: PeerId, result: Result<Libp2pStream, ConnectionError>) {
         if let Some(pending) = self.pending.remove(&peer) {
             if let Some(circuit) = pending.circuit {
                 self.swarm.close_connection(circuit);
-            }
-            if result.is_err()
-                && let Some(connection) = pending.connection
-            {
-                self.swarm.close_connection(connection);
             }
             let _ = pending.reply.send(result);
             // Resume another destination waiting on the same relay, so failure or cancellation
@@ -869,17 +851,12 @@ impl Driver {
         }
     }
 
-    /// Releases abandoned dials and registrations and closes connections whose sessions were cancelled.
+    /// Releases abandoned dials and registrations.
     fn cleanup_cancelled(&mut self) {
         // The caller owns the timeout. Dropping its reply receiver cancels the attempt.
         let cancelled: Vec<_> = self.pending.iter().filter(|(_, pending)| pending.reply.is_closed()).map(|(peer, _)| *peer).collect();
         for peer in cancelled {
             self.finish_dial(peer, Err(TransportError::ChannelClosed.into()));
-        }
-        for (&connection, direct) in &self.connections {
-            if direct.cancel.is_cancelled() {
-                self.swarm.close_connection(connection);
-            }
         }
         if self.reservation.as_ref().is_some_and(|reservation| reservation.reply.as_ref().is_some_and(oneshot::Sender::is_closed)) {
             self.remove_registration();
@@ -972,23 +949,42 @@ impl NetworkBehaviour for KaspaStreams {
     }
 }
 
-/// Shared control handle for closing one libp2p connection and cancelling its sessions.
-#[derive(Clone)]
-pub(crate) struct ConnectionHandle {
-    connection: ConnectionId,
-    sender: mpsc::Sender<Command>,
+/// Owns one Kaspa stream's cancellation and outbound slot, independently of its shared QUIC connection.
+pub(crate) struct SessionHandle {
     pub cancel: CancellationToken,
+    outbound_sessions: Option<Arc<AtomicUsize>>,
+    closed: AtomicBool,
 }
 
-impl ConnectionHandle {
+impl SessionHandle {
+    fn new(cancel: CancellationToken, outbound_sessions: Option<Arc<AtomicUsize>>) -> Self {
+        // Reserve before the handshake and asynchronous Hub registration become visible.
+        if let Some(counter) = &outbound_sessions {
+            counter.fetch_add(1, Ordering::Relaxed);
+        }
+        Self { cancel, outbound_sessions, closed: AtomicBool::new(false) }
+    }
+
     pub fn close(&self) {
-        self.cancel.cancel();
-        let _ = self.sender.try_send(Command::Close(self.connection));
+        // I/O teardown and router cleanup may both close this session; release its slot once.
+        if !self.closed.swap(true, Ordering::Relaxed) {
+            self.cancel.cancel();
+            if let Some(counter) = &self.outbound_sessions {
+                counter.fetch_sub(1, Ordering::Relaxed);
+            }
+        }
     }
 }
 
-/// Closes the underlying libp2p connection when its Kaspa session is dropped.
-pub(crate) struct SessionCloseGuard(pub ConnectionHandle);
+impl Drop for SessionHandle {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+/// Closes only this Kaspa stream and releases its slot when the router or response stream ends.
+pub(crate) struct SessionCloseGuard(pub Arc<SessionHandle>);
+
 impl Drop for SessionCloseGuard {
     fn drop(&mut self) {
         self.0.close();
@@ -1011,14 +1007,14 @@ impl tonic::transport::server::Connected for Libp2pStream {
 
 impl Drop for Libp2pStream {
     fn drop(&mut self) {
-        self.info.connection.close();
+        self.info.session.close();
     }
 }
 
 impl AsyncRead for Libp2pStream {
     fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         if self.cancelled.as_mut().poll(cx).is_ready() {
-            return Poll::Ready(Err(io::Error::new(io::ErrorKind::ConnectionAborted, "libp2p connection closed")));
+            return Poll::Ready(Err(io::Error::new(io::ErrorKind::ConnectionAborted, "libp2p session closed")));
         }
         Pin::new(&mut self.io).poll_read(cx, buf)
     }
@@ -1027,7 +1023,7 @@ impl AsyncRead for Libp2pStream {
 impl AsyncWrite for Libp2pStream {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         if self.cancelled.as_mut().poll(cx).is_ready() {
-            return Poll::Ready(Err(io::Error::new(io::ErrorKind::ConnectionAborted, "libp2p connection closed")));
+            return Poll::Ready(Err(io::Error::new(io::ErrorKind::ConnectionAborted, "libp2p session closed")));
         }
         Pin::new(&mut self.io).poll_write(cx, buf)
     }
@@ -1258,6 +1254,151 @@ mod session_tests {
         close(&r).await;
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn closing_an_extra_stream_preserves_the_established_kaspa_session() {
+        let r = node().await;
+        let mut a = node().await;
+        let b = node().await;
+        let route = relay_route(&b, &r).await;
+        let key = a.adaptor.connect_libp2p_peer(&route).await.unwrap();
+        wait_until(|| a.adaptor.active_peers_len() == 1 && b.adaptor.active_peers_len() == 1).await;
+        let original = a.adaptor.peers.read().get(&key).unwrap().clone();
+
+        // The transport reuses the established QUIC connection. Closing the extra
+        // Kaspa stream must leave the original router and its messages working.
+        let extra = a.state.connect(&route).await.unwrap();
+        assert_eq!(a.state.outbound_sessions(), 2);
+        drop(SessionCloseGuard(extra.info.session.clone()));
+        drop(extra);
+        assert_eq!(a.state.outbound_sessions(), 1);
+        assert!(!original.is_closed());
+        assert!(a.adaptor.send(key, make_message!(Payload::Ping, pb::PingMessage { nonce: 901 })).await.unwrap());
+        let (_, message) = tokio::time::timeout(Duration::from_secs(5), a.received.recv()).await.unwrap().unwrap();
+        assert!(matches!(message.payload, Some(Payload::Pong(pb::PongMessage { nonce: 901 }))));
+        assert_eq!(a.state.outbound_sessions(), 1);
+        assert!(Arc::ptr_eq(a.adaptor.peers.read().get(&key).unwrap(), &original));
+
+        close(&a).await;
+        close(&b).await;
+        close(&r).await;
+    }
+
+    #[test]
+    fn session_closure_is_isolated_and_releases_each_outbound_slot_once() {
+        let connection = CancellationToken::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let first = Arc::new(SessionHandle::new(connection.child_token(), Some(counter.clone())));
+        let second = Arc::new(SessionHandle::new(connection.child_token(), Some(counter.clone())));
+        let inbound = Arc::new(SessionHandle::new(connection.child_token(), None));
+        let direct = TransportConnection {
+            peer: identity::Keypair::generate_ed25519().public().to_peer_id(),
+            address: "127.0.0.1:16512".parse().unwrap(),
+            cancel: connection.clone(),
+            sessions: vec![Arc::downgrade(&first), Arc::downgrade(&second), Arc::downgrade(&inbound)],
+        };
+        assert_eq!(counter.load(Ordering::Relaxed), 2);
+
+        drop(SessionCloseGuard(first.clone()));
+        first.close();
+        drop(first);
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+        assert!(!connection.is_cancelled());
+        assert!(!second.cancel.is_cancelled());
+        assert!(!inbound.cancel.is_cancelled());
+
+        // Connection loss or shutdown must also release slots for streams still
+        // held by a caller. Dropping those streams later must not release them twice.
+        drop(direct);
+        assert!(connection.is_cancelled());
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+        assert!(second.cancel.is_cancelled());
+        assert!(inbound.cancel.is_cancelled());
+        drop(second);
+        drop(inbound);
+        assert_eq!(counter.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn rejecting_a_duplicate_handshake_preserves_the_established_session() {
+        // Stop after Version exchange, like the normal duplicate check before Ready.
+        struct RejectDuplicate(Arc<Adaptor>);
+        #[tonic::async_trait]
+        impl ConnectionInitializer for RejectDuplicate {
+            async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ProtocolError> {
+                let mut handshake = KaspadHandshake::new(&router);
+                router.start();
+                let version = Version::new(None, uuid::Uuid::new_v4().into(), "kaspa-simnet".into(), None, 11);
+                let peer: Version = handshake.handshake(version.into()).await?.try_into()?;
+                router.set_identity(peer.id);
+                assert!(self.0.has_peer(router.key()));
+                Err(ProtocolError::PeerAlreadyExists(router.key()))
+            }
+        }
+
+        let r = node().await;
+        let mut a = node().await;
+        let b = node().await;
+        let route = relay_route(&b, &r).await;
+        let key = a.adaptor.connect_libp2p_peer(&route).await.unwrap();
+        wait_until(|| a.adaptor.active_peers_len() == 1 && b.adaptor.active_peers_len() == 1).await;
+        let original = a.adaptor.peers.read().get(&key).unwrap().clone();
+        let (hub, _events) = mpsc::channel(1);
+        let handler = ConnectionHandler::new(hub, Arc::new(RejectDuplicate(a.adaptor.clone())), Default::default(), a.state.clone());
+
+        // Bypass the adaptor's early duplicate check to exercise handshake failure
+        // after the second stream has actually opened on the existing connection.
+        assert!(matches!(
+            handler.connect_libp2p(&route).await,
+            Err(ConnectionError::ProtocolError(ProtocolError::PeerAlreadyExists(_)))
+        ));
+        assert_eq!(a.state.outbound_sessions(), 1);
+        assert!(a.adaptor.send(key, make_message!(Payload::Ping, pb::PingMessage { nonce: 902 })).await.unwrap());
+        let (_, message) = tokio::time::timeout(Duration::from_secs(5), a.received.recv()).await.unwrap().unwrap();
+        assert!(matches!(message.payload, Some(Payload::Pong(pb::PongMessage { nonce: 902 }))));
+        assert!(Arc::ptr_eq(a.adaptor.peers.read().get(&key).unwrap(), &original));
+        assert!(!original.is_closed());
+
+        close(&a).await;
+        close(&b).await;
+        close(&r).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hub_replacement_closes_the_old_session_without_closing_its_replacement() {
+        let r = node().await;
+        let a = node().await;
+        let b = node().await;
+        let route = relay_route(&b, &r).await;
+        let key = a.adaptor.connect_libp2p_peer(&route).await.unwrap();
+        wait_until(|| a.adaptor.active_peers_len() == 1 && b.adaptor.active_peers_len() == 1).await;
+        let original = a.adaptor.peers.read().get(&key).unwrap().clone();
+        let remote_closed = b.adaptor.peers.read().values().next().unwrap().closed();
+
+        // A separate adaptor bypasses the local duplicate check while sharing A's
+        // transport. B's Hub then replaces its old router with the new session.
+        let (received, mut messages) = mpsc::channel(32);
+        let replacement = Adaptor::client_only(
+            Hub::new(),
+            Arc::new(Initializer { node_id: uuid::Uuid::new_v4().into(), received }),
+            Default::default(),
+            a.state.clone(),
+        );
+        assert_eq!(replacement.connect_libp2p_peer(&route).await.unwrap(), key);
+        tokio::time::timeout(Duration::from_secs(5), remote_closed).await.unwrap();
+        wait_until(|| original.is_closed() && a.state.outbound_sessions() == 1).await;
+        wait_until(|| replacement.active_peers_len() == 1).await;
+        assert!(replacement.send(key, make_message!(Payload::Ping, pb::PingMessage { nonce: 903 })).await.unwrap());
+        let (_, message) = tokio::time::timeout(Duration::from_secs(5), messages.recv()).await.unwrap().unwrap();
+        assert!(matches!(message.payload, Some(Payload::Pong(pb::PongMessage { nonce: 903 }))));
+        assert!(!replacement.peers.read().get(&key).unwrap().is_closed());
+        assert_eq!(b.adaptor.active_peers_len(), 1);
+
+        replacement.close().await;
+        close(&a).await;
+        close(&b).await;
+        close(&r).await;
+    }
+
     #[tokio::test]
     async fn mandatory_quic_listener_closure_stops_transport_and_releases_socket() {
         let (received, _receiver) = mpsc::channel(1);
@@ -1325,7 +1466,7 @@ mod session_tests {
                 peer,
                 address: "127.0.0.1:16512".parse().unwrap(),
                 cancel: CancellationToken::new(),
-                outbound_session: false,
+                sessions: Vec::new(),
             },
         );
         let (reply, mut receiver) = oneshot::channel();
@@ -1339,7 +1480,7 @@ mod session_tests {
         ));
         assert!(driver.pending.is_empty());
         assert_eq!(state.outbound_sessions(), 0);
-        assert!(!driver.connections[&connection].outbound_session);
+        assert!(!driver.connections[&connection].cancel.is_cancelled());
     }
 
     #[tokio::test]

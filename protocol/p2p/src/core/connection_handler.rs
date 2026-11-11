@@ -1,6 +1,6 @@
 use crate::common::ProtocolError;
 use crate::core::hub::HubEvent;
-use crate::libp2p_transport::{ConnectionHandle, Libp2pStream, Libp2pTransport};
+use crate::libp2p_transport::{Libp2pStream, Libp2pTransport, SessionHandle};
 use crate::pb::{
     KaspadMessage, p2p_client::P2pClient as ProtoP2pClient, p2p_server::P2p as ProtoP2p, p2p_server::P2pServer as ProtoP2pServer,
 };
@@ -116,8 +116,8 @@ pub(crate) struct Libp2pConnectInfo {
     pub id: Libp2pId,
     /// Signals that the peer opened the Kaspa RPC before its HTTP/2 startup deadline.
     pub request_started: tokio_util::sync::CancellationToken,
-    /// Closes the transport connection when the Kaspa session ends.
-    pub connection: ConnectionHandle,
+    /// Closes this Kaspa stream without disturbing other sessions on its QUIC connection.
+    pub session: Arc<SessionHandle>,
 }
 
 /// Handles Router creation for both server and client-side new connections
@@ -249,7 +249,7 @@ impl ConnectionHandler {
         let stream = self.libp2p.connect(record).await?;
         let address = stream.info.address;
         let id = stream.info.id;
-        let guard = crate::libp2p_transport::SessionCloseGuard(stream.info.connection.clone());
+        let guard = crate::libp2p_transport::SessionCloseGuard(stream.info.session.clone());
         let mut slot = Some(stream);
         let channel = tonic::transport::Endpoint::from_static("http://kaspa.libp2p")
             .timeout(Duration::from_millis(Self::communication_timeout()))
@@ -287,7 +287,7 @@ impl ConnectionHandler {
         let info = stream.info.clone();
         // EOF on the acceptor makes tonic gracefully shut down its HTTP/2
         // connections. Keep this one-connection acceptor pending until the
-        // authenticated connection or daemon is cancelled.
+        // Kaspa session or daemon is cancelled.
         let incoming = tokio_stream::once(Ok::<_, std::io::Error>(stream)).chain(futures::stream::pending());
         let serving = self.serve_incoming(incoming, cancel.cancelled_owned());
         tokio::pin!(serving);
@@ -296,14 +296,14 @@ impl ConnectionHandler {
                 result = &mut serving => result?,
                 _ = info.request_started.cancelled() => serving.await?,
                 _ = tokio::time::sleep(Duration::from_secs(10)) => {
-                    info.connection.close();
+                    info.session.close();
                     return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Kaspa HTTP/2 session deadline").into());
                 }
             }
             Ok::<_, ConnectionError>(())
         };
         tokio::select! {
-            _ = info.connection.cancel.cancelled() => {},
+            _ = info.session.cancel.cancelled() => {},
             _ = self.libp2p.cancelled() => {},
             result = started => result?,
         }
@@ -423,9 +423,9 @@ impl ProtoP2p for ConnectionHandler {
         });
 
         // Give tonic a receiver stream (messages sent to it will be forwarded to the network peer)
-        let guard = libp2p_info.map(|info| crate::libp2p_transport::SessionCloseGuard(info.connection));
+        let guard = libp2p_info.map(|info| crate::libp2p_transport::SessionCloseGuard(info.session));
         let stream: Self::MessageStreamStream = Box::pin(ReceiverStream::new(outgoing_receiver).map(move |message| {
-            // Keep the optional guard until this response stream is dropped, then close the libp2p connection and release its quota.
+            // Keep the optional guard until this response stream is dropped, then close only its libp2p stream and release its quota.
             let _guard = &guard;
             Ok(message)
         }));
