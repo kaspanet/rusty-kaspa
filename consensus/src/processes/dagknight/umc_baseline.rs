@@ -41,7 +41,7 @@ impl<O: HeaderStoreReader + 'static, R: ReachabilityStoreReader + Clone> UmcVote
     fn vote(&self, ctx: &UmcVotingContext<'_>) -> CascadeResult {
         let conflict_genesis = ctx.conflict_genesis;
         let subgroup = ctx.subgroup;
-        let virtual_gd = ctx.virtual_gd;
+        let virtual_cd = ctx.virtual_cd;
         let k = ctx.k;
         let coloring_reader = ctx.coloring_reader;
 
@@ -50,21 +50,21 @@ impl<O: HeaderStoreReader + 'static, R: ReachabilityStoreReader + Clone> UmcVote
         let mut blues = Vec::new();
         let mut reds = Vec::new();
 
-        let mut curr_gd = Arc::new(virtual_gd.clone());
-        while curr_gd.selected_parent != conflict_genesis {
-            for &blue_block in curr_gd.mergeset_blues.iter() {
+        let mut curr_cd = Arc::new(virtual_cd.clone());
+        while curr_cd.selected_parent != conflict_genesis {
+            for &blue_block in curr_cd.mergeset_blues.iter() {
                 let blue_work = calc_work(self.headers_store.get_bits(blue_block).unwrap());
                 let header_work = self.headers_store.get_header(blue_block).unwrap().blue_work;
                 blues.push((blue_block, blue_work, header_work));
             }
-            for &red_block in curr_gd.mergeset_reds.iter() {
+            for &red_block in curr_cd.mergeset_reds.iter() {
                 let red_work = calc_work(self.headers_store.get_bits(red_block).unwrap());
                 let header_work = self.headers_store.get_header(red_block).unwrap().blue_work;
                 if !self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_subgroup, red_block) {
                     reds.push((red_block, red_work, header_work));
                 }
             }
-            curr_gd = coloring_reader.get_coloring_data(curr_gd.selected_parent);
+            curr_cd = coloring_reader.get_coloring_data(curr_cd.selected_parent);
         }
 
         let cg_block_work = calc_work(self.headers_store.get_bits(conflict_genesis).unwrap());

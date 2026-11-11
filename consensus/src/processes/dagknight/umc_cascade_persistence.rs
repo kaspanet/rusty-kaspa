@@ -59,7 +59,7 @@ impl AsRef<[u8]> for UmcCascadeKey {
 /// A mergeset from one level of the virtual GD chain.
 #[derive(Debug, Clone)]
 pub struct Mergeset {
-    /// The chain block whose stored gd produced this mergeset (None for the virtual mergeset).
+    /// The chain block whose stored cd produced this mergeset (None for the virtual mergeset).
     pub merging_chain_block: Option<Hash>,
     /// Blue blocks in this mergeset, assumed to be in topological order
     pub mergeset_blues: Vec<(Hash, BlueWorkType)>,

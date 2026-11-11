@@ -15,8 +15,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             children::ChildrenStore,
-            dagknight::{DagknightStore, DagknightStoreReader},
-            ghostdag::GhostdagData,
+            conflict_zone_coloring::{ColoringData, ConflictZoneColoringStore, ConflictZoneColoringStoreReader},
             headers::HeaderStoreReader,
             reachability::{MemoryReachabilityStore, ReachabilityStore, ReachabilityStoreReader},
             relations::{MemoryRelationsStore, RelationsStore, RelationsStoreReader},
@@ -90,14 +89,14 @@ use crate::{
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 #[derive(Clone)]
 pub struct DagknightExecutor<
-    C: DagknightStore + DagknightStoreReader,
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
     E: UmcCascadeStoreReader + Clone + 'static,
     R: ReachabilityStoreReader + Clone,
 > {
     pub genesis_hash: Hash,
-    pub dagknight_store: Arc<C>,
+    pub coloring_store: Arc<C>,
     pub headers_store: Arc<O>,
     pub relations_store: Arc<RwLock<D>>,
     pub umc_persistence_store: Arc<E>,
@@ -112,7 +111,7 @@ pub struct DagknightData {
 }
 
 impl<
-    C: DagknightStore + DagknightStoreReader,
+    C: ConflictZoneColoringStore + ConflictZoneColoringStoreReader,
     O: HeaderStoreReader + 'static,
     D: RelationsStoreReader + Clone,
     E: UmcCascadeStore + Clone,
@@ -241,12 +240,12 @@ impl<
         &self,
         conflict_genesis: Hash,
         subgroup: &[Hash],
-        virtual_gd: GhostdagData,
+        virtual_cd: ColoringData,
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
         let voter = BaselineUmcVoter::new(self.headers_store.clone(), self.reachability_service.clone());
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_cd: &virtual_cd, k, coloring_reader: conflict_zone_manager };
         voter.vote(&ctx)
     }
 
@@ -255,7 +254,7 @@ impl<
         &self,
         conflict_genesis: Hash,
         subgroup: &[Hash],
-        virtual_gd: GhostdagData,
+        virtual_cd: ColoringData,
         k: KType,
         conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> CascadeResult {
@@ -264,7 +263,7 @@ impl<
             self.umc_persistence_store.clone(),
             self.reachability_service.clone(),
         );
-        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_gd: &virtual_gd, k, coloring_reader: conflict_zone_manager };
+        let ctx = UmcVotingContext { conflict_genesis, subgroup, virtual_cd: &virtual_cd, k, coloring_reader: conflict_zone_manager };
         voter.vote(&ctx)
     }
 
@@ -274,7 +273,7 @@ impl<
         let mutual_k = subgroups[0].k;
 
         let winning_index = DagknightTieBreaker::new(
-            self.dagknight_store.clone(),
+            self.coloring_store.clone(),
             self.headers_store.clone(),
             self.relations_store.clone(),
             self.reachability_service.clone(),
@@ -302,17 +301,42 @@ impl<
         let mut group_map = Cell::new(agreeing_subgroups.clone());
         let best_groups_cell = Cell::new(vec![]);
         let evaluate = |k: KType| -> Option<()> {
+            let reachability_service = self.reachability_service.clone();
+            let relations_store = self.relations_store.read();
+            let relations_service =
+                FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
+            let conflict_zone_manager = ConflictZoneManager::new(
+                k,
+                conflict_genesis,
+                self.coloring_store.clone(),
+                self.headers_store.clone(),
+                relations_service,
+                reachability_service.clone(),
+            );
+
+            // This fill will color from bottom-up, starting from last known tips (if any, else starting from CG).
+            // Each coloring will be from the POV of each block and committed colorings are subject to each block's
+            // committed coloring rule and may only have SP that agrees with it (if committed coloring).
+            conflict_zone_manager.fill_zone_data(all_tips);
+
             let (filtered_groups_kv, best_groups): (HashMap<_, _>, Vec<GroupMetadata>) = group_map
                 .get_mut()
                 .iter()
                 .filter_map(|(curr_conflict_genesis, subgroup)| {
                     // `subgroup` is an `&Arc<Vec<Hash>>` here; pass a `&[Hash]` to the colouring function
-                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k).map(|selected_parent| {
-                        (
-                            (*curr_conflict_genesis, subgroup.clone()),
-                            GroupMetadata { conflict_genesis: *curr_conflict_genesis, subgroup: subgroup.clone(), k, selected_parent },
-                        )
-                    })
+                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k, &conflict_zone_manager).map(
+                        |selected_parent| {
+                            (
+                                (*curr_conflict_genesis, subgroup.clone()),
+                                GroupMetadata {
+                                    conflict_genesis: *curr_conflict_genesis,
+                                    subgroup: subgroup.clone(),
+                                    k,
+                                    selected_parent,
+                                },
+                            )
+                        },
+                    )
                 })
                 .unzip();
 
@@ -339,29 +363,14 @@ impl<
         subgroup: &[Hash],
         all_tips: &[Hash],
         k_to_check: KType,
+        conflict_zone_manager: &ConflictZoneManager<C, O, D, R>,
     ) -> Option<SortableBlock> {
-        let reachability_service = self.reachability_service.clone();
-        let relations_store = self.relations_store.read();
-        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
-        let conflict_zone_manager = ConflictZoneManager::new(
-            k_to_check,
-            conflict_genesis,
-            self.dagknight_store.clone(),
-            self.headers_store.clone(),
-            relations_service,
-            reachability_service.clone(),
-        );
-
-        // Calculate the subgroup's next chain ancestor above conflict_genesis
-        let subgroup_nca = self.reachability_service.get_next_chain_ancestor(subgroup[0], conflict_genesis);
-        conflict_zone_manager.fill_zone_data(subgroup, Some(subgroup_nca));
-
         // selected a parent in this subgroup => Conditioned upon virtual agreeing with this subgroup
         let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(subgroup.iter().copied());
-        let virtual_gd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
+        let virtual_cd = conflict_zone_manager.k_colouring(all_tips, k_to_check, Some(subgroup_virtual_sp));
 
         let cascade_result =
-            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+            self.umc_cascade_voting(conflict_genesis, subgroup, virtual_cd.clone(), k_to_check, conflict_zone_manager);
 
         #[cfg(feature = "baseline-debugging")]
         {
@@ -369,7 +378,7 @@ impl<
             // These use different acceptance criteria and are not expected to always agree.
             // The baseline is Algorithm 6 from the paper; the cascade is the optimized implementation.
             let baseline_result =
-                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_gd.clone(), k_to_check, &conflict_zone_manager);
+                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_cd.clone(), k_to_check, &conflict_zone_manager);
 
             if baseline_result.virtual_score != cascade_result.virtual_score {
                 if baseline_result.accepted != cascade_result.accepted {
@@ -653,8 +662,8 @@ mod tests {
     use crate::processes::reachability::tests::r#gen::generate_complex_dag;
     use crate::{
         model::stores::{
-            dagknight::MemoryDagknightStore, ghostdag::MemoryGhostdagStore, reachability::MemoryReachabilityStore,
-            relations::MemoryRelationsStore,
+            conflict_zone_coloring::MemoryConflictZoneColoringStore, ghostdag::MemoryGhostdagStore,
+            reachability::MemoryReachabilityStore, relations::MemoryRelationsStore,
         },
         processes::reachability::tests::{DagBlock, DagBuilder},
         test_helpers::generate_dot_with_chain,
@@ -669,37 +678,6 @@ mod tests {
         blue_score: u64,
         daa_score: u64,
         selected_parent: Hash,
-    }
-
-    #[test]
-    fn test_cascade() {
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations = MemoryRelationsStore::new();
-
-        // Build the DAG
-        {
-            let plan = DagPlan {
-                genesis: 1,
-                blocks: vec![
-                    (2, vec![1]),
-                    (3, vec![1]),
-                    (4, vec![2, 3]),
-                    (5, vec![4]),
-                    (6, vec![1]),
-                    (7, vec![5, 6]),
-                    (8, vec![1]),
-                    (9, vec![1]),
-                    (10, vec![7, 8, 9]),
-                    (11, vec![1]),
-                    (12, vec![11, 10]),
-                ],
-            };
-            let mut builder = DagBuilder::new(&mut reachability, &mut relations);
-            builder.init().add_block(DagBlock::genesis(plan.genesis.into()));
-            for (block, parents) in plan.blocks.iter() {
-                builder.add_block(DagBlock::new((*block).into(), parents.iter().map(|&i| i.into()).collect()));
-            }
-        }
     }
 
     /// This is the main body of the test.
@@ -746,11 +724,11 @@ mod tests {
 
         coloring_ghostdag_store.insert(genesis_hash, Arc::new(coloring_gd_manager.genesis_ghostdag_data())).unwrap();
 
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
 
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store: dagknight_store.clone(),
+            coloring_store: coloring_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
@@ -951,11 +929,11 @@ mod tests {
 
         topology_ghostdag_store.insert(genesis_hash, Arc::new(topology_gd_manager.genesis_ghostdag_data())).unwrap();
 
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
 
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store: dagknight_store.clone(),
+            coloring_store: coloring_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
@@ -1032,11 +1010,11 @@ mod tests {
 
         let dk_map = RefCell::new(HashMap::new());
 
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
 
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store: dagknight_store.clone(),
+            coloring_store: coloring_store.clone(),
             headers_store: headers_store.clone(),
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability.clone()))),
             relations_store: Arc::new(RwLock::new(relations.clone())),
@@ -1150,10 +1128,10 @@ mod tests {
         headers_store.insert(Arc::new(t1_header));
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store,
+            coloring_store,
             headers_store,
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
             relations_store: Arc::new(RwLock::new(relations)),
@@ -1201,10 +1179,10 @@ mod tests {
         headers_store.insert(Arc::new(t2_header));
 
         let dk_map = RefCell::new(HashMap::new());
-        let dagknight_store = Arc::new(MemoryDagknightStore::new(dk_map));
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
         let dk_executor = DagknightExecutor {
             genesis_hash,
-            dagknight_store,
+            coloring_store,
             headers_store,
             reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
             relations_store: Arc::new(RwLock::new(relations)),
