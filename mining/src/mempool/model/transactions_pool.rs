@@ -8,7 +8,7 @@ use crate::{
             map::MempoolTransactionCollection,
             pool::{Pool, TransactionsEdges},
             tx::{DoubleSpend, MempoolTransaction},
-            utxo_set::MempoolUtxoSet,
+            utxo_set::MempoolOutpointSpenders,
         },
         tx::Priority,
     },
@@ -72,8 +72,8 @@ pub(crate) struct TransactionsPool {
     /// Sum of estimated size for all transactions currently held in `all_transactions`
     estimated_size: usize,
 
-    /// Store of UTXOs
-    utxo_set: MempoolUtxoSet,
+    /// Index of outpoints spent by mempool transactions
+    spenders: MempoolOutpointSpenders,
 }
 
 impl TransactionsPool {
@@ -87,7 +87,7 @@ impl TransactionsPool {
             ready_transactions: Frontier::new(target_time_per_block),
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: unix_now(),
-            utxo_set: MempoolUtxoSet::new(),
+            spenders: MempoolOutpointSpenders::new(),
             estimated_size: 0,
         }
     }
@@ -128,14 +128,14 @@ impl TransactionsPool {
             entry.insert(id);
         }
 
-        self.utxo_set.add_transaction(&transaction.mtx);
+        self.spenders.add_transaction(&transaction.mtx);
         self.estimated_size = self.estimated_size.saturating_add(transaction_size);
         self.all_transactions.insert(id, transaction);
         trace!("Added transaction {}", id);
         Ok(())
     }
 
-    /// Fully removes the transaction from all relational sets, as well as from the UTXO set
+    /// Fully removes the transaction from all relational sets and the outpoint owner index
     pub(crate) fn remove_transaction(&mut self, transaction_id: &TransactionId) -> RuleResult<MempoolTransaction> {
         // Remove all bijective parent/chained relations
         if let Some(parents) = self.parent_transactions.get(transaction_id) {
@@ -166,14 +166,7 @@ impl TransactionsPool {
         let cofactors = self.config.mempool_mass_cofactors;
         self.ready_transactions.remove(&FeerateTransactionKey::from_tx(&removed_tx, &cofactors));
 
-        // TODO: consider using `self.parent_transactions.get(transaction_id)`
-        // The tradeoff to consider is whether it might be possible that a parent tx exists in the pool
-        // however its relation as parent is not registered. This can supposedly happen in rare cases where
-        // the parent was removed w/o redeemers and then re-added
-        let parent_ids = self.get_parent_transaction_ids_in_pool(&removed_tx.mtx);
-
-        // Remove the transaction from the mempool UTXO set
-        self.utxo_set.remove_transaction(&removed_tx.mtx, &parent_ids);
+        self.spenders.remove_transaction(&removed_tx.mtx);
 
         #[allow(clippy::arithmetic_side_effects, reason = "removed_tx.mtx.mempool_estimated_bytes() <= self.estimated_size")]
         {
@@ -310,17 +303,17 @@ impl TransactionsPool {
     }
 
     pub(crate) fn get_outpoint_owner_id(&self, outpoint: &TransactionOutpoint) -> Option<&TransactionId> {
-        self.utxo_set.get_outpoint_owner_id(outpoint)
+        self.spenders.get_outpoint_owner_id(outpoint)
     }
 
     /// Make sure no other transaction in the mempool is already spending an output which one of this transaction inputs spends
     pub(crate) fn check_double_spends(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        self.utxo_set.check_double_spends(transaction)
+        self.spenders.check_double_spends(transaction)
     }
 
     /// Returns the first double spend of every transaction in the mempool double spending on `transaction`
     pub(crate) fn get_double_spend_transaction_ids(&self, transaction: &MutableTransaction) -> Vec<DoubleSpend> {
-        self.utxo_set.get_double_spend_transaction_ids(transaction)
+        self.spenders.get_double_spend_transaction_ids(transaction)
     }
 
     pub(crate) fn get_double_spend_owner<'a>(&'a self, double_spend: &DoubleSpend) -> RuleResult<&'a MempoolTransaction> {
