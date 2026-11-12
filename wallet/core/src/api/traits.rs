@@ -556,6 +556,13 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: TransactionsReplaceMetadataRequest,
     ) -> Result<TransactionsReplaceMetadataResponse>;
 
+    /// Export transaction history as CSV string.
+    /// Returns the complete CSV content including header row and the transaction count.
+    async fn transactions_export_csv_call(
+        self: Arc<Self>,
+        request: TransactionsExportCsvRequest,
+    ) -> Result<TransactionsExportCsvResponse>;
+
     // TODO
     async fn address_book_enumerate_call(
         self: Arc<Self>,
