@@ -263,6 +263,20 @@ impl NetworkId {
         }
     }
 
+    /// Default libp2p QUIC UDP port, independent of the configured Kaspa TCP listener.
+    pub fn default_relay_port(&self) -> u16 {
+        match self.network_type {
+            NetworkType::Mainnet => 16112,
+            NetworkType::Testnet => match self.suffix {
+                Some(10) => 16212,
+                Some(12) => 16312,
+                None | Some(_) => 16412,
+            },
+            NetworkType::Simnet => 16512,
+            NetworkType::Devnet => 16612,
+        }
+    }
+
     pub fn iter() -> impl Iterator<Item = Self> {
         static NETWORK_IDS: [NetworkId; 4] = [
             NetworkId::new(NetworkType::Mainnet),
@@ -441,6 +455,20 @@ impl TryCastFromJs for NetworkId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_relay_ports_follow_network_and_testnet_suffix() {
+        for (network, port) in [
+            (NetworkId::new(NetworkType::Mainnet), 16112),
+            (NetworkId::with_suffix(NetworkType::Testnet, 10), 16212),
+            (NetworkId::with_suffix(NetworkType::Testnet, 12), 16312),
+            (NetworkId::with_suffix(NetworkType::Testnet, 11), 16412),
+            (NetworkId::new(NetworkType::Simnet), 16512),
+            (NetworkId::new(NetworkType::Devnet), 16612),
+        ] {
+            assert_eq!(network.default_relay_port(), port);
+        }
+    }
 
     #[test]
     fn test_network_id_parse_roundtrip() {

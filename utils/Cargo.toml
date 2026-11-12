@@ -14,6 +14,7 @@ arc-swap = { workspace = true, optional = true }
 async-channel.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true
+ed25519-dalek.workspace = true
 event-listener = { workspace = true, optional = true }
 faster-hex.workspace = true
 hashbrown = { workspace = true, optional = true }

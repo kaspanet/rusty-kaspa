@@ -148,7 +148,7 @@ mod tests {
     use std::{str::FromStr, time::Duration};
 
     use super::*;
-    use crate::{Adaptor, Hub};
+    use crate::{Adaptor, Hub, libp2p_transport::Libp2pTransport};
     use kaspa_core::debug;
     use kaspa_utils::networking::NetAddress;
 
@@ -157,10 +157,16 @@ mod tests {
         kaspa_core::log::try_init_logger("debug");
 
         let address1 = NetAddress::from_str("[::1]:50053").unwrap();
-        let adaptor1 = Adaptor::bidirectional(address1, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default()).unwrap();
+        let transport1 = Arc::new(Libp2pTransport::new(address1.port + 1, true).unwrap());
+        let adaptor1 =
+            Adaptor::bidirectional(address1, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default(), transport1)
+                .unwrap();
 
         let address2 = NetAddress::from_str("[::1]:50054").unwrap();
-        let adaptor2 = Adaptor::bidirectional(address2, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default()).unwrap();
+        let transport2 = Arc::new(Libp2pTransport::new(address2.port + 1, true).unwrap());
+        let adaptor2 =
+            Adaptor::bidirectional(address2, Hub::new(), Arc::new(EchoFlowInitializer::new()), Default::default(), transport2)
+                .unwrap();
 
         // Initiate the connection from `adaptor1` (outbound) to `adaptor2` (inbound)
         let peer2_id = adaptor1

@@ -28,7 +28,7 @@ impl From<Version> for protowire::VersionMessage {
             protocol_version: item.protocol_version,
             services: item.services,
             timestamp: item.timestamp as i64,
-            address: item.address.map(|x| x.into()),
+            address: item.address.map(Into::into),
             id: item.id.as_bytes().to_vec(),
             user_agent: item.user_agent,
             disable_relay_tx: item.disable_relay_tx,
@@ -48,11 +48,12 @@ impl TryFrom<protowire::VersionMessage> for Version {
         let mut user_agent = msg.user_agent;
         user_agent.truncate(user_agent.floor_char_boundary(MAX_USER_AGENT_LEN));
         user_agent.shrink_to_fit();
+        let address = msg.address.map(TryInto::try_into).transpose()?;
         Ok(Self {
             protocol_version: msg.protocol_version,
             services: msg.services,
             timestamp: msg.timestamp as u64,
-            address: msg.address.map(TryInto::try_into).transpose()?,
+            address,
             id: PeerId::from_slice(&msg.id)?,
             user_agent,
             disable_relay_tx: msg.disable_relay_tx,

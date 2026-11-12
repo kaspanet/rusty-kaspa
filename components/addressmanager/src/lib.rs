@@ -1,8 +1,19 @@
 mod port_mapping_extender;
 mod stores;
+
+#[cfg(test)]
+mod tests;
+
+use kaspa_utils::connection::{AddressKey, LibP2pAddress, Libp2pId, PeerAddress};
 extern crate self as address_manager;
 
-use std::{collections::HashSet, iter, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    iter,
+    net::SocketAddr,
+    sync::Arc,
+    time::Duration,
+};
 
 use address_manager::port_mapping_extender::Extender;
 use igd_next::{
@@ -14,17 +25,17 @@ use itertools::{
     Itertools,
 };
 use kaspa_consensus_core::config::Config;
-use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
+use kaspa_core::{info, task::tick::TickService, time::unix_now, warn};
 use kaspa_database::prelude::{CachePolicy, DB, StoreResultExt};
-use kaspa_utils::networking::IpAddress;
+use kaspa_utils::networking::{IpAddress, PrefixBucket};
 use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
 use stores::banned_address_store::{BannedAddressesStore, BannedAddressesStoreReader, ConnectionBanTimestamp, DbBannedAddressesStore};
 use thiserror::Error;
 
-pub use stores::NetAddress;
+pub use stores::{NetAddress, address_store::DbAddressesStore};
 
-const MAX_ADDRESSES: usize = 4096;
+pub const MAX_ADDRESSES: usize = 4096;
 const MAX_CONNECTION_FAILED_COUNT: u64 = 3;
 
 const UPNP_DEADLINE_SEC: u64 = 2 * 60;
@@ -51,11 +62,23 @@ pub enum UpnpError {
     GetExternalIpError(#[from] GetExternalIpError),
 }
 
+#[derive(Error, Debug)]
+pub enum LocalAdvertisementError<E> {
+    #[error("local address has no libp2p metadata")]
+    MissingMetadata,
+    #[error("local address nonce exhausted")]
+    NonceExhausted,
+    #[error("local address signing failed: {0}")]
+    Signing(#[source] E),
+}
+
 pub struct AddressManager {
     banned_address_store: DbBannedAddressesStore,
     address_store: address_store_with_cache::Store,
     config: Arc<Config>,
     local_net_addresses: Vec<NetAddress>,
+    /// This node's authenticated Libp2p identity, set after the endpoint starts.
+    local_libp2p_id: Option<Libp2pId>,
 }
 
 impl AddressManager {
@@ -64,6 +87,7 @@ impl AddressManager {
             banned_address_store: DbBannedAddressesStore::new(db.clone(), CachePolicy::Count(MAX_ADDRESSES)),
             address_store: address_store_with_cache::new(db),
             local_net_addresses: Vec::new(),
+            local_libp2p_id: None,
             config,
         };
 
@@ -107,7 +131,7 @@ impl AddressManager {
         };
 
         self.local_net_addresses.iter().for_each(|net_addr| {
-            info!("Publicly routable local address {} added to store", net_addr);
+            info!("Local TCP listener address {} available for advertisement", net_addr);
         });
         extender
     }
@@ -115,8 +139,8 @@ impl AddressManager {
     fn local_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
         match self.config.externalip {
             // An external IP was passed, we will try to bind that if it's valid
-            Some(local_net_address) if local_net_address.ip.is_publicly_routable() => {
-                info!("External address is publicly routable {}", local_net_address);
+            Some(local_net_address) if self.is_local_address_advertisable(local_net_address.ip) => {
+                info!("Using advertised TCP listener address {}", local_net_address);
                 return Left(iter::once(local_net_address));
             }
             Some(local_net_address) => {
@@ -132,8 +156,8 @@ impl AddressManager {
         // check whatever was passed as listen address (if routable)
         // otherwise(listen_address === 0.0.0.0) check all interfaces
         let listen_address = self.config.p2p_listen_address.normalize(self.config.default_p2p_port());
-        if listen_address.ip.is_publicly_routable() {
-            info!("Publicly routable local address found: {}", listen_address.ip);
+        if self.is_local_address_advertisable(listen_address.ip) {
+            info!("Local TCP listener address found: {}", listen_address);
             Left(Left(iter::once(listen_address)))
         } else if listen_address.ip.is_unspecified() {
             let network_interfaces = list_afinet_netifas();
@@ -142,15 +166,28 @@ impl AddressManager {
                 return Left(Right(iter::empty()));
             };
             // TODO: Add Check IPv4 or IPv6 match from Go code
-            Right(network_interfaces.into_iter().map(|(_, ip)| IpAddress::from(ip)).filter(|&ip| ip.is_publicly_routable()).map(
-                |ip| {
-                    info!("Publicly routable local address found: {}", ip);
-                    NetAddress::new(ip, self.config.default_p2p_port())
-                },
-            ))
+            Right(
+                network_interfaces
+                    .into_iter()
+                    .map(|(_, ip)| IpAddress::from(ip))
+                    .filter(|&ip| self.is_local_address_advertisable(ip))
+                    .map(move |ip| {
+                        info!("Local TCP listener interface found: {}", ip);
+                        NetAddress::new(ip, listen_address.port)
+                    }),
+            )
         } else {
             Left(Right(iter::empty()))
         }
+    }
+
+    fn is_local_address_advertisable(&self, ip: IpAddress) -> bool {
+        ip.is_publicly_routable()
+            || (matches!(
+                self.config.net.network_type,
+                kaspa_consensus_core::network::NetworkType::Simnet | kaspa_consensus_core::network::NetworkType::Devnet
+            ) && !ip.is_unspecified()
+                && !ip.0.is_multicast())
     }
 
     fn upnp(&self) -> Result<Option<(NetAddress, ExtendHelper)>, UpnpError> {
@@ -247,61 +284,194 @@ impl AddressManager {
         }
     }
 
-    pub fn best_local_address(&mut self) -> Option<NetAddress> {
-        if self.local_net_addresses.is_empty() {
-            None
+    pub fn best_local_address(&self) -> Option<NetAddress> {
+        // Simnet/devnet can include loopback alongside a usable interface.
+        // Prefer the interface peers can reach, retaining loopback-only setups.
+        self.local_net_addresses.iter().find(|address| !address.ip.is_loopback()).or_else(|| self.local_net_addresses.first()).copied()
+    }
+
+    /// Reuses an unchanged local record, or signs its next nonce and publishes it in memory.
+    pub fn sign_local_address<E>(
+        &mut self,
+        mut address: PeerAddress,
+        sign: impl FnOnce(&PeerAddress) -> Result<Vec<u8>, E>,
+    ) -> Result<PeerAddress, LocalAdvertisementError<E>> {
+        let previous = self.address_store.local_advertisement();
+        let metadata = address.libp2p.as_mut().ok_or(LocalAdvertisementError::MissingMetadata)?;
+        if let Some(previous) = &previous {
+            metadata.nonce = previous.nonce().unwrap_or_default();
+            metadata.signature = previous.signature().unwrap_or_default().to_vec();
+        }
+        if previous.as_ref() == Some(&address) {
+            return Ok(address);
+        }
+        let nonce = previous
+            .as_ref()
+            .and_then(PeerAddress::nonce)
+            .unwrap_or_default()
+            .checked_add(1)
+            .ok_or(LocalAdvertisementError::NonceExhausted)?;
+        address.libp2p.as_mut().unwrap().nonce = nonce;
+        let signature = sign(&address).map_err(LocalAdvertisementError::Signing)?;
+        address.libp2p.as_mut().unwrap().signature = signature;
+        self.address_store.set_local_advertisement(address.clone());
+        Ok(address)
+    }
+
+    /// Whether this run has published a signed address, independently of the TCP fallback.
+    pub fn local_advertisement_initialized(&self) -> bool {
+        self.address_store.local_advertisement().is_some()
+    }
+
+    /// Returns this run's signed advertisement, or the best local TCP address until initialization.
+    pub fn local_advertisement(&self) -> Option<PeerAddress> {
+        self.address_store.local_advertisement().or_else(|| self.best_local_address().map(PeerAddress::from))
+    }
+
+    /// Updates only the relay route after initial publication. Renewing the same reservation is a no-op.
+    pub fn update_local_relay<E>(
+        &mut self,
+        relay: Option<LibP2pAddress>,
+        sign: impl FnOnce(&PeerAddress) -> Result<Vec<u8>, E>,
+    ) -> Result<(), LocalAdvertisementError<E>> {
+        if let Some(mut address) = self.address_store.local_advertisement()
+            && address.relay_address != relay
+        {
+            address.relay_address = relay;
+            self.sign_local_address(address, sign)?;
+        }
+        Ok(())
+    }
+
+    pub fn set_local_libp2p_id(&mut self, id: Libp2pId) {
+        self.local_libp2p_id = Some(id);
+    }
+
+    /// Accepts fresh records without checking signatures; verifies competing records before replacement.
+    pub fn add_address(&mut self, address: PeerAddress) {
+        if address.ip.is_unspecified()
+            || address.ip.0.is_multicast()
+            || address.endpoint_id().is_some_and(|id| Some(id) == self.local_libp2p_id)
+        {
+            return;
+        }
+        if address.libp2p.is_none() && address.ip.is_loopback() {
+            return;
+        }
+        let key = address.key();
+        let mut signature_verified = false;
+        if let Some(existing) = self.address_store.get(&key) {
+            let network = self.config.network_name();
+            if !address.verify(&network) {
+                return;
+            }
+            signature_verified = true;
+            // If the stored signature is invalid, a correctly signed update may replace it regardless of nonce.
+            if address.nonce().unwrap_or_default() <= existing.nonce {
+                if existing.signature_verified {
+                    return;
+                }
+                if existing.address(key).verify(&network) {
+                    let mut existing = existing.clone();
+                    existing.signature_verified = true;
+                    self.address_store.set(key, existing);
+                    return;
+                }
+            }
+        }
+        self.address_store.upsert_address(address, signature_verified);
+    }
+
+    pub fn iterator(&self) -> impl Iterator<Item = PeerAddress> + '_ {
+        self.address_store.iterator()
+    }
+
+    pub fn address(&self, key: AddressKey) -> Option<PeerAddress> {
+        self.address_store.get(&key).map(|entry| entry.address(key))
+    }
+
+    /// Records relay registration failures locally without changing the signed advertisement.
+    pub fn record_relay_result(&mut self, address: &PeerAddress, success: bool) {
+        let key = address.key();
+        let Some(mut entry) = self.address_store.get(&key).cloned() else {
+            return;
+        };
+        if entry.relay_port != address.relay_port() {
+            return;
+        }
+        entry.consecutive_relay_failures = if success { 0 } else { entry.consecutive_relay_failures.saturating_add(1) };
+        self.address_store.set(key, entry);
+    }
+
+    /// Weight = `64^(MAX_CONNECTION_FAILED_COUNT + 1 - failures) / prefix_bucket_size`.
+    pub fn iterate_prioritized_random_relays(&mut self) -> impl ExactSizeIterator<Item = (PeerAddress, u64)> + 'static {
+        let self_id = self.local_libp2p_id;
+        let mut candidates = self
+            .address_store
+            .entries()
+            .filter_map(|(key, entry)| {
+                let address = entry.address(*key);
+                (address.relay_port().is_some_and(|port| port != 0) && address.endpoint_id() != self_id)
+                    .then_some((address, entry.consecutive_relay_failures))
+            })
+            .collect::<Vec<_>>();
+        candidates.retain(|(address, _)| !self.is_banned(address.ip));
+        let mut prefix_counter: HashMap<PrefixBucket, usize> = HashMap::new();
+        let mut weights = candidates
+            .iter()
+            .map(|(address, failures)| {
+                #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
+                {
+                    *prefix_counter.entry(address.prefix_bucket()).or_default() += 1;
+                }
+                // Keep the same weight calculation as iterate_prioritized_random_addresses for consistency.
+                #[allow(
+                    clippy::arithmetic_side_effects,
+                    reason = "The exponent uses f64 arithmetic; these u64 inputs and their sum or difference remain finite."
+                )]
+                {
+                    64f64.powf(MAX_CONNECTION_FAILED_COUNT as f64 + 1.0f64 - *failures as f64)
+                }
+            })
+            .collect::<Vec<_>>();
+        // Normalize over IP prefixes, just as for ordinary peer addresses.
+        for (weight, (address, _)) in weights.iter_mut().zip(&candidates) {
+            *weight /= prefix_counter[&address.prefix_bucket()] as f64;
+        }
+        address_store_with_cache::RandomWeightedIterator::new(weights, candidates)
+    }
+
+    pub fn mark_connection_failure(&mut self, address: PeerAddress) {
+        self.record_connection_result(address, false);
+    }
+
+    pub fn mark_connection_success(&mut self, address: PeerAddress) {
+        self.record_connection_result(address, true);
+    }
+
+    fn record_connection_result(&mut self, address: PeerAddress, success: bool) {
+        let key = address.key();
+        let Some(mut entry) = self.address_store.get(&key).cloned() else {
+            return;
+        };
+        entry.connection_failed_count = if success { 0 } else { entry.connection_failed_count.saturating_add(1) };
+        if entry.connection_failed_count > MAX_CONNECTION_FAILED_COUNT {
+            self.address_store.remove_by_key(key);
         } else {
-            // TODO: Add logic for finding the best as a function of a peer remote address.
-            // for now, returning the first one
-            Some(self.local_net_addresses[0])
+            self.address_store.set(key, entry);
         }
-    }
-
-    pub fn add_address(&mut self, address: NetAddress) {
-        if address.ip.is_loopback() || address.ip.is_unspecified() {
-            debug!("[Address manager] skipping local address {}", address.ip);
-            return;
-        }
-
-        if self.address_store.has(address) {
-            return;
-        }
-
-        // We mark `connection_failed_count` as 0 only after first success
-        self.address_store.set(address, 1);
-    }
-
-    pub fn mark_connection_failure(&mut self, address: NetAddress) {
-        if !self.address_store.has(address) {
-            return;
-        }
-
-        #[allow(clippy::arithmetic_side_effects, reason = "ARITH-SAFETY(COUNTER)")]
-        let new_count = self.address_store.get(address).connection_failed_count + 1;
-        if new_count > MAX_CONNECTION_FAILED_COUNT {
-            self.address_store.remove(address);
-        } else {
-            self.address_store.set(address, new_count);
-        }
-    }
-
-    pub fn mark_connection_success(&mut self, address: NetAddress) {
-        if !self.address_store.has(address) {
-            return;
-        }
-
-        self.address_store.set(address, 0);
     }
 
     pub fn iterate_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
-        self.address_store.iterate_addresses()
+        self.address_store.entries().map(|(key, _)| key.0).unique()
     }
 
     pub fn iterate_prioritized_random_addresses(
         &self,
-        exceptions: HashSet<NetAddress>,
-    ) -> impl ExactSizeIterator<Item = NetAddress> + 'static {
-        self.address_store.iterate_prioritized_random_addresses(exceptions)
+        tcp_exceptions: HashSet<NetAddress>,
+        libp2p_exceptions: HashSet<Libp2pId>,
+    ) -> impl ExactSizeIterator<Item = PeerAddress> + 'static {
+        self.address_store.iterate_prioritized_random_addresses(tcp_exceptions, libp2p_exceptions)
     }
 
     pub fn ban(&mut self, ip: IpAddress) {
@@ -329,7 +499,7 @@ impl AddressManager {
     }
 
     pub fn get_all_addresses(&self) -> Vec<NetAddress> {
-        self.address_store.iterate_addresses().collect_vec()
+        self.iterate_addresses().collect_vec()
     }
 
     pub fn get_all_banned_addresses(&self) -> Vec<IpAddress> {
@@ -338,84 +508,99 @@ impl AddressManager {
 }
 
 mod address_store_with_cache {
-    // Since we need operations such as iterating all addresses, count, etc, we keep an easy to use copy of the database addresses.
-    // We don't expect it to be expensive since we limit the number of saved addresses.
+    use crate::{
+        MAX_ADDRESSES, MAX_CONNECTION_FAILED_COUNT,
+        stores::address_store::{DbAddressesStore, Entry},
+    };
+    use itertools::Itertools;
+    use kaspa_database::prelude::{CachePolicy, DB};
+    use kaspa_utils::{
+        connection::{AddressKey, Libp2pId, PeerAddress},
+        networking::{NetAddress, PrefixBucket},
+    };
+    use rand::{
+        distributions::{WeightedError, WeightedIndex},
+        prelude::Distribution,
+    };
     use std::{
         collections::{HashMap, HashSet},
         net::IpAddr,
         sync::Arc,
     };
 
-    use itertools::Itertools;
-    use kaspa_database::prelude::{CachePolicy, DB};
-    use kaspa_utils::networking::PrefixBucket;
-    use rand::{
-        distributions::{WeightedError, WeightedIndex},
-        prelude::Distribution,
-    };
-
-    use crate::{
-        MAX_ADDRESSES, MAX_CONNECTION_FAILED_COUNT, NetAddress,
-        stores::{
-            AddressKey,
-            address_store::{AddressesStore, DbAddressesStore, Entry},
-        },
-    };
-
     pub struct Store {
         db_store: DbAddressesStore,
         addresses: HashMap<AddressKey, Entry>,
+        /// Signed local address for this run; never written to the address database.
+        local_advertisement: Option<PeerAddress>,
     }
 
     impl Store {
         fn new(db: Arc<DB>) -> Self {
-            // We manage the cache ourselves on this level, so we disable the inner builtin cache
+            // The in-memory map already caches all address entries.
             let db_store = DbAddressesStore::new(db, CachePolicy::Empty);
-            let mut addresses = HashMap::new();
-            for (key, entry) in db_store.iterator().map(|res| res.unwrap()) {
-                addresses.insert(key, entry);
-            }
-
-            Self { db_store, addresses }
+            let addresses = db_store.iterator().map(|row| row.expect("address database entry")).collect();
+            let mut store = Self { db_store, addresses, local_advertisement: None };
+            store.keep_limit();
+            store
         }
 
-        pub fn has(&mut self, address: NetAddress) -> bool {
-            self.addresses.contains_key(&address.into())
+        pub(super) fn get(&self, key: &AddressKey) -> Option<&Entry> {
+            self.addresses.get(key)
         }
 
-        pub fn set(&mut self, address: NetAddress, connection_failed_count: u64) {
-            let entry = match self.addresses.get(&address.into()) {
-                Some(entry) => Entry { connection_failed_count, address: entry.address },
-                None => Entry { connection_failed_count, address },
-            };
-            self.db_store.set(address.into(), entry).unwrap();
-            self.addresses.insert(address.into(), entry);
+        pub(super) fn entries(&self) -> impl Iterator<Item = (&AddressKey, &Entry)> {
+            self.addresses.iter()
+        }
+
+        pub(super) fn local_advertisement(&self) -> Option<PeerAddress> {
+            self.local_advertisement.clone()
+        }
+
+        pub(super) fn set_local_advertisement(&mut self, address: PeerAddress) {
+            self.local_advertisement = Some(address);
+        }
+
+        pub(super) fn set(&mut self, key: AddressKey, entry: Entry) {
+            self.db_store.set(&key, &entry).unwrap();
+            self.addresses.insert(key, entry);
             self.keep_limit();
         }
 
+        pub fn upsert_address(&mut self, address: PeerAddress, signature_verified: bool) {
+            let key = address.key();
+            let mut entry = match self.addresses.get(&key) {
+                Some(existing) => existing.clone(),
+                // Start untried addresses at 1 so successful peers and relays (count 0) get higher selection priority.
+                None => Entry { connection_failed_count: 1, consecutive_relay_failures: 1, ..Default::default() },
+            };
+            entry.update(&address, signature_verified);
+            self.set(key, entry);
+        }
+
         fn keep_limit(&mut self) {
-            while self.addresses.len() > MAX_ADDRESSES {
-                let to_remove =
-                    self.addresses.iter().max_by(|a, b| (a.1).connection_failed_count.cmp(&(b.1).connection_failed_count)).unwrap();
-                self.remove_by_key(*to_remove.0);
+            let excess = self.addresses.len().saturating_sub(MAX_ADDRESSES);
+            if excess == 0 {
+                return;
+            }
+            let keys = self
+                .addresses
+                .iter()
+                .k_largest_by_key(excess, |(_, entry)| entry.connection_failed_count)
+                .map(|(key, _)| *key)
+                .collect::<Vec<_>>();
+            for key in keys {
+                self.remove_by_key(key);
             }
         }
 
-        pub fn get(&self, address: NetAddress) -> Entry {
-            *self.addresses.get(&address.into()).unwrap()
-        }
-
-        pub fn remove(&mut self, address: NetAddress) {
-            self.remove_by_key(address.into())
-        }
-
-        fn remove_by_key(&mut self, key: AddressKey) {
+        pub(super) fn remove_by_key(&mut self, key: AddressKey) {
             self.addresses.remove(&key);
-            self.db_store.remove(key).unwrap()
+            self.db_store.remove(&key).unwrap();
         }
 
-        pub fn iterate_addresses(&self) -> impl Iterator<Item = NetAddress> + '_ {
-            self.addresses.values().map(|entry| entry.address)
+        pub fn iterator(&self) -> impl Iterator<Item = PeerAddress> + '_ {
+            self.addresses.iter().map(|(key, entry)| entry.address(*key))
         }
 
         /// This iterator functions as the node's ip routing selection algo.
@@ -437,20 +622,21 @@ mod address_store_with_cache {
         ///```
         pub fn iterate_prioritized_random_addresses(
             &self,
-            exceptions: HashSet<NetAddress>,
-        ) -> impl ExactSizeIterator<Item = NetAddress> + 'static {
-            let exceptions: HashSet<AddressKey> = exceptions.into_iter().map(|addr| addr.into()).collect();
+            tcp_exceptions: HashSet<NetAddress>,
+            libp2p_exceptions: HashSet<Libp2pId>,
+        ) -> impl ExactSizeIterator<Item = PeerAddress> + 'static {
             let mut prefix_counter: HashMap<PrefixBucket, usize> = HashMap::new();
-            let (mut weights, filtered_addresses): (Vec<f64>, Vec<NetAddress>) = self
+            let (mut weights, filtered_addresses): (Vec<f64>, Vec<PeerAddress>) = self
                 .addresses
                 .iter()
-                .filter(|(addr_key, _)| !exceptions.contains(addr_key))
-                .map(|(_, e)| {
-                    let count = prefix_counter.entry(e.address.prefix_bucket()).or_insert(0);
+                .filter(|(key, _)| !tcp_exceptions.contains(&key.0) && key.1.is_none_or(|id| !libp2p_exceptions.contains(&id)))
+                .map(|(key, e)| {
+                    let address = e.address(*key);
+                    let count = prefix_counter.entry(address.prefix_bucket()).or_insert(0);
                     #[allow(clippy::arithmetic_side_effects, reason = "See below")]
                     {
                         *count += 1; // ARITH-SAFETY(COUNTER)
-                        (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), e.address) // It's guaranteed that `e.connection_failed_count <= MAX_CONNECTION_FAILED_COUNT`.
+                        (64f64.powf((MAX_CONNECTION_FAILED_COUNT + 1 - e.connection_failed_count) as f64), address) // It's guaranteed that `e.connection_failed_count <= MAX_CONNECTION_FAILED_COUNT`.
                     }
                 })
                 .unzip();
@@ -464,7 +650,9 @@ mod address_store_with_cache {
         }
 
         pub fn remove_by_ip(&mut self, ip: IpAddr) {
-            for key in self.addresses.keys().filter(|key| key.is_ip(ip)).copied().collect_vec() {
+            let ip = ip.to_canonical();
+            let keys = self.db_store.iterator_by_ip(ip).map(|row| row.expect("address database entry").0).collect_vec();
+            for key in keys {
                 self.remove_by_key(key);
             }
         }
@@ -474,14 +662,14 @@ mod address_store_with_cache {
         Store::new(db)
     }
 
-    pub struct RandomWeightedIterator {
+    pub struct RandomWeightedIterator<T> {
         weighted_index: Option<WeightedIndex<f64>>,
         remaining: usize,
-        addresses: Vec<NetAddress>,
+        addresses: Vec<T>,
     }
 
-    impl RandomWeightedIterator {
-        pub fn new(weights: Vec<f64>, addresses: Vec<NetAddress>) -> Self {
+    impl<T> RandomWeightedIterator<T> {
+        pub fn new(weights: Vec<f64>, addresses: Vec<T>) -> Self {
             assert_eq!(weights.len(), addresses.len());
             let remaining = weights.iter().filter(|&&w| w > 0.0).count();
             let weighted_index = match WeightedIndex::new(weights) {
@@ -494,8 +682,8 @@ mod address_store_with_cache {
         }
     }
 
-    impl Iterator for RandomWeightedIterator {
-        type Item = NetAddress;
+    impl<T: Clone> Iterator for RandomWeightedIterator<T> {
+        type Item = T;
 
         fn next(&mut self) -> Option<Self::Item> {
             if let Some(weighted_index) = self.weighted_index.as_mut() {
@@ -518,7 +706,7 @@ mod address_store_with_cache {
                 if self.remaining == 0 {
                     self.weighted_index = None;
                 }
-                Some(self.addresses[i])
+                Some(self.addresses[i].clone())
             } else {
                 None
             }
@@ -529,7 +717,7 @@ mod address_store_with_cache {
         }
     }
 
-    impl ExactSizeIterator for RandomWeightedIterator {}
+    impl<T: Clone> ExactSizeIterator for RandomWeightedIterator<T> {}
 
     #[cfg(test)]
     mod tests {
@@ -541,18 +729,18 @@ mod address_store_with_cache {
         use kaspa_core::task::tick::TickService;
         use kaspa_database::create_temp_db;
         use kaspa_database::prelude::ConnBuilder;
-        use kaspa_utils::networking::IpAddress;
+        use kaspa_utils::networking::{IpAddress, NetAddress};
         use rv::{dist::Uniform, misc::ks_test as one_way_ks_test, traits::Cdf};
         use std::net::{IpAddr, Ipv6Addr};
 
         #[test]
         fn test_weighted_iterator() {
             let address = NetAddress::new(IpAddr::V6(Ipv6Addr::LOCALHOST).into(), 1);
-            let iter = RandomWeightedIterator::new(vec![0.2, 0.3, 0.0], vec![address, address, address]);
+            let iter = RandomWeightedIterator::<PeerAddress>::new(vec![0.2, 0.3, 0.0], vec![address.into(); 3]);
             assert_eq!(iter.len(), 2);
             assert_eq!(iter.count(), 2);
 
-            let iter = RandomWeightedIterator::new(vec![], vec![]);
+            let iter = RandomWeightedIterator::<PeerAddress>::new(vec![], vec![]);
             assert_eq!(iter.len(), 0);
             assert_eq!(iter.count(), 0);
         }
@@ -587,14 +775,14 @@ mod address_store_with_cache {
                 for current_suffix_bytes in 0..current_bucket_size {
                     let current_ip_bytes =
                         [current_prefix_bytes.to_be_bytes(), current_suffix_bytes.to_be_bytes()].concat().to_owned();
-                    am_guard.add_address(NetAddress::new(
+                    am_guard.add_address(PeerAddress::from(NetAddress::new(
                         IpAddress::from_str(&format!(
                             "{0}.{1}.{2}.{3}",
                             current_ip_bytes[0], current_ip_bytes[1], current_ip_bytes[2], current_ip_bytes[3]
                         ))
                         .unwrap(),
                         16111,
-                    ));
+                    )));
                     num_of_addresses += 1;
                 }
 
@@ -625,7 +813,7 @@ mod address_store_with_cache {
                 // The weight sampled expected uniform distribution
                 let prioritized_address_distribution = am
                     .lock()
-                    .iterate_prioritized_random_addresses(HashSet::new())
+                    .iterate_prioritized_random_addresses(HashSet::new(), HashSet::new())
                     .take(num_of_buckets)
                     .map(|addr| addr.prefix_bucket().as_u64() as f64)
                     .collect_vec();

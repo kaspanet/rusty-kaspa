@@ -116,8 +116,17 @@ pub struct Daemon {
 fn free_port() -> u16 {
     loop {
         let port = rand::random::<u16>() % (u16::MAX - 1024) + 1024;
-        if let Ok(listener) = std::net::TcpListener::bind(format!("127.0.0.1:{}", port)) {
+        if let Ok(listener) = std::net::TcpListener::bind(format!("0.0.0.0:{}", port)) {
             drop(listener);
+            return port;
+        }
+    }
+}
+
+fn free_relay_port() -> u16 {
+    loop {
+        let port = free_port();
+        if std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, port)).is_ok() {
             return port;
         }
     }
@@ -136,6 +145,7 @@ impl Daemon {
 
         args.rpclisten = Some(format!("0.0.0.0:{rpc_port}").try_into().unwrap());
         args.listen = Some(format!("0.0.0.0:{p2p_port}").try_into().unwrap());
+        args.relay_port = Some(args.relay_port.unwrap_or_else(free_relay_port));
         args.rpclisten_json = Some(format!("0.0.0.0:{rpc_json_port}").parse().unwrap());
         args.rpclisten_borsh = Some(format!("0.0.0.0:{rpc_borsh_port}").parse().unwrap());
     }

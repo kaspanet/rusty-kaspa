@@ -1,11 +1,13 @@
 use crate::service::Service;
 use crate::signals::Shutdown;
 use crate::trace;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct Core {
     pub keep_running: AtomicBool,
+    /// Process outcome retained across orderly shutdown after a service failure.
+    pub exit_code: AtomicU8,
     services: Mutex<Vec<Arc<dyn Service>>>,
 }
 
@@ -17,7 +19,7 @@ impl Default for Core {
 
 impl Core {
     pub fn new() -> Core {
-        Core { keep_running: AtomicBool::new(true), services: Mutex::new(Vec::new()) }
+        Core { keep_running: AtomicBool::new(true), exit_code: AtomicU8::new(0), services: Mutex::new(Vec::new()) }
     }
 
     pub fn bind<T>(&self, service: Arc<T>)
