@@ -40,7 +40,7 @@ pub struct TieBreakContext<'a> {
     pub all_tips: &'a [Hash],
     /// The tied subgroups — each subgroup is a slice of tip hashes that agree on a common chain ancestor above the conflict genesis.
     pub subgroups: &'a [GroupMetadata],
-    /// The mutual rank `k` shared by all tied subgroups.
+    /// The minimum rank among the compared subgroups; sides may qualify one rank above it.
     pub k: KType,
 }
 
