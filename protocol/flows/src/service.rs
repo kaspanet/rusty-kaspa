@@ -40,6 +40,10 @@ pub struct P2pService {
 }
 
 impl P2pService {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The service has one construction site; grouping these independent startup settings adds indirection."
+    )]
     pub fn new(
         core: Arc<Core>,
         flow_context: Arc<FlowContext>,
