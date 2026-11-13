@@ -615,6 +615,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "async-attributes"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3203e79f4dd9bdda415ed03cf14dae5a2bf775c683a00f94e9cd1faf0f596e5"
+dependencies = [
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "async-channel"
+version = "1.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81953c529336010edd6d8e358f886d9581267795c61b19475b71314bffa46d35"
+dependencies = [
+ "concurrent-queue",
+ "event-listener 2.5.3",
+ "futures-core",
+]
+
+[[package]]
 name = "async-channel"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -627,6 +648,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-executor"
+version = "1.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c96bf972d85afc50bf5ab8fe2d54d1586b4e0b46c97c50a0c9e71e2f7bcd812a"
+dependencies = [
+ "async-task",
+ "concurrent-queue",
+ "fastrand",
+ "futures-lite",
+ "pin-project-lite",
+ "slab",
+]
+
+[[package]]
+name = "async-global-executor"
+version = "2.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05b1b633a2115cd122d73b955eadd9916c18c8f510ec9cd1686404c60ad1c29c"
+dependencies = [
+ "async-channel 2.3.1",
+ "async-executor",
+ "async-io",
+ "async-lock",
+ "blocking",
+ "futures-lite",
+ "once_cell",
+]
+
+[[package]]
+name = "async-io"
+version = "2.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "456b8a8feb6f42d237746d4b3e9a178494627745c3c56c6ea55d92ba50d026fc"
+dependencies = [
+ "autocfg",
+ "cfg-if",
+ "concurrent-queue",
+ "futures-io",
+ "futures-lite",
+ "parking",
+ "polling",
+ "rustix",
+ "slab",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "async-lock"
 version = "3.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -635,6 +703,33 @@ dependencies = [
  "event-listener 5.3.1",
  "event-listener-strategy",
  "pin-project-lite",
+]
+
+[[package]]
+name = "async-std"
+version = "1.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c8e079a4ab67ae52b7403632e4618815d6db36d2a010cfe41b02c1b1578f93b"
+dependencies = [
+ "async-attributes",
+ "async-channel 1.9.0",
+ "async-global-executor",
+ "async-io",
+ "async-lock",
+ "crossbeam-utils",
+ "futures-channel",
+ "futures-core",
+ "futures-io",
+ "futures-lite",
+ "gloo-timers",
+ "kv-log-macro",
+ "log",
+ "memchr",
+ "once_cell",
+ "pin-project-lite",
+ "pin-utils",
+ "slab",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -658,6 +753,12 @@ dependencies = [
  "quote",
  "syn 2.0.110",
 ]
+
+[[package]]
+name = "async-task"
+version = "4.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
 
 [[package]]
 name = "async-trait"
@@ -875,6 +976,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
+]
+
+[[package]]
+name = "blocking"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a70e4329df6cb94385eed412ec92375c3cdd8a6e502493d1229b6414e4036dfa"
+dependencies = [
+ "async-channel 2.3.1",
+ "async-task",
+ "futures-io",
+ "futures-lite",
+ "piper",
 ]
 
 [[package]]
@@ -2271,6 +2385,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e5c1b78ca4aae1ac06c48a526a655760685149f0d465d21f37abfe57ce075c6"
 
 [[package]]
+name = "futures-lite"
+version = "2.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f78e10609fe0e0b3f4157ffab1876319b5b0db102a2c60dc4626306dc46b44ad"
+dependencies = [
+ "fastrand",
+ "futures-core",
+ "futures-io",
+ "parking",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "futures-macro"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2376,6 +2503,18 @@ name = "glob"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
+
+[[package]]
+name = "gloo-timers"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbb143cf96099802033e0d4f4963b19fd2e0b728bcf076cd9cf7f6634f092994"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "js-sys",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "h2"
@@ -2494,6 +2633,12 @@ name = "hermit-abi"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbf6a919d6cf397374f7dfeeea91d974c7c0a7221d0d0f4f20d859d329e53fcc"
+
+[[package]]
+name = "hermit-abi"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "hex"
@@ -3227,7 +3372,7 @@ name = "kaspa-consensus"
 version = "2.1.0"
 dependencies = [
  "arc-swap",
- "async-channel",
+ "async-channel 2.3.1",
  "bincode",
  "criterion",
  "crossbeam-channel",
@@ -3348,7 +3493,7 @@ dependencies = [
 name = "kaspa-consensus-notify"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "cfg-if",
  "derive_more 0.99.18",
  "futures",
@@ -3474,7 +3619,7 @@ dependencies = [
 name = "kaspa-grpc-client"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "async-stream",
  "async-trait",
  "faster-hex 0.9.0",
@@ -3506,7 +3651,7 @@ dependencies = [
 name = "kaspa-grpc-core"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "async-stream",
  "async-trait",
  "faster-hex 0.9.0",
@@ -3538,7 +3683,7 @@ dependencies = [
 name = "kaspa-grpc-server"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "async-stream",
  "async-trait",
  "faster-hex 0.9.0",
@@ -3607,7 +3752,7 @@ dependencies = [
 name = "kaspa-index-core"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "async-trait",
  "bincode",
  "derive_more 0.99.18",
@@ -3629,7 +3774,7 @@ dependencies = [
 name = "kaspa-index-processor"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "async-trait",
  "derive_more 0.99.18",
  "futures",
@@ -3749,7 +3894,7 @@ dependencies = [
 name = "kaspa-notify"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "async-trait",
  "borsh",
  "criterion",
@@ -3913,7 +4058,7 @@ dependencies = [
 name = "kaspa-rpc-core"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "async-trait",
  "borsh",
  "cfg-if",
@@ -4100,7 +4245,7 @@ dependencies = [
 name = "kaspa-testing-integration"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "async-trait",
  "bincode",
  "chrono",
@@ -4250,7 +4395,7 @@ name = "kaspa-utils"
 version = "2.1.0"
 dependencies = [
  "arc-swap",
- "async-channel",
+ "async-channel 2.3.1",
  "async-trait",
  "bincode",
  "borsh",
@@ -4318,18 +4463,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wallet"
-version = "2.1.0"
-dependencies = [
- "async-lock",
- "async-trait",
- "kaspa-cli",
- "tokio",
- "workflow-log",
- "workflow-terminal",
-]
-
-[[package]]
 name = "kaspa-wallet-cli-wasm"
 version = "2.1.0"
 dependencies = [
@@ -4350,7 +4483,7 @@ dependencies = [
  "aes",
  "ahash",
  "argon2",
- "async-channel",
+ "async-channel 2.3.1",
  "async-lock",
  "async-trait",
  "base64 0.22.1",
@@ -4424,6 +4557,57 @@ dependencies = [
  "workflow-wasm",
  "xxhash-rust",
  "zeroize",
+]
+
+[[package]]
+name = "kaspa-wallet-daemon"
+version = "2.1.0"
+dependencies = [
+ "async-std",
+ "async-trait",
+ "clap",
+ "futures-util",
+ "kaspa-consensus-core",
+ "kaspa-core",
+ "kaspa-wallet-core",
+ "kaspa-wallet-grpc-core",
+ "kaspa-wallet-grpc-server",
+ "log",
+ "tokio",
+ "tonic",
+ "workflow-core",
+ "workflow-log",
+ "workflow-terminal",
+]
+
+[[package]]
+name = "kaspa-wallet-grpc-core"
+version = "2.1.0"
+dependencies = [
+ "kaspa-bip32",
+ "kaspa-rpc-core",
+ "kaspa-txscript",
+ "kaspa-wallet-core",
+ "prost",
+ "thiserror 2.0.18",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
+name = "kaspa-wallet-grpc-server"
+version = "2.1.0"
+dependencies = [
+ "futures-util",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-rpc-core",
+ "kaspa-wallet-core",
+ "kaspa-wallet-grpc-core",
+ "log",
+ "tokio",
+ "tonic",
 ]
 
 [[package]]
@@ -4711,7 +4895,7 @@ dependencies = [
 name = "kaspad"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "cfg-if",
  "clap",
  "dhat",
@@ -4767,6 +4951,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb26cec98cce3a3d96cbb7bced3c4b16e3d13f27ec56dbd62cbc8f39cfb9d653"
 dependencies = [
  "cpufeatures 0.2.17",
+]
+
+[[package]]
+name = "kv-log-macro"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0de8b303297635ad57c9f5059fd9cee7a47f8e8daa09df0fcd07dd39fb22977f"
+dependencies = [
+ "log",
 ]
 
 [[package]]
@@ -5712,10 +5905,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
+name = "piper"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c835479a4443ded371d6c535cbfd8d31ad92c5d23ae9770a61bc155e4992a3c1"
+dependencies = [
+ "atomic-waker",
+ "fastrand",
+ "futures-io",
+]
+
+[[package]]
 name = "pkg-config"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "953ec861398dccce10c670dfeaf3ec4911ca479e9c02154b3a215178c5f566f2"
+
+[[package]]
+name = "polling"
+version = "3.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d0e4f59085d47d8241c88ead0f274e8a0cb551f3625263c05eb8dd897c34218"
+dependencies = [
+ "cfg-if",
+ "concurrent-queue",
+ "hermit-abi 0.5.3",
+ "pin-project-lite",
+ "rustix",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "poly1305"
@@ -6472,7 +6690,7 @@ dependencies = [
 name = "rothschild"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "clap",
  "criterion",
  "faster-hex 0.9.0",
@@ -7062,7 +7280,7 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 name = "simpa"
 version = "2.1.0"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "cfg-if",
  "clap",
  "dhat",
@@ -8760,7 +8978,7 @@ version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5eea7fc4bb4beaf42de4a5006b6703d73071718d3a775d01024edef7738f7aff"
 dependencies = [
- "async-channel",
+ "async-channel 2.3.1",
  "borsh",
  "bs58",
  "cfg-if",
@@ -9115,7 +9333,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e38328bcabc456c355ac5cd92a061bd7af68e16eb60405d87e719836a471ac37"
 dependencies = [
  "ahash",
- "async-channel",
+ "async-channel 2.3.1",
  "async-trait",
  "cfg-if",
  "downcast-rs",
