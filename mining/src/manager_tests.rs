@@ -1589,4 +1589,79 @@ mod tests {
         let count = mining_manager.transaction_count(TransactionQuery::TransactionsOnly);
         assert_eq!(expected_count, count, "{message} mempool transaction count: expected {}, got {}", expected_count, count);
     }
+
+    #[test]
+    fn test_evict_child_relayed_twice_around_parent_mining() {
+        const MAX_TRANSACTION_COUNT: usize = 3;
+        let consensus = Arc::new(ConsensusMock::new());
+        let mut config =
+            Config::build_default(TARGET_TIME_PER_BLOCK, false, BlockMassLimits::with_shared_limit(MAX_BLOCK_MASS), BLOCK_LANE_LIMITS);
+        config.maximum_transaction_count = MAX_TRANSACTION_COUNT;
+        let mining_manager = MiningManager::with_config(config, None, Arc::new(MiningCounters::default()));
+        let funding_txs = create_and_add_funding_transactions(&consensus, 4);
+        let child = relay_child_twice_around_parent_mining(&consensus, &mining_manager, &funding_txs[0]);
+
+        let fee = 10 * DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE;
+        let fillers = funding_txs[1..3].iter().map(|tx| create_transaction(tx, fee)).collect_vec();
+        let results = validate_and_insert_relayed_transactions(&mining_manager, consensus.as_ref(), fillers);
+        assert!(results.iter().all(|result| result.is_ok()), "{results:?}");
+        assert_transaction_count(&mining_manager, MAX_TRANSACTION_COUNT, "the pool should be full");
+
+        // The child pays the lowest feerate, so it is the transaction evicted to make room
+        let newcomer = create_transaction(&funding_txs[3], 2 * fee);
+        let results = validate_and_insert_relayed_transactions(&mining_manager, consensus.as_ref(), vec![newcomer.clone()]);
+        assert!(results.len() == 1 && results[0].is_ok(), "{results:?}");
+        assert!(mining_manager.has_transaction(&newcomer.id(), TransactionQuery::TransactionsOnly));
+        assert!(!mining_manager.has_transaction(&child.id(), TransactionQuery::All), "the evicted child should leave both pools");
+        assert_transaction_count(&mining_manager, MAX_TRANSACTION_COUNT, "after eviction");
+    }
+
+    #[test]
+    fn test_remove_mined_child_relayed_twice_around_parent_mining() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let mining_manager = default_mining_manager();
+        let funding_txs = create_and_add_funding_transactions(&consensus, 1);
+        let child = relay_child_twice_around_parent_mining(&consensus, &mining_manager, &funding_txs[0]);
+
+        consensus.add_transaction(child.clone(), 2);
+        mining_manager.handle_new_block_transactions(consensus.as_ref(), 2, &build_block_transactions(once(&child))).unwrap();
+        assert!(!mining_manager.has_transaction(&child.id(), TransactionQuery::All), "a mined transaction should leave the mempool");
+    }
+
+    /// Peer A relays `child` before this node knows its parent, so it is orphaned. The parent then gets mined, and the copy of
+    /// `child` that peer B was asked for while A's copy was still being processed validates against the UTXO set.
+    fn relay_child_twice_around_parent_mining(
+        consensus: &Arc<ConsensusMock>,
+        mining_manager: &MiningManager,
+        funding_tx: &Transaction,
+    ) -> Transaction {
+        let parent = create_transaction(funding_tx, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
+        let child = create_transaction(&parent, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
+        assert_eq!(mining_manager.unknown_transactions(vec![child.id()]), vec![child.id()], "peer B can request the child");
+
+        let results = validate_and_insert_relayed_transactions(mining_manager, consensus.as_ref(), vec![child.clone()]);
+        assert!(results.is_empty(), "{results:?}");
+        assert!(mining_manager.has_transaction(&child.id(), TransactionQuery::OrphansOnly));
+
+        // Consensus applies the parent's block before the mempool is notified of it
+        consensus.add_transaction(parent, 1);
+
+        let results = validate_and_insert_relayed_transactions(mining_manager, consensus.as_ref(), vec![child.clone()]);
+        assert!(results.len() == 1 && results[0].is_ok(), "{results:?}");
+        child
+    }
+
+    fn validate_and_insert_relayed_transactions(
+        mining_manager: &MiningManager,
+        consensus: &dyn ConsensusApi,
+        transactions: Vec<Transaction>,
+    ) -> Vec<MiningManagerResult<Arc<Transaction>>> {
+        mining_manager.validate_and_insert_transaction_batch(
+            consensus,
+            transactions,
+            Priority::Low,
+            Orphan::Allowed,
+            RbfPolicy::Allowed,
+        )
+    }
 }

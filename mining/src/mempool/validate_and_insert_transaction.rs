@@ -131,6 +131,10 @@ impl Mempool {
             );
         }
 
+        // A copy relayed by another peer may still sit in the orphan pool (validated before its parent was known). Keeping both
+        // would make later removals of this id hit only the orphan copy. Its orphan redeemers are kept and unorphaned by the caller.
+        self.orphan_pool.remove_orphan(&transaction_id, false, TxRemovalReason::Unorphaned, "")?;
+
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =
             self.transaction_pool.add_transaction(transaction, virtual_daa_score, priority, transaction_size)?.mtx.tx.clone();
