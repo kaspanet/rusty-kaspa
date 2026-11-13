@@ -20,8 +20,8 @@ use kaspa_math::Uint256;
 use serde::{Deserialize, Serialize};
 
 // Increased for stark proofs. This value is effectively covered by the
-// transient block mass limit: 1_000_000 transient mass / 4 grams-per-byte = 250_000
-// bytes for the entire block, so a larger signature script cannot be accepted anyway.
+// transient block mass limit of 250_000 (charged 1:1 per byte), which caps the entire
+// block body at 250_000 bytes, so a larger signature script cannot be accepted anyway.
 // TODO: check whether this early signature-script length guard can be
 // removed entirely, or whether it remains useful as cheap early protection.
 const MAX_SIGNATURE_SCRIPT_LEN: usize = 250_000;
@@ -625,7 +625,8 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    // Transient mass is charged 1:1 per byte, so the transient limit is the block body byte cap
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -682,7 +683,8 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    // Transient mass is charged 1:1 per byte, so the transient limit is the block body byte cap
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -730,8 +732,8 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
-    // Transient mass is increased for stark proofs
-    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    // Transient mass is charged 1:1 per byte, so the transient limit is the block body byte cap (increased for stark proofs)
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -770,8 +772,8 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
 
-    // Transient mass is increased for stark proofs
-    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 1_000_000 },
+    // Transient mass is charged 1:1 per byte, so the transient limit is the block body byte cap (increased for stark proofs)
+    block_mass_limits: BlockMassLimits { compute: 500_000, storage: 500_000, transient: 250_000 },
     block_lane_limits: BlockLaneLimits { lanes_per_block: DEFAULT_LANES_PER_BLOCK_LIMIT, gas_per_lane: DEFAULT_GAS_PER_LANE_LIMIT },
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
@@ -792,6 +794,17 @@ pub const DEVNET_PARAMS: Params = Params {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transient_mass_limits_are_byte_caps_with_unit_factor() {
+        // The transient limit is the block body byte cap; compute and storage limits must remain unchanged.
+        for params in [&MAINNET_PARAMS, &TESTNET_PARAMS, &SIMNET_PARAMS, &DEVNET_PARAMS] {
+            let limits = params.block_mass_limits;
+            assert_eq!(limits.transient, 250_000, "{}: transient limit must equal the 250_000-byte block body cap", params.net);
+            assert_eq!(limits.compute, 500_000, "{}: compute limit must be unchanged", params.net);
+            assert_eq!(limits.storage, 500_000, "{}: storage limit must be unchanged", params.net);
+        }
+    }
 
     #[test]
     fn override_params_rejects_unknown_top_level_fields() {
