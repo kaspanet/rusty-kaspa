@@ -174,11 +174,11 @@ impl<
 
             // Pick a "winner" among these subgroups
             let (winning_conflict_genesis, winning_subgroup) = {
-                let best_groups = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
+                let (m, best_groups) = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
 
                 #[allow(clippy::style)]
                 let final_winner = if best_groups.len() > 1 {
-                    self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups)
+                    self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups, m)
                 } else {
                     let single_winner = best_groups.into_iter().next().expect("best_groups should be non-empty after filtering");
                     (single_winner.conflict_genesis, single_winner.subgroup)
@@ -267,19 +267,22 @@ impl<
         voter.vote(&ctx)
     }
 
-    /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
-    fn tie_breaking(&self, conflict_genesis: Hash, all_tips: &[Hash], subgroups: &[GroupMetadata]) -> (Hash, Arc<Vec<Hash>>) {
-        // The compared sides span ranks m and m+1; the reference width derives from the minimum m
-        let mutual_k = subgroups.iter().map(|g| g.k).min().expect("ranked sides should be non-empty");
-        debug!("Side comparison at minimum rank k = {}", mutual_k);
-
+    /// Common-reference tiebreaking over the compared sides, spanning ranks m and m+1;
+    /// m is the minimum qualifying rank driving the reference width
+    fn tie_breaking(
+        &self,
+        conflict_genesis: Hash,
+        all_tips: &[Hash],
+        subgroups: &[GroupMetadata],
+        m: KType,
+    ) -> (Hash, Arc<Vec<Hash>>) {
         let winning_index = DagknightTieBreaker::new(
             self.coloring_store.clone(),
             self.headers_store.clone(),
             self.relations_store.clone(),
             self.reachability_service.clone(),
         )
-        .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: mutual_k });
+        .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: m });
 
         let winning_conflict_genesis = subgroups[winning_index].conflict_genesis;
         let winning_subgroup = subgroups[winning_index].subgroup.clone();
@@ -292,17 +295,17 @@ impl<
     /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
     /// in the caller is simply using blue_work + hash to break ties between subgroups.
     ///
-    /// Returns the sides ranked at most m+1, where m is the minimum qualifying rank found
-    /// by the k-search. The tiebreaking rule compares sides across this whole domain, not
-    /// only the minimal-rank ones: a side ranked m+1 can still win the comparison. Each
-    /// returned side carries its actual rank (m or m+1) since tiebreaking derives the
-    /// reference width from the minimum rank m.
+    /// Returns the minimum qualifying rank m together with the sides ranked at most
+    /// m+1, where m is found by the k-search. The tiebreaking rule compares sides
+    /// across this whole domain, not only the minimal-rank ones: a side ranked m+1 can
+    /// still win the comparison. Each returned side carries its actual rank (m or m+1)
+    /// while the returned m drives the tiebreaking reference width.
     fn rank(
         &self,
         conflict_genesis: Hash,
         agreeing_subgroups: &HashMap<Hash, Arc<Vec<Hash>>>,
         all_tips: &[Hash],
-    ) -> Vec<GroupMetadata> {
+    ) -> (KType, Vec<GroupMetadata>) {
         let mut group_map = agreeing_subgroups.clone();
         // Evaluates every side in `map` at width k, narrowing `map` to the qualifying
         // sides. Returns their metadata, or None when no side qualifies.
@@ -348,7 +351,7 @@ impl<
             }
         };
 
-        let Some(result) = RankSearcher::search(|k| evaluate_at(&mut group_map, k)) else { return vec![] };
+        let Some(result) = RankSearcher::search(|k| evaluate_at(&mut group_map, k)) else { return (0, vec![]) };
         // The k-search converges to m with a last successful evaluation exactly there, so
         // the sides ranking only m+1 were dropped from the searched map along the way and
         // result holds the rank-m sides alone. The tiebreaking comparison domain spans
@@ -365,7 +368,7 @@ impl<
         if let Some(wider) = evaluate_at(&mut wide_map, result.k.saturating_add(1)) {
             best_groups.extend(wider);
         }
-        best_groups
+        (result.k, best_groups)
     }
 
     /// Applies a coloring to the conflict zone, and determines if the
@@ -1335,7 +1338,8 @@ mod tests {
                 }
             }
             let tips: Vec<Hash> = grouping.values().flat_map(|v| v.iter().copied()).collect();
-            self.executor.rank(self.genesis, &grouping, &tips).into_iter().map(|g| (g.conflict_genesis, g.k)).collect()
+            let (_, ranked) = self.executor.rank(self.genesis, &grouping, &tips);
+            ranked.into_iter().map(|g| (g.conflict_genesis, g.k)).collect()
         }
     }
 
