@@ -18,6 +18,7 @@ impl ProtocolConverter {
         RpcPeerInfo {
             id: peer.identity(),
             address: peer.net_address().into(),
+            libp2p_id: peer.libp2p_id(),
             is_outbound: peer.is_outbound(),
             is_ibd_peer: ibd_peer_key.is_some() && peer.key() == *ibd_peer_key.as_ref().unwrap(),
             last_ping_duration: peer.last_ping_duration(),

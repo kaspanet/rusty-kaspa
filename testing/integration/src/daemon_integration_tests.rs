@@ -104,6 +104,9 @@ async fn daemon_mining_test() {
         unsafe_rpc: true,
         enable_unsynced_mining: true,
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
+        // The test connects through localhost, but peers advertise their LAN addresses.
+        // Disable automatic dialing to avoid a second TCP session when exactly one is expected.
+        outbound_target: 0,
         ..Default::default()
     };
     // let total_fd_limit = kaspa_utils::fd_budget::get_limit() / 2 - 128;
@@ -189,6 +192,9 @@ async fn daemon_utxos_propagation_test() {
         enable_unsynced_mining: true,
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         utxoindex: true,
+        // The test connects through localhost, but peers advertise their LAN addresses.
+        // Disable automatic dialing to avoid a second TCP session to the same node when exactly one is expected.
+        outbound_target: 0,
         ..Default::default()
     };
     let total_fd_limit = 10;
@@ -778,6 +784,9 @@ async fn daemon_pruning_seqcommit_sync_test() {
         disable_upnp: true,
         utxoindex: true,
         override_params_file: Some(override_params_path.to_string_lossy().to_string()),
+        // The test connects through localhost, but peers advertise their LAN addresses.
+        // Disable automatic dialing to avoid a second TCP session to the same node when exactly one is expected.
+        outbound_target: 0,
         ..Default::default()
     };
 
@@ -981,6 +990,9 @@ async fn daemon_ibd_smt_state_sync_test() {
         disable_upnp: true,
         utxoindex: true,
         override_params_file: Some(override_params_path.to_string_lossy().to_string()),
+        // The test connects through localhost, but peers advertise their LAN addresses.
+        // Disable automatic dialing to avoid a second TCP session when exactly one is expected.
+        outbound_target: 0,
         ..Default::default()
     };
 

@@ -16,7 +16,7 @@ use kaspad_lib::{
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
-pub fn main() {
+pub fn main() -> std::process::ExitCode {
     #[cfg(feature = "heap")]
     let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
 
@@ -51,4 +51,5 @@ pub fn main() {
 
     core.run();
     info!("Kaspad has stopped...");
+    std::process::ExitCode::from(core.exit_code.load(std::sync::atomic::Ordering::Relaxed))
 }

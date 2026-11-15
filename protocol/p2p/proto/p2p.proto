@@ -12,10 +12,33 @@ message AddressesMessage{
   repeated NetAddress addressList = 1;
 }
 
+// Advertised TCP listener and owner-signed libp2p connection details.
 message NetAddress{
   int64 timestamp = 1;
   bytes ip = 3;
   uint32 port = 4;
+  // Libp2p identity, listener ports, nonce and signature over the complete address.
+  Libp2pMetadata libp2p = 5;
+  // Destination relay for hole punching; absent until a reservation is ready.
+  LibP2pAddress relay_address = 8;
+}
+
+message LibP2pAddress {
+  SocketAddress address = 1;
+  bytes endpoint_id = 2;
+}
+
+message Libp2pMetadata {
+  bytes endpoint_id = 1;
+  uint32 port = 2;
+  uint32 relay_port = 3;
+  uint64 nonce = 4;
+  bytes signature = 5;
+}
+
+message SocketAddress {
+  bytes ip = 1;
+  uint32 port = 2;
 }
 
 message SubnetworkId{
@@ -152,6 +175,7 @@ message VersionMessage{
   uint32 protocolVersion = 1;
   uint64 services = 2;
   int64 timestamp = 3;
+  // Advertised signed address, or a legacy TCP listener.
   NetAddress address = 4;
   bytes id = 5;
   string userAgent = 6;
