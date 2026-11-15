@@ -561,6 +561,8 @@ impl ReachabilityStore for StagingReachabilityStore<'_> {
 
     fn delete(&mut self, hash: Hash) -> Result<(), StoreError> {
         self.staging_writes.remove(&hash);
+        self.staging_children.remove(&hash);
+        self.staging_fcs.remove(&hash);
         self.staging_deletions.insert(hash);
         Ok(())
     }
@@ -803,6 +805,8 @@ impl ReachabilityStoreReader for MemoryReachabilityStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_database::{create_temp_db, prelude::ConnBuilder};
+    use parking_lot::RwLock;
 
     #[test]
     fn test_store_basics() {
@@ -817,5 +821,23 @@ mod tests {
         println!("{children:?}");
         store.get_interval(7.into()).unwrap();
         println!("{children:?}");
+    }
+
+    #[test]
+    fn test_staging_delete_with_staged_sets() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let store = RwLock::new(DbReachabilityStore::new(db.clone(), CachePolicy::Empty, CachePolicy::Empty));
+        let (hash, child) = (7.into(), 31.into());
+
+        let mut staging = StagingReachabilityStore::new(store.upgradable_read());
+        staging.append_child(hash, child).unwrap();
+        staging.insert_future_covering_item(hash, child, 0).unwrap();
+        staging.delete(hash).unwrap();
+
+        let mut batch = WriteBatch::default();
+        let store_write = staging.commit(&mut batch).unwrap();
+        db.write(batch).unwrap();
+        assert_eq!(0, store_write.children_access.access.bucket_iterator(hash).count());
+        assert_eq!(0, store_write.fcs_access.access.bucket_iterator(hash).count());
     }
 }
