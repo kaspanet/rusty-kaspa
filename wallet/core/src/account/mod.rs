@@ -571,6 +571,58 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok(generator.summary())
     }
 
+    /// Export transaction history as CSV string.
+    /// 
+    /// # Arguments
+    /// * `filter` - Optional filter for transaction types (None = all types)
+    /// * `start_date` - Optional start date filter (Unix timestamp in milliseconds)
+    /// * `end_date` - Optional end date filter (Unix timestamp in milliseconds)
+    /// 
+    /// # Returns
+    /// A tuple containing the complete CSV content (including header row) and the transaction count.
+    async fn export_transaction_history_csv(
+        self: Arc<Self>,
+        filter: Option<Vec<TransactionKind>>,
+        start_date: Option<u64>,
+        end_date: Option<u64>,
+    ) -> Result<(String, usize)> {
+        let binding = Binding::from(&self.clone().as_dyn_arc());
+        let network_id = self.wallet().network_id()?;
+        let store = self.wallet().store().as_transaction_record_store()?;
+        
+        let mut records = Vec::new();
+        let mut ids = store.transaction_id_iter(&binding, &network_id).await?;
+        
+        while let Some(id) = ids.try_next().await? {
+            let tx = store.load_single(&binding, &network_id, &id).await?;
+            
+            // Apply transaction type filter
+            if let Some(ref kinds) = filter {
+                if !kinds.contains(&tx.kind()) {
+                    continue;
+                }
+            }
+            
+            // Apply date range filters
+            if let Some(start) = start_date {
+                if tx.unixtime_msec.unwrap_or(0) < start {
+                    continue;
+                }
+            }
+            if let Some(end) = end_date {
+                if tx.unixtime_msec.unwrap_or(u64::MAX) > end {
+                    continue;
+                }
+            }
+            
+            records.push((*tx).clone());
+        }
+        
+        let count = records.len();
+        let csv = crate::storage::transaction::generate_csv(&records);
+        Ok((csv, count))
+    }
+
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {
         Err(Error::AccountAddressDerivationCaps)
     }

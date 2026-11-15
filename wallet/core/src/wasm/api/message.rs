@@ -2335,3 +2335,63 @@ try_from! ( args: AccountsCommitRevealManualResponse, IAccountsCommitRevealManua
 });
 
 // ---
+
+declare! {
+    ITransactionsExportCsvRequest,
+    r#"
+    /**
+     * Request to export transaction history as CSV.
+     *  
+     * @category Wallet API
+     */
+    export interface ITransactionsExportCsvRequest {
+        accountId : HexString;
+        networkId : NetworkId | string;
+        filter? : TransactionKind[];
+        startDate? : bigint;
+        endDate? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: ITransactionsExportCsvRequest, TransactionsExportCsvRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let network_id = args.get_network_id("networkId")?;
+    let filter = args.get_vec("filter").ok().map(|filter| {
+        filter.into_iter().map(TransactionKind::try_from).collect::<Result<Vec<TransactionKind>>>()
+    }).transpose()?;
+    let start_date = args.get_u64("startDate").ok();
+    let end_date = args.get_u64("endDate").ok();
+
+    Ok(TransactionsExportCsvRequest {
+        account_id,
+        network_id,
+        filter,
+        start_date,
+        end_date,
+    })
+});
+
+declare! {
+    ITransactionsExportCsvResponse,
+    r#"
+    /**
+     * Response containing CSV export data.
+     * 
+     * @category Wallet API
+     */
+    export interface ITransactionsExportCsvResponse {
+        csvContent : string;
+        transactionCount : number;
+    }
+    "#,
+}
+
+try_from! ( args: TransactionsExportCsvResponse, ITransactionsExportCsvResponse, {
+    let response = ITransactionsExportCsvResponse::default();
+    response.set("csvContent", &JsValue::from_str(&args.csv_content))?;
+    response.set("transactionCount", &JsValue::from_f64(args.transaction_count as f64))?;
+    Ok(response)
+});
+
+// ---
