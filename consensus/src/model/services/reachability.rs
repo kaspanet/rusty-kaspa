@@ -5,7 +5,7 @@ use kaspa_consensus_core::blockhash;
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
-use crate::processes::reachability::{Result, inquirer};
+use crate::processes::reachability::{ReachabilityError, Result, inquirer};
 use kaspa_hashes::Hash;
 
 pub trait ReachabilityService {
@@ -48,6 +48,12 @@ pub trait ReachabilityService {
     /// (A "tree child of X" is a block which X is its chain parent)
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash;
 
+    /// Result version of [`Self::get_next_chain_ancestor`] (avoids unwrapping internally).
+    /// `Ok(None)` stands for the inquirer's `BadQuery`: the two hashes are equal, or
+    /// `ancestor` is not a strict chain ancestor of `descendant`. Store errors still
+    /// propagate as `Err`
+    fn try_get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Result<Option<Hash>>;
+
     /// Returns the chain parent of `this`
     fn get_chain_parent(&self, this: Hash) -> Hash;
 
@@ -79,6 +85,13 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for T {
 
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash {
         inquirer::get_next_chain_ancestor(self, descendant, ancestor).unwrap()
+    }
+
+    fn try_get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Result<Option<Hash>> {
+        match inquirer::get_next_chain_ancestor(self, descendant, ancestor) {
+            Err(ReachabilityError::BadQuery) => Ok(None),
+            other => other.map(Some),
+        }
     }
 
     fn get_chain_parent(&self, this: Hash) -> Hash {
@@ -125,6 +138,10 @@ impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for MTReachability
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash {
         let read_guard = self.store.read();
         inquirer::get_next_chain_ancestor(read_guard.deref(), descendant, ancestor).unwrap()
+    }
+
+    fn try_get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Result<Option<Hash>> {
+        self.store.read().try_get_next_chain_ancestor(descendant, ancestor)
     }
 
     fn get_chain_parent(&self, this: Hash) -> Hash {

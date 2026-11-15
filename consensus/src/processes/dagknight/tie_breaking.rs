@@ -145,10 +145,7 @@ impl<
     fn chain_anchors(&self, conflict_genesis: Hash, descending_f: &[Hash]) -> Vec<Option<Hash>> {
         descending_f
             .iter()
-            .map(|&block| {
-                (block != conflict_genesis && self.reachability_service.is_chain_ancestor_of(conflict_genesis, block))
-                    .then(|| self.reachability_service.get_next_chain_ancestor(block, conflict_genesis))
-            })
+            .map(|&block| self.reachability_service.try_get_next_chain_ancestor(block, conflict_genesis).unwrap())
             .collect()
     }
 
