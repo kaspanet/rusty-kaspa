@@ -4,8 +4,8 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            DB, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, dagknight::DbDagknightStore, depth::DbDepthStore,
-            ghostdag::DbGhostdagStore, headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore,
+            DB, block_window_cache::BlockWindowCacheStore, conflict_zone_coloring::DbConflictZoneColoringStore, daa::DbDaaStore,
+            depth::DbDepthStore, ghostdag::DbGhostdagStore, headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::DbPastPruningPointsStore, pruning::DbPruningStore, pruning_samples::DbPruningSamplesStore,
             reachability::DbReachabilityStore, relations::DbRelationsStore, selected_chain::DbSelectedChainStore,
             statuses::DbStatusesStore,
@@ -51,8 +51,13 @@ pub type DbPruningPointManager = PruningPointManager<
 >;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore, DbHeadersStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
-pub type DbDagknightExecutor =
-    DagknightExecutor<DbDagknightStore, DbHeadersStore, MTRelationsService<DbRelationsStore>, DbUmcCascadeStore, DbReachabilityStore>;
+pub type DbDagknightExecutor = DagknightExecutor<
+    DbConflictZoneColoringStore,
+    DbHeadersStore,
+    MTRelationsService<DbRelationsStore>,
+    DbUmcCascadeStore,
+    DbReachabilityStore,
+>;
 
 pub struct ConsensusServices {
     // Underlying storage
@@ -143,7 +148,7 @@ impl ConsensusServices {
         let dagknight_counters = Arc::<crate::processes::dagknight::DagknightCounters>::default();
         let dagknight_executor = DagknightExecutor {
             genesis_hash: params.genesis.hash,
-            dagknight_store: storage.dagknight_store.clone(),
+            coloring_store: storage.coloring_store.clone(),
             headers_store: storage.headers_store.clone(),
             relations_store: Arc::new(RwLock::new(relations_service.clone())),
             reachability_service: reachability_service.clone(),

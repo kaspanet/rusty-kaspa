@@ -10,7 +10,7 @@
       "parents": [],
       "sp": 0,
       "blue_work": 0,
-      "gd": {
+      "cd": {
         "blues": [],
         "reds": [],
         "blue_score": 0
@@ -23,7 +23,7 @@
       ],
       "sp": 1,
       "blue_work": 1,
-      "gd": {
+      "cd": {
         "blues": [
           1
         ],
@@ -38,7 +38,7 @@
       ],
       "sp": 2,
       "blue_work": 2,
-      "gd": {
+      "cd": {
         "blues": [
           2
         ],
@@ -53,7 +53,7 @@
       ],
       "sp": 3,
       "blue_work": 3,
-      "gd": {
+      "cd": {
         "blues": [
           3
         ],
@@ -68,7 +68,7 @@
       ],
       "sp": 4,
       "blue_work": 4,
-      "gd": {
+      "cd": {
         "blues": [
           4
         ],
@@ -83,7 +83,7 @@
       ],
       "sp": 5,
       "blue_work": 5,
-      "gd": {
+      "cd": {
         "blues": [
           5
         ],
@@ -98,7 +98,7 @@
       ],
       "sp": 6,
       "blue_work": 6,
-      "gd": {
+      "cd": {
         "blues": [
           6
         ],
@@ -121,7 +121,7 @@
       ],
       "sp": 7,
       "blue_work": 7,
-      "gd": {
+      "cd": {
         "blues": [
           7
         ],
@@ -137,7 +137,7 @@
       ],
       "sp": 9,
       "blue_work": 9,
-      "gd": {
+      "cd": {
         "blues": [
           9
         ],
@@ -154,7 +154,7 @@
       ],
       "sp": 10,
       "blue_work": 10,
-      "gd": {
+      "cd": {
         "blues": [
           10
         ],

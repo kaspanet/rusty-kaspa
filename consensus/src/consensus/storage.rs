@@ -5,8 +5,8 @@ use crate::{
         acceptance_data::DbAcceptanceDataStore,
         block_transactions::DbBlockTransactionsStore,
         block_window_cache::BlockWindowCacheStore,
+        conflict_zone_coloring::DbConflictZoneColoringStore,
         daa::DbDaaStore,
-        dagknight::DbDagknightStore,
         depth::DbDepthStore,
         ghostdag::{CompactGhostdagData, DbGhostdagStore},
         headers::{CompactHeaderData, DbHeadersStore},
@@ -54,7 +54,7 @@ pub struct ConsensusStorage {
     pub pruning_meta_stores: Arc<RwLock<PruningMetaStores>>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
-    pub dagknight_store: Arc<DbDagknightStore>,
+    pub coloring_store: Arc<DbConflictZoneColoringStore>,
     pub umc_persistence_store: Arc<DbUmcCascadeStore>,
 
     // Append-only stores
@@ -269,8 +269,8 @@ impl ConsensusStorage {
         relations::init(reachability_relations_store.write().deref_mut());
 
         // TODO[DK]: Small cache policy for dagknight data; this can be tuned via perf params later
-        let dagknight_builder = PolicyBuilder::new().bytes_budget(scaled(5_000_000)).tracked_bytes();
-        let dagknight_store = Arc::new(DbDagknightStore::new(db.clone(), dagknight_builder.build()));
+        let coloring_builder = PolicyBuilder::new().bytes_budget(scaled(5_000_000)).tracked_bytes();
+        let coloring_store = Arc::new(DbConflictZoneColoringStore::new(db.clone(), coloring_builder.build()));
         let umc_persistence_store = Arc::new(DbUmcCascadeStore::new(db.clone(), CachePolicy::Count(256)));
 
         Arc::new(Self {
@@ -301,7 +301,7 @@ impl ConsensusStorage {
             smt_stores,
             smt_metadata_store,
             lkg_virtual_state,
-            dagknight_store,
+            coloring_store,
             umc_persistence_store,
         })
     }

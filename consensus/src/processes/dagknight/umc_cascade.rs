@@ -328,8 +328,8 @@ fn strict_ancestor_index(chain: &[Hash], source: Hash, reachability: &impl Reach
 ///
 /// `from_checkpoint` indicates whether we started from a checkpoint (caller's responsibility).
 /// `estimated_effort_saved` is the estimated number of blue blocks skipped by checkpointing
-/// (caller's responsibility to calculate from virtual_gd.blue_score - checkpoint_blue_score).
-/// `estimated_effort_total` is virtual_gd.blue_score (total blues in the conflict zone).
+/// (caller's responsibility to calculate from virtual_cd.blue_score - checkpoint_blue_score).
+/// `estimated_effort_total` is virtual_cd.blue_score (total blues in the conflict zone).
 pub fn run_cascade(
     mut mergeset_stack: Vec<Mergeset>,
     conflict_genesis: BlockWithWork,
@@ -435,7 +435,7 @@ impl<O: HeaderStoreReader + 'static, E: UmcCascadeStore + Clone + 'static, R: Re
     fn vote(&self, ctx: &UmcVotingContext<'_>) -> CascadeResult {
         let conflict_genesis = ctx.conflict_genesis;
         let subgroup = ctx.subgroup;
-        let virtual_gd = ctx.virtual_gd;
+        let virtual_cd = ctx.virtual_cd;
         let k = ctx.k;
         let coloring_reader = ctx.coloring_reader;
 
@@ -447,20 +447,20 @@ impl<O: HeaderStoreReader + 'static, E: UmcCascadeStore + Clone + 'static, R: Re
         let mut merging_chain_block: Option<Hash> = None;
         let mut checkpoint_state: Option<UmcCascadePersistedState> = None;
 
-        let virtual_blue_score = virtual_gd.blue_score;
-        let mut curr_gd = Arc::new(virtual_gd.clone());
+        let virtual_blue_score = virtual_cd.blue_score;
+        let mut curr_cd = Arc::new(virtual_cd.clone());
 
         while merging_chain_block.is_none() || merging_chain_block.unwrap() != conflict_genesis {
             let blues: Vec<(Hash, BlueWorkType)> =
-                curr_gd.mergeset_blues.iter().map(|&h| (h, calc_work(self.headers_store.get_bits(h).unwrap()))).collect();
+                curr_cd.mergeset_blues.iter().map(|&h| (h, calc_work(self.headers_store.get_bits(h).unwrap()))).collect();
 
             let reds: Vec<(Hash, BlueWorkType)> =
-                curr_gd.mergeset_reds.iter().map(|&h| (h, calc_work(self.headers_store.get_bits(h).unwrap()))).collect();
+                curr_cd.mergeset_reds.iter().map(|&h| (h, calc_work(self.headers_store.get_bits(h).unwrap()))).collect();
 
             mergeset_stack.push(Mergeset { merging_chain_block, mergeset_blues: blues, mergeset_reds: reds });
 
-            merging_chain_block = Some(curr_gd.selected_parent);
-            curr_gd = coloring_reader.get_coloring_data(curr_gd.selected_parent);
+            merging_chain_block = Some(curr_cd.selected_parent);
+            curr_cd = coloring_reader.get_coloring_data(curr_cd.selected_parent);
 
             // Check if a checkpoint exists for the next chain block.
             // If found, break — run_cascade will reload from that state and skip
@@ -480,8 +480,8 @@ impl<O: HeaderStoreReader + 'static, E: UmcCascadeStore + Clone + 'static, R: Re
             // Estimate effort saved: virtual_blue_score - checkpoint_block.blue_score
             // This represents the blue blocks we didn't need to visit.
             let checkpoint_block = merging_chain_block.unwrap();
-            let checkpoint_gd = coloring_reader.get_coloring_data(checkpoint_block);
-            checkpoint_gd.blue_score
+            let checkpoint_cd = coloring_reader.get_coloring_data(checkpoint_block);
+            checkpoint_cd.blue_score
         } else {
             0
         };

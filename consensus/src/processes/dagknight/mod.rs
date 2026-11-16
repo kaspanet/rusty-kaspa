@@ -45,7 +45,7 @@ pub struct DagknightCounters {
     /// Total estimated effort saved across all checkpoint loads,
     /// representing estimated blue blocks skipped by checkpointing
     checkpoint_estimated_effort_saved: AtomicU64,
-    /// Total estimated effort across all UMC calls (sum of virtual_gd.blue_score).
+    /// Total estimated effort across all UMC calls (sum of virtual_cd.blue_score).
     /// Used as denominator for effort_saved percentage.
     checkpoint_estimated_effort_total: AtomicU64,
     /// Baseline true, cascade false
@@ -151,7 +151,7 @@ pub struct DagknightCountersSnapshot {
     pub checkpoint_from_scratch: u64,
     /// Total estimated effort saved across all checkpoint loads
     pub checkpoint_estimated_effort_saved: u64,
-    /// Total estimated effort across all UMC calls (sum of virtual_gd.blue_score)
+    /// Total estimated effort across all UMC calls (sum of virtual_cd.blue_score)
     pub checkpoint_estimated_effort_total: u64,
     #[cfg(feature = "baseline-debugging")]
     pub baseline_true_cascade_false: u64,
