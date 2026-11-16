@@ -1,3 +1,4 @@
+use super::adversary::{AdversaryPlan, AdversaryRuntime, Scenario};
 use indexmap::IndexSet;
 use itertools::Itertools;
 use kaspa_consensus::consensus::Consensus;
@@ -49,6 +50,8 @@ pub struct MinerOptions {
     pub target_blocks: Option<u64>,
     pub long_payload: bool,
     pub lane_producer: Box<dyn LaneProducer>,
+    /// Adversary plan for this miner, if any. `None` == honest miner (default behavior).
+    pub adversary: Option<AdversaryPlan>,
 }
 
 struct OnetimeTxSelector {
@@ -105,6 +108,9 @@ pub struct Miner {
     long_payload: bool,
     lane_producer: Box<dyn LaneProducer>,
 
+    // Adversary state (None for honest miners)
+    adversary: Option<AdversaryRuntime>,
+
     // Mass calculator
     mass_calculator: MassCalculator,
 }
@@ -134,7 +140,11 @@ impl Miner {
             rng: options.rng,
             num_blocks: 0,
             sim_time: 0,
-            target_txs_per_block: options.target_txs_per_block,
+            // Adversary miners mine empty (coinbase-only) blocks: the manufactured
+            // conflict shape is what drives the DK cascade, not transaction load,
+            // and forcing empty blocks avoids per-block mass-limit panics when an
+            // adversary that tracks the honest chain accumulates spendable outpoints.
+            target_txs_per_block: if options.adversary.is_some() { 0 } else { options.target_txs_per_block },
             target_blocks: options.target_blocks,
             max_cached_outpoints: 10_000,
             mass_calculator: MassCalculator::new(
@@ -144,6 +154,7 @@ impl Miner {
             ),
             long_payload: options.long_payload,
             lane_producer: options.lane_producer,
+            adversary: options.adversary.map(AdversaryRuntime::new),
         }
     }
 
@@ -251,9 +262,140 @@ impl Miner {
     }
 
     pub fn mine(&mut self, env: &mut Environment<Block>) -> Suspension {
+        if self.adversary.is_some() {
+            return self.mine_adversary(env);
+        }
         let block = self.build_new_block(env.now());
         env.broadcast(self.id, block);
         self.sample_mining_interval()
+    }
+
+    /// Insert a block into this miner's own consensus without broadcasting it,
+    /// advancing the (private) virtual tip. Used to grow a withheld side-DAG.
+    fn insert_local(&self, block: Block) {
+        let session = self.consensus.acquire_session();
+        let status = futures::executor::block_on(self.consensus.validate_and_insert_block(block).virtual_state_task).unwrap();
+        assert!(status.is_utxo_valid_or_pending());
+        drop(session);
+    }
+
+    /// Send a block to every peer except self via targeted `send`, staggering by
+    /// a monotonic per-block sequence so that a block's parents (mined earlier,
+    /// lower sequence) are always delivered before the block itself.
+    fn adv_send_to_peers_ordered(&mut self, env: &mut Environment<Block>, block: Block) {
+        let adv = self.adversary.as_mut().unwrap();
+        let base = adv.plan.params.base_delay_ms;
+        let seq = adv.send_seq;
+        adv.send_seq += 1;
+        let peers: Vec<u64> = adv.plan.params.peers_except(self.id).collect();
+        for peer in peers {
+            env.send(base + seq, peer, block.clone());
+        }
+    }
+
+    fn mine_adversary(&mut self, env: &mut Environment<Block>) -> Suspension {
+        let now = env.now();
+        let scenario = self.adversary.as_ref().unwrap().scenario();
+        match scenario {
+            Scenario::LatencyBurst => self.mine_latency_burst(env, now),
+            _ => self.mine_private_fork(env, now, scenario),
+        }
+    }
+
+    /// Private side-DAG family (withheld-side-dag, equal-rank-ties, shortcuts,
+    /// gray-context-change, variable-difficulty). The miner builds on its OWN
+    /// pure-private virtual state (it ignores honest blocks — see `process_block`),
+    /// inserts each block locally to advance the private tip, withholds until the
+    /// scheduled release time, then dumps the hidden buffer in one burst. This
+    /// forces honest miner 0 to merge two deeply-forked chains -> UMC cascade.
+    fn mine_private_fork(&mut self, env: &mut Environment<Block>, now: u64, scenario: Scenario) -> Suspension {
+        let block = self.build_new_block(now);
+        self.insert_local(block.clone());
+
+        let release_at = self.adversary.as_ref().unwrap().plan.params.release_at();
+        let released = self.adversary.as_ref().unwrap().released;
+
+        if now < release_at && !released {
+            // Withhold: accumulate the hidden side-DAG.
+            self.adversary.as_mut().unwrap().buffer.push(block);
+        } else {
+            if !released {
+                // First tick past the release time: flush the entire buffer in one
+                // burst (parents-first via the staggered send sequence).
+                let buffered = std::mem::take(&mut self.adversary.as_mut().unwrap().buffer);
+                for b in buffered {
+                    self.adv_send_to_peers_ordered(env, b);
+                }
+                self.adversary.as_mut().unwrap().released = true;
+            }
+            // Sustained-conflict scenarios keep feeding the fork so the cascade is
+            // re-triggered over the same conflict zone (checkpoint reuse). The
+            // one-shot weak-shortcut instead stops extending after its single burst.
+            if Self::continuous_extend(scenario) {
+                self.adv_send_to_peers_ordered(env, block);
+            } else {
+                // weak-shortcut: keep the freshly mined block private (single episode).
+                self.adversary.as_mut().unwrap().buffer.push(block);
+            }
+        }
+        self.sample_mining_interval_adv(scenario, now)
+    }
+
+    /// Latency-burst: the miner builds on the shared honest chain (it processes
+    /// incoming blocks normally) but delays delivery of its own blocks during the
+    /// burst window [t0,t1]. Blocks mined inside the window are held and then
+    /// delivered together in one burst once the window closes, so they arrive at
+    /// the peers all at once while the honest chain has already moved on — a
+    /// transient parallel subgroup that invokes the cascade.
+    ///
+    /// All sends use the monotonic staggered sequence (`adv_send_to_peers_ordered`)
+    /// so that a block's parents are always delivered before the block itself.
+    /// (Naively applying a per-block extra delay only inside the window lets a
+    /// post-window child overtake its still-delayed parent -> MissingParents.)
+    fn mine_latency_burst(&mut self, env: &mut Environment<Block>, now: u64) -> Suspension {
+        let block = self.build_new_block(now);
+        self.insert_local(block.clone());
+        let (t0, t1) = self.adversary.as_ref().unwrap().plan.params.burst_window();
+        if now >= t0 && now <= t1 {
+            // Hold blocks mined during the burst window.
+            self.adversary.as_mut().unwrap().buffer.push(block);
+        } else {
+            // Outside the window: first release any held burst in mining order,
+            // then send this block.
+            if !self.adversary.as_ref().unwrap().buffer.is_empty() {
+                let buffered = std::mem::take(&mut self.adversary.as_mut().unwrap().buffer);
+                for b in buffered {
+                    self.adv_send_to_peers_ordered(env, b);
+                }
+            }
+            self.adv_send_to_peers_ordered(env, block);
+        }
+        self.sample_mining_interval()
+    }
+
+    /// Whether the scenario keeps feeding the fork after the initial release.
+    fn continuous_extend(scenario: Scenario) -> bool {
+        !matches!(scenario, Scenario::WeakShortcut)
+    }
+
+    /// Adversary mining-interval sampling. `variable-difficulty` alternates fast
+    /// and slow phases (derived from the timeline) to create high-rank bursts of
+    /// quickly-produced private blocks; all other scenarios use the honest rate.
+    fn sample_mining_interval_adv(&mut self, scenario: Scenario, now: u64) -> Suspension {
+        if scenario == Scenario::VariableDifficulty {
+            let (start, phase_len) = {
+                let p = &self.adversary.as_ref().unwrap().plan.params;
+                (p.start_time, (p.duration_ms / 8).max(1))
+            };
+            let fast = ((now.saturating_sub(start)) / phase_len) % 2 == 0;
+            if let Suspension::Timeout(t) = self.sample_mining_interval() {
+                let scaled = if fast { (t / 8).max(1) } else { t.saturating_mul(2) };
+                return Suspension::Timeout(scaled);
+            }
+            Suspension::Timeout(1)
+        } else {
+            self.sample_mining_interval()
+        }
     }
 
     fn sample_mining_interval(&mut self) -> Suspension {
@@ -261,6 +403,15 @@ impl Miner {
     }
 
     fn process_block(&mut self, block: Block, env: &mut Environment<Block>) -> Suspension {
+        // Withhold-family adversaries ignore incoming honest blocks so their
+        // private virtual state stays a pure fork (parent selection then picks
+        // only the adversary's own private tips). Latency-burst adversaries fall
+        // through and process normally (they build on the shared honest chain).
+        if let Some(adv) = &self.adversary
+            && adv.scenario().ignores_incoming()
+        {
+            return Suspension::Idle;
+        }
         for tx in block.transactions.iter() {
             for (i, output) in tx.outputs.iter().enumerate() {
                 if output.script_public_key.eq(&self.miner_data.script_public_key) {
