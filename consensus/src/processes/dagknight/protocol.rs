@@ -679,8 +679,8 @@ mod tests {
     use crate::processes::reachability::tests::r#gen::generate_complex_dag;
     use crate::{
         model::stores::{
-            conflict_zone_coloring::MemoryConflictZoneColoringStore, ghostdag::MemoryGhostdagStore, reachability::MemoryReachabilityStore,
-            relations::MemoryRelationsStore,
+            conflict_zone_coloring::MemoryConflictZoneColoringStore, ghostdag::MemoryGhostdagStore,
+            reachability::MemoryReachabilityStore, relations::MemoryRelationsStore,
         },
         processes::reachability::tests::{DagBlock, DagBuilder},
         test_helpers::generate_dot_with_chain,

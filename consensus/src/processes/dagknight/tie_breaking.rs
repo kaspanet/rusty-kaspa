@@ -249,8 +249,8 @@ mod tests {
 
     use crate::{
         model::stores::{
-            conflict_zone_coloring::MemoryConflictZoneColoringStore, headers::MemoryHeaderStore, reachability::MemoryReachabilityStore,
-            relations::MemoryRelationsStore,
+            conflict_zone_coloring::MemoryConflictZoneColoringStore, headers::MemoryHeaderStore,
+            reachability::MemoryReachabilityStore, relations::MemoryRelationsStore,
         },
         processes::reachability::tests::{DagBlock, DagBuilder},
     };
@@ -281,7 +281,8 @@ mod tests {
         pub hash_z: Hash,
         pub hash_y: Hash,
         pub hash_x: Hash,
-        pub tie_breaker: DagknightTieBreaker<MemoryConflictZoneColoringStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>,
+        pub tie_breaker:
+            DagknightTieBreaker<MemoryConflictZoneColoringStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>,
     }
 
     impl TestDag {
@@ -439,7 +440,8 @@ mod tests {
         // But we only assert content equality since the tie-break could pick either side.
     }
 
-    type TestTieBreaker = DagknightTieBreaker<MemoryConflictZoneColoringStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>;
+    type TestTieBreaker =
+        DagknightTieBreaker<MemoryConflictZoneColoringStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>;
 
     /// Builds linear chain sides above a shared genesis with per-block (blue_score,
     /// blue_work), blue_work controlling the reference order; returns the tie breaker,
