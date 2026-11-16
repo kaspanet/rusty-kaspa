@@ -1,0 +1,43 @@
+[package]
+name = "kaspa-rpc-cli"
+description = "Non-interactive Kaspa RPC command-line client"
+keywords = ["kaspa", "rpc", "cli"]
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "kaspa_rpc_cli"
+
+[[bin]]
+name = "kaspa-rpc"
+path = "src/main.rs"
+
+[dependencies]
+async-channel.workspace = true
+clap = { workspace = true }
+clap_complete = "4.5"
+dirs.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
+
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-grpc-client.workspace = true
+kaspa-notify.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-wrpc-client.workspace = true
+
+[dev-dependencies]
+# Live integration tests (`tests/live.rs`); `time` adds the bounded-wait timeout
+# used by the subscription smoke test, on top of the macros/rt already in deps.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+
+[lints]
+workspace = true
