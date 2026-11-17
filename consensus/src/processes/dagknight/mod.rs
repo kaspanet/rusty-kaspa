@@ -22,8 +22,7 @@ pub mod umc_cascade_persistence;
 pub mod umc_voting;
 
 pub struct GroupMetadata {
-    /// The subgroup's next chain ancestor above the conflict genesis (its NCA),
-    /// i.e. the internal conflict genesis of the subgroup alone
+    /// The subgroup's next chain ancestor above the conflict genesis (its NCA)
     nca: Hash,
     subgroup: Arc<Vec<Hash>>,
     k: KType,

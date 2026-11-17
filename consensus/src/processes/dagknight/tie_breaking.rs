@@ -37,15 +37,13 @@ pub struct TieBreakContext<'a> {
     pub conflict_genesis: Hash,
     /// All tips of the DAG (parents of the virtual block).
     pub all_tips: &'a [Hash],
-    /// The tied subgroups: each subgroup is a slice of tip hashes that agree on a common chain ancestor above the conflict genesis.
+    /// The tied subgroups — each subgroup is a slice of tip hashes that agree on a common chain ancestor above the conflict genesis.
     pub subgroups: &'a [GroupMetadata],
     /// The minimum rank among the compared subgroups; sides may qualify one rank above it.
     pub k: KType,
 }
 
-/// Conjectured scan horizon: the length of the suffix of F the witness scan may cover, depending only on ell and growing quadratically in it.
-///
-/// The paper's placeholder is ell^2 ("implementation relaxation" paragraph: the required horizon, fallback rule and preservation of the growth and recovery guarantees remain to be justified); the square of the liveness window, (ell+2)^2, is used so the cap never cuts inside the window itself (pure ell^2 is degenerate for ell < 2).
+/// Conjectured horizon capping the witness scan: (ell+2)^2, quadratic in the liveness window and never cutting inside the window itself.
 ///
 /// TODO[DK]: tighten to the justified bound once the conjecture is proven.
 fn witness_horizon(ell: KType) -> u64 {
@@ -127,10 +125,10 @@ impl<
             true, // free_search = true
         );
 
-        conflict_zone_manager.fill_zone_data(all_tips); // free_search: NCA is None
+        conflict_zone_manager.fill_zone_data(all_tips);
 
-        // Run k-colouring with free search (no custom selected parent is passed,
-        // so the manager freely selects from all parents).
+        // Run k-colouring with free search — no custom selected parent is passed,
+        // so the manager freely selects from all parents.
         let virtual_cd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k, None);
 
         // Collect the full blue set by traversing the chain from virtual back to conflict_genesis.
@@ -160,9 +158,7 @@ impl<
         ReferenceCluster { blues: blue_set, chain_blocks }
     }
 
-    /// Earliest start of a side's suffix witness along the descending-ordered reference, found by a forward scan from the deciding endpoint: a block is a witness when its chain anchor is the side's and it chains to the endpoint. Anchors are fetched lazily by zipping the reference with an on-demand anchor iterator, so positions past the stop are never queried (each side refetches its scanned prefix; the queries are O(1) interval lookups and sides are few).
-    ///
-    /// The scan stops exactly once the last witness is more than ell+1 positions behind: a causal chain cannot cross a gap wider than the window, so no later block can be a witness. Returns the earliest witness position in ascending 0-based order, or the list length when no witness exists.
+    /// Returns the earliest start of the side's suffix-witness chain along the descending-ordered reference, in ascending 0-based positions, or the list length when no witness exists. A block is a witness when its chain anchor is the side's and it chains to the endpoint. The scan stops once the last witness is over ell+1 positions behind (a causal chain cannot cross a wider gap), so anchors past the stop are never queried.
     fn suffix_witness_start(&self, descending_f: &[Hash], conflict_genesis: Hash, anchor: Hash, ell: KType) -> usize {
         let n = descending_f.len();
         let window = ell as usize + 2;
@@ -188,11 +184,7 @@ impl<
         }
     }
 
-    /// Free reference F at width g, ordered future-to-past by descending
-    /// SortableBlock key. This deviates from the paper's f1..fn past-to-future
-    /// listing so the suffix-witness scan runs forward from the deciding
-    /// endpoint at the list head; blue work grows along ancestry, keeping
-    /// parents after children.
+    /// Free reference F at width g, ordered future-to-past by descending SortableBlock key so the suffix-witness scan runs forward from the deciding endpoint at the head; blue work grows along ancestry, keeping parents after children.
     fn ordered_reference(&self, conflict_genesis: Hash, all_tips: &[Hash], g: KType) -> Vec<Hash> {
         // TODO[DK]: get the reference cluster already sorted (e.g. keep the coloring's
         // blues in SortableBlock order when collecting the chain walk) instead of
@@ -211,19 +203,9 @@ impl<
     R: ReachabilityStoreReader + Clone,
 > TieBreaker for DagknightTieBreaker<C, O, D, R>
 {
-    /// Tiebreaking through a common reference: prefers the side whose committed path
-    /// can follow the free reference F furthest back.
+    /// Tiebreaking through a common reference: prefers the side whose committed path can follow the free reference F furthest back.
     ///
-    /// 1. Build F as the free coloring at width g(m) = isqrt(m) over the conflict zone
-    ///    and list it in a fixed topological order
-    /// 2. Score each side by the earliest start of a causal chain of agreeing
-    ///    reference blocks with position gaps of at most ell+2 and the last block
-    ///    within ell+1 of the deciding endpoint; the scan is capped at the
-    ///    conjectured horizon (see [`witness_horizon`]) and sides still live at
-    ///    the cap tie into the fallback; a side without a witness scores n
-    /// 3. Live-at-horizon first, then earliest start; equal scores fall back
-    ///    to the smallest
-    ///    selected-parent hash
+    /// Sides are scored by the earliest start of their suffix-witness chain along F (see [`suffix_witness_start`]), capped at the conjectured horizon. A side whose chain is still live at the cap outranks every measured start; equal scores fall back to the smallest selected-parent hash.
     fn tie_break(&self, input: &TieBreakContext<'_>) -> usize {
         let TieBreakContext { conflict_genesis, all_tips, subgroups, k } = input;
         let m = *k;
@@ -231,9 +213,7 @@ impl<
         let ell = g.max(m / 2);
         debug!("dk::tiebreak: m = {} | g(m) = {} | ell = {} | sides = {}", m, g, ell, subgroups.len());
 
-        // Step 1: free reference F at width g(m), future-to-past, kept only up
-        // to the conjectured horizon (a suffix of F whose length depends only
-        // on ell; see `witness_horizon`)
+        // Free reference F at width g(m), future-to-past, truncated at the horizon
         let ordered_full = self.ordered_reference(*conflict_genesis, all_tips, g);
         let n = ordered_full.len();
         let horizon = (witness_horizon(ell) as usize).min(n);
@@ -241,19 +221,16 @@ impl<
         let ordered_f = &ordered_full[..horizon];
         debug!("dk::tiebreak: reference F of {} blocks, horizon {}: {:?}", n, horizon, ordered_f);
 
-        // Steps 2+3: score each side by its earliest suffix-witness start and pick the winner in one pass. Anchors are fetched lazily along each scan, so the cost tracks min(witness depth, horizon), not the reference size.
-        //
-        // A start within the liveness window of the cut means the witness chain may continue past the horizon: reclassify the side as live (`None`), which outranks every measured start (std `Option` ordering puts `None` first) and ties live sides into the equal-witness fallback. Dead sides keep their measured start; equal scores fall back to the smallest selected-parent hash.
+        // Score each side by its earliest suffix-witness start. A start within the
+        // liveness window of the cut may continue past the horizon: classify the side
+        // live (-1), outranking every measured start
         let window = ell as usize + 2;
         let winner = subgroups
             .iter()
             .map(|group| {
                 let start = self.suffix_witness_start(ordered_f, *conflict_genesis, group.nca, ell);
-                let score = if truncated && start < window { None } else { Some(start) };
-                debug!(
-                    "dk::tiebreak: side {} (rank {}) witness score {:?} (None = live at horizon)",
-                    group.nca, group.k, score
-                );
+                let score = if truncated && start < window { -1 } else { start as isize };
+                debug!("dk::tiebreak: side {} (rank {}) witness score {} (-1 = live at horizon)", group.nca, group.k, score);
                 (group, score)
             })
             .enumerate()
@@ -519,12 +496,7 @@ mod tests {
     }
 
     fn group_metadata(anchor: Hash, tip: Hash, k: KType, blue_work: u64) -> GroupMetadata {
-        GroupMetadata {
-            nca: anchor,
-            subgroup: Arc::new(vec![tip]),
-            k,
-            selected_parent: SortableBlock::new(tip, blue_work.into()),
-        }
+        GroupMetadata { nca: anchor, subgroup: Arc::new(vec![tip]), k, selected_parent: SortableBlock::new(tip, blue_work.into()) }
     }
 
     fn short(hash: &Hash) -> u64 {
@@ -532,25 +504,11 @@ mod tests {
     }
 
     /// Walks the tiebreaking rule stage by stage, printing the reference, per-side
-    /// agreement and witness starts. Run with `-- --nocapture` to follow how
-    /// witnesses are generated.
+    /// agreement and witness starts. Run with `-- --nocapture` to follow along.
     ///
-    /// Two chain sides interleaved by blue work:
-    ///
-    /// ```text
-    ///         genesis (0)
-    ///         /      \
-    ///     B1 (1)     Z1 (2)
-    ///       |          |
-    ///     B2 (3)     Z2 (4)
-    /// ```
-    ///
-    /// Side 0 anchors at B1, side 1 at Z1. At m=4 (g=2, ell=2, window 4) F holds
-    /// all five blocks, future-to-past: [Z2, B2, Z1, B1, genesis]. Side 0 agrees
-    /// at positions {1, 3} and side 1 at {0, 2} (0-based, future-to-past).
-    /// Ascending past-to-future, also 0-based: genesis=0, B1=1, Z1=2, B2=3,
-    /// Z2=4. Both chains are causal with gaps of 2, so side 0 witnesses from
-    /// B1 at 1, one further back than side 1's Z1 at 2.
+    /// Two chain sides interleaved by blue work (B1 < Z1 < B2 < Z2 in work), so
+    /// F is [Z2, B2, Z1, B1, genesis] future-to-past and side 0's witness chain
+    /// starts one position further back than side 1's.
     #[test]
     fn test_tiebreak_walkthrough() {
         let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(1, 1), (3, 3)], &[(2, 2), (4, 4)]]);
@@ -757,9 +715,9 @@ mod tests {
         );
     }
 
-    /// The horizon truncation drives the live/dead classification in `tie_break`: a start within the liveness window of the cut (ascending start < window, in truncated-list coordinates) marks the side live, a dead side keeps its measured start, and scores are only compared within the same truncated coordinates.
+    /// The horizon truncation drives the live/dead classification in `tie_break`: a start within the liveness window of the cut marks the side live, a dead side keeps its measured start.
     ///
-    /// Reference [B2, Z2, Z1, B1, genesis] (the gap-limit DAG) at ell=0 (window 2), truncated to 3 = [B2, Z2, Z1]: the Z side's deepest witness Z1@2 gives start 0 < 2 (live), the B side's B2@0 gives start 2 (dead); untruncated scores stay 4 and 2.
+    /// Reference [B2, Z2, Z1, B1, genesis] at ell=0 (window 2), truncated to 3: the Z side's deepest witness Z1@2 gives start 0 < 2 (live), the B side's B2@0 gives start 2 (dead); untruncated scores stay 4 and 2.
     #[test]
     fn test_horizon_cap_marks_live_sides() {
         let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 2), (5, 5)], &[(3, 3), (4, 4)]]);
@@ -770,17 +728,14 @@ mod tests {
         // tie_break's classification over the truncated reference
         let score = |anchor| {
             let start = tie_breaker.suffix_witness_start(&ordered[..horizon], genesis, anchor, 0);
-            if truncated && start < window { None } else { Some(start) }
+            if truncated && start < window { -1 } else { start as isize }
         };
-        assert_eq!(score(chains[1][0]), None, "Z's deepest witness sits at the cut: live at horizon");
-        assert_eq!(score(chains[0][0]), Some(2), "B's chain is dead at the cut: exact truncated start");
+        assert_eq!(score(chains[1][0]), -1, "Z's deepest witness sits at the cut: live at horizon");
+        assert_eq!(score(chains[0][0]), 2, "B's chain is dead at the cut: exact truncated start");
 
         // Untruncated scores are unchanged by the cap
         assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0), 4);
         assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[1][0], 0), 2);
-
-        // Live-at-horizon (None) outranks every measured start via std Option ordering
-        assert!(None < Some(0));
     }
 
     /// `witness_horizon` is quadratic in the liveness window and never cuts inside it: (ell+2)^2.
@@ -792,7 +747,7 @@ mod tests {
         assert_eq!(witness_horizon(10), 144);
     }
 
-    /// End-to-end tie break under a binding horizon: at m=0 (ell=0, g=0, horizon 4) the free reference is the max-work chain, here B's five blocks plus genesis (6 > 4, truncated). B's witness chain is live at the cut (start 0 < window 2) so B scores live-at-horizon and beats Z's no-witness score, matching the untruncated semantics where B's witnesses run deepest.
+    /// End-to-end tie break under a binding horizon: at m=0 the free reference is B's max-work chain (6 blocks > horizon 4, truncated); B's witnesses are live at the cut and beat Z's no-witness score.
     #[test]
     fn test_tie_break_with_binding_horizon() {
         let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(1, 10), (2, 20), (3, 30), (4, 40), (5, 50)], &[(6, 1)]]);

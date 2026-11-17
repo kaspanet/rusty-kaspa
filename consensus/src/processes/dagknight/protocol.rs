@@ -295,11 +295,7 @@ impl<
     /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
     /// in the caller is simply using blue_work + hash to break ties between subgroups.
     ///
-    /// Returns the minimum qualifying rank m together with the sides ranked at most
-    /// m+1, where m is found by the k-search. The tiebreaking rule compares sides
-    /// across this whole domain, not only the minimal-rank ones: a side ranked m+1 can
-    /// still win the comparison. Each returned side carries its actual rank (m or m+1)
-    /// while the returned m drives the tiebreaking reference width.
+    /// Returns the minimum qualifying rank m and the sides ranked at most m+1 (the tiebreaking comparison domain: a side ranked m+1 can still win). Each side carries its actual rank; the returned m drives the tiebreaking reference width.
     fn rank(
         &self,
         conflict_genesis: Hash,
@@ -335,12 +331,7 @@ impl<
                     self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k, &conflict_zone_manager)
                 {
                     survivors.insert(*curr_nca, subgroup.clone());
-                    best_groups.push(GroupMetadata {
-                        nca: *curr_nca,
-                        subgroup: subgroup.clone(),
-                        k,
-                        selected_parent,
-                    });
+                    best_groups.push(GroupMetadata { nca: *curr_nca, subgroup: subgroup.clone(), k, selected_parent });
                 }
             }
             if best_groups.is_empty() {
@@ -352,15 +343,9 @@ impl<
         };
 
         let Some(result) = RankSearcher::search(|k| evaluate_at(&mut group_map, k)) else { return (0, vec![]) };
-        // The k-search converges to m with a last successful evaluation exactly there, so
-        // the sides ranking only m+1 were dropped from the searched map along the way and
-        // result holds the rank-m sides alone (the searched map itself ends up holding
-        // exactly these sides, so it doubles as the skip-set below). The tiebreaking
-        // comparison domain spans ranks m and m+1, so re-seed a wider map from the
-        // original grouping to recover them. Sides qualifying at m belong to the wider
-        // domain by monotonicity and need no re-evaluation, so only the remaining sides
-        // are tested at m+1; each survivor there ranks exactly m+1 and keeps that as its
-        // recorded rank
+        // The k-search leaves `group_map` holding exactly the rank-m survivors; the
+        // m+1-only sides were dropped, so re-seed from the original grouping and
+        // evaluate just those at m+1 to complete the comparison domain
         let mut best_groups = result.result;
         let mut wide_map: HashMap<_, _> = agreeing_subgroups
             .iter()
@@ -1254,10 +1239,7 @@ mod tests {
         );
     }
 
-    /// Executor over one or two competing linear chain sides above a shared conflict
-    /// genesis. Blocks carry unit blue work, so a side of length p opposite a side of
-    /// length q has conflict-genesis deficit q-p: its rank is max(0, opposite length
-    /// minus own length).
+    /// Executor over competing linear chain sides above a shared conflict genesis, with unit blue work per block: a side of length p opposite length q ranks max(0, q-p).
     struct RankDag {
         executor: DagknightExecutor<
             MemoryConflictZoneColoringStore,
