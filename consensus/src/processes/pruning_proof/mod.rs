@@ -71,6 +71,18 @@ enum ProofInternalError {
 /// Pruning proof manager internal result
 type ProofInternalResult<T> = std::result::Result<T, ProofInternalError>;
 
+const IMPORT_SCORE_LIMIT: u64 = u64::MAX / 2;
+
+fn validate_header_scores(header: &Header) -> Result<(), PruningImportError> {
+    if header.blue_score >= IMPORT_SCORE_LIMIT {
+        return Err(PruningImportError::BlueScoreTooLarge(header.hash, header.blue_score, IMPORT_SCORE_LIMIT));
+    }
+    if header.daa_score >= IMPORT_SCORE_LIMIT {
+        return Err(PruningImportError::DaaScoreTooLarge(header.hash, header.daa_score, IMPORT_SCORE_LIMIT));
+    }
+    Ok(())
+}
+
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
     data: Arc<T>,

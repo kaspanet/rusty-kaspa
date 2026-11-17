@@ -1,3 +1,19 @@
+#[test]
+fn malformed_script_public_key_in_transaction_output_returns_error() {
+    use crate::model::RpcTransactionOutput;
+
+    for json in [
+        r#"{"value":0,"scriptPublicKey":{"version":"0","script":"51"}}"#,
+        r#"{"value":0,"scriptPublicKey":{"version":0,"script":51}}"#,
+    ] {
+        let value = serde_json::from_str(json).unwrap();
+        assert!(serde_json::from_value::<RpcTransactionOutput>(value).is_err(), "{json}");
+    }
+
+    let output = serde_json::from_str::<RpcTransactionOutput>(r#"{"value":0,"scriptPublicKey":{"version":0,"script":"51"}}"#).unwrap();
+    assert_eq!(output.script_public_key.script(), &[0x51]);
+}
+
 #[cfg(test)]
 mod mockery {
 

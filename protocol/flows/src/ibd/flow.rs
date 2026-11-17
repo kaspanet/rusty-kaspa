@@ -168,7 +168,7 @@ impl IbdFlow {
                 drop(session); // Avoid holding the previous consensus throughout the staging IBD
                 let staging = self.ctx.consensus_manager.new_staging_consensus();
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
-                    Ok(()) => {
+                    Ok(pruning_point) => {
                         spawn_blocking(|| staging.commit()).await.unwrap();
                         info!(
                             "Header download stage of IBD with headers proof completed successfully from {}. Committed staging consensus.",
@@ -180,8 +180,8 @@ impl IbdFlow {
                         // Next, sync a utxoset corresponding to the new pruning point from the syncer.
                         // Note that the new pruning point's anticone need not be downloaded separately as in other IBD types
                         // as it was just downloaded as part of the headers proof.
-                        self.sync_new_smt_state(&session, negotiation_output.syncer_pruning_point).await?;
-                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
+                        self.sync_new_smt_state(&session, pruning_point).await?;
+                        self.sync_new_utxo_set(&session, pruning_point).await?;
                     }
                     Err(e) => {
                         warn!("IBD with headers proof from {} was unsuccessful ({})", self.router, e);
@@ -193,11 +193,11 @@ impl IbdFlow {
             IbdType::PruningCatchUp { highest_known_syncer_chain_hash } => {
                 info!("catching up to new pruning point {} ", negotiation_output.syncer_pruning_point);
                 match self.pruning_point_catchup(&session, &negotiation_output, &relay_block, highest_known_syncer_chain_hash).await {
-                    Ok(()) => {
+                    Ok(pruning_point) => {
                         info!("header stage of pruning catchup from peer {} completed", self.router);
                         self.sync_missing_trusted_bodies(&session).await?;
-                        self.sync_new_smt_state(&session, negotiation_output.syncer_pruning_point).await?;
-                        self.sync_new_utxo_set(&session, negotiation_output.syncer_pruning_point).await?;
+                        self.sync_new_smt_state(&session, pruning_point).await?;
+                        self.sync_new_utxo_set(&session, pruning_point).await?;
                         // Note that pruning of old data will only occur once virtual has caught up sufficiently far
                     }
 
@@ -315,19 +315,32 @@ impl IbdFlow {
         if relay_header.blue_score >= hst_header.blue_score.saturating_add(pruning_depth)
             && relay_header.blue_work > hst_header.blue_work
         {
+            let now = unix_now();
             let finality_duration_in_milliseconds = self.ctx.config.finality_duration_in_milliseconds();
-            if unix_now() > consensus.async_creation_timestamp().await.saturating_add(finality_duration_in_milliseconds) {
+            if now > consensus.async_creation_timestamp().await.saturating_add(finality_duration_in_milliseconds) {
                 let fp = consensus.async_finality_point().await;
-                let fp_ts = consensus.async_get_header(fp).await?.timestamp;
+                let fp_header = consensus.async_get_header(fp).await?;
+                let fp_ts = fp_header.timestamp;
+                let fp_daa_score = fp_header.daa_score;
 
                 #[allow(clippy::arithmetic_side_effects, reason = "finality_duration_in_milliseconds << u64::MAX")]
-                if unix_now() < fp_ts.saturating_add(finality_duration_in_milliseconds * 3 / 2) {
+                if now < fp_ts.saturating_add(finality_duration_in_milliseconds * 3 / 2) {
                     // We reject the headers proof if the node has a relatively up-to-date finality point and current
                     // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
                     // since subsequent checks identify these violations as well
                     // TODO (relaxed): consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
                     return Err(ProtocolError::Other(
                         "peer has no known block but local consensus appears to be up to date, this is most likely a spam attempt",
+                    ));
+                }
+
+                // Estimate local consensus recency from the finality point and DAA progress.
+                let sink_daa_score = consensus.async_get_sink_daa_score_timestamp().await.daa_score;
+                let daa_duration = sink_daa_score.saturating_sub(fp_daa_score).saturating_mul(self.ctx.config.target_time_per_block());
+                let rejection_deadline = fp_ts.saturating_add(daa_duration).saturating_add(finality_duration_in_milliseconds / 2);
+                if now < rejection_deadline {
+                    return Err(ProtocolError::Other(
+                        "peer has no known block but local DAA progress appears to be up to date, this is most likely a spam attempt",
                     ));
                 }
             }
@@ -348,7 +361,7 @@ impl IbdFlow {
         negotiation_output: &ChainNegotiationOutput,
         relay_block: &Block,
         highest_known_syncer_chain_hash: Hash,
-    ) -> Result<(), ProtocolError> {
+    ) -> Result<Hash, ProtocolError> {
         // Before attempting to update to the syncer's pruning point, sync to the latest headers of the syncer,
         // to ensure that we will locally have sufficient headers on top of the syncer's pruning point
         let syncer_pp = negotiation_output.syncer_pruning_point;
@@ -366,7 +379,7 @@ impl IbdFlow {
         info!("validating pruning points consistency");
         consensus.async_validate_pruning_points(syncer_sink).await.unwrap();
         info!("pruning points consistency validated");
-        Ok(())
+        Ok(consensus.async_pruning_point().await)
     }
 
     async fn ibd_with_headers_proof(
@@ -374,7 +387,7 @@ impl IbdFlow {
         staging: &StagingConsensus,
         syncer_virtual_selected_parent: Hash,
         relay_block: &Block,
-    ) -> Result<(), ProtocolError> {
+    ) -> Result<Hash, ProtocolError> {
         info!("Starting IBD with headers proof with peer {}", self.router);
 
         let staging_session = staging.session().await;
@@ -383,7 +396,10 @@ impl IbdFlow {
         self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
         staging_session.async_validate_pruning_points(syncer_virtual_selected_parent).await?;
         self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
-        Ok(())
+        if staging_session.async_pruning_point().await != pruning_point {
+            return Err(ProtocolError::Other("staging pruning point differs from the validated headers proof"));
+        }
+        Ok(pruning_point)
     }
 
     async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy, relay_block: &Block) -> Result<Hash, ProtocolError> {

@@ -184,7 +184,7 @@ impl ConsensusConverter {
         chain_path: &ChainPath,
         merged_blocks_limit: Option<usize>,
     ) -> RpcResult<Vec<RpcAcceptedTransactionIds>> {
-        let acceptance_data = consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await.unwrap();
+        let acceptance_data = consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await?;
         Ok(chain_path
             .added
             .iter()
@@ -647,7 +647,7 @@ impl ConsensusConverter {
         }
 
         let chain_block_mergeset_acceptance_data_vec =
-            consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await.unwrap();
+            consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await?;
         let mut rpc_acceptance_data =
             Vec::<RpcChainBlockAcceptedTransactions>::with_capacity(chain_block_mergeset_acceptance_data_vec.len());
 

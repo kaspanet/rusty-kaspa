@@ -1521,6 +1521,10 @@ impl VirtualStateProcessor {
         mut imported_utxo_multiset: MuHash,
     ) -> PruningImportResult<()> {
         info!("Importing the UTXO set of the pruning point {}", new_pruning_point);
+        let consensus_pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
+        if new_pruning_point != consensus_pruning_point {
+            return Err(PruningImportError::UnexpectedPruningPoint { expected: consensus_pruning_point, actual: new_pruning_point });
+        }
         let new_pruning_point_header = self.headers_store.get_header(new_pruning_point).unwrap();
         let imported_utxo_multiset_hash = imported_utxo_multiset.finalize();
         if imported_utxo_multiset_hash != new_pruning_point_header.utxo_commitment {
