@@ -153,6 +153,11 @@ impl Interval {
     pub fn strictly_contains(&self, other: Self) -> bool {
         self.start <= other.start && other.end < self.end
     }
+
+    /// Returns the bounding interval of `self` and `other`
+    pub fn hull(self, other: Self) -> Self {
+        Self::new(self.start.min(other.start), self.end.max(other.end))
+    }
 }
 
 /// Returns a fraction for each size in sizes
