@@ -131,7 +131,7 @@ impl<
 
         // Run k-colouring with free search (no custom selected parent is passed,
         // so the manager freely selects from all parents).
-        let virtual_gd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k, None);
+        let virtual_cd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k, None);
 
         // Collect the full blue set by traversing the chain from virtual back to conflict_genesis.
         // Each chain block contributes itself AND its mergeset blues.
@@ -139,20 +139,20 @@ impl<
         let mut chain_blocks: Vec<Hash> = Vec::new();
 
         // Start from virtual's mergeset blues
-        for &blue_block in virtual_gd.mergeset_blues.iter() {
+        for &blue_block in virtual_cd.mergeset_blues.iter() {
             blue_set.insert(blue_block);
         }
 
         // Walk the chain: each link adds itself (chain block) and its mergeset blues
-        let mut curr_sp = virtual_gd.selected_parent;
+        let mut curr_sp = virtual_cd.selected_parent;
         while curr_sp != conflict_genesis {
             chain_blocks.push(curr_sp);
             blue_set.insert(curr_sp);
-            let gd = conflict_zone_manager.get_data(curr_sp).unwrap();
-            for &blue_block in gd.mergeset_blues.iter() {
+            let cd = conflict_zone_manager.get_data(curr_sp).unwrap();
+            for &blue_block in cd.mergeset_blues.iter() {
                 blue_set.insert(blue_block);
             }
-            curr_sp = gd.selected_parent;
+            curr_sp = cd.selected_parent;
         }
         blue_set.insert(conflict_genesis);
         chain_blocks.push(conflict_genesis);
@@ -248,11 +248,11 @@ impl<
         let winner = subgroups
             .iter()
             .map(|group| {
-                let start = self.suffix_witness_start(ordered_f, *conflict_genesis, group.conflict_genesis, ell);
+                let start = self.suffix_witness_start(ordered_f, *conflict_genesis, group.nca, ell);
                 let score = if truncated && start < window { None } else { Some(start) };
                 debug!(
                     "dk::tiebreak: side {} (rank {}) witness score {:?} (None = live at horizon)",
-                    group.conflict_genesis, group.k, score
+                    group.nca, group.k, score
                 );
                 (group, score)
             })
@@ -262,7 +262,7 @@ impl<
             })
             .expect("subgroups should be non-empty")
             .0;
-        debug!("dk::tiebreak: winner is side {} (index {})", subgroups[winner].conflict_genesis, winner);
+        debug!("dk::tiebreak: winner is side {} (index {})", subgroups[winner].nca, winner);
         winner
     }
 }
@@ -407,7 +407,7 @@ mod tests {
         let sg_d = Arc::new(vec![dag.hash_d]);
         let subgroups_forward = vec![
             GroupMetadata {
-                conflict_genesis: dag.hash_z,
+                nca: dag.hash_z,
                 subgroup: sg_x,
                 k: mutual_k,
                 selected_parent: SortableBlock {
@@ -416,7 +416,7 @@ mod tests {
                 },
             },
             GroupMetadata {
-                conflict_genesis: dag.hash_b,
+                nca: dag.hash_b,
                 subgroup: sg_d,
                 k: mutual_k,
                 selected_parent: SortableBlock {
@@ -433,7 +433,7 @@ mod tests {
         let sg_x2 = Arc::new(vec![dag.hash_x]);
         let subgroups_reversed = vec![
             GroupMetadata {
-                conflict_genesis: dag.hash_b,
+                nca: dag.hash_b,
                 subgroup: sg_d2,
                 k: mutual_k,
                 selected_parent: SortableBlock {
@@ -442,7 +442,7 @@ mod tests {
                 },
             },
             GroupMetadata {
-                conflict_genesis: dag.hash_z,
+                nca: dag.hash_z,
                 subgroup: sg_x2,
                 k: mutual_k,
                 selected_parent: SortableBlock {
@@ -520,7 +520,7 @@ mod tests {
 
     fn group_metadata(anchor: Hash, tip: Hash, k: KType, blue_work: u64) -> GroupMetadata {
         GroupMetadata {
-            conflict_genesis: anchor,
+            nca: anchor,
             subgroup: Arc::new(vec![tip]),
             k,
             selected_parent: SortableBlock::new(tip, blue_work.into()),

@@ -173,7 +173,7 @@ impl<
             }
 
             // Pick a "winner" among these subgroups
-            let (winning_conflict_genesis, winning_subgroup) = {
+            let (winning_nca, winning_subgroup) = {
                 let (m, best_groups) = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
 
                 #[allow(clippy::style)]
@@ -181,7 +181,7 @@ impl<
                     self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups, m)
                 } else {
                     let single_winner = best_groups.into_iter().next().expect("best_groups should be non-empty after filtering");
-                    (single_winner.conflict_genesis, single_winner.subgroup)
+                    (single_winner.nca, single_winner.subgroup)
                 };
 
                 // This will always be Some since curr_subgroup.len() > 1 and thus there is at least one subgroup
@@ -189,9 +189,9 @@ impl<
             };
 
             // Add the non-winners to the ordered parents
-            agreement_grouping.iter().for_each(|(&conflict_genesis, subgroup)| {
+            agreement_grouping.iter().for_each(|(&nca, subgroup)| {
                 // TODO[DK]: Asserting here that order of the non-winning parents within a conflict hierarchy doesn't matter
-                if conflict_genesis != winning_conflict_genesis {
+                if nca != winning_nca {
                     conflict_ordered_parents.extend(subgroup.as_ref().iter().copied());
                 }
             });
@@ -284,10 +284,10 @@ impl<
         )
         .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: m });
 
-        let winning_conflict_genesis = subgroups[winning_index].conflict_genesis;
+        let winning_nca = subgroups[winning_index].nca;
         let winning_subgroup = subgroups[winning_index].subgroup.clone();
 
-        (winning_conflict_genesis, winning_subgroup)
+        (winning_nca, winning_subgroup)
     }
 
     /// Follows the Calculate-Rank algorithm in the DK paper
@@ -330,13 +330,13 @@ impl<
 
             let mut survivors = HashMap::with_capacity(map.len());
             let mut best_groups = Vec::with_capacity(map.len());
-            for (curr_conflict_genesis, subgroup) in map.iter() {
+            for (curr_nca, subgroup) in map.iter() {
                 if let Some(selected_parent) =
                     self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k, &conflict_zone_manager)
                 {
-                    survivors.insert(*curr_conflict_genesis, subgroup.clone());
+                    survivors.insert(*curr_nca, subgroup.clone());
                     best_groups.push(GroupMetadata {
-                        conflict_genesis: *curr_conflict_genesis,
+                        nca: *curr_nca,
                         subgroup: subgroup.clone(),
                         k,
                         selected_parent,
@@ -354,16 +354,18 @@ impl<
         let Some(result) = RankSearcher::search(|k| evaluate_at(&mut group_map, k)) else { return (0, vec![]) };
         // The k-search converges to m with a last successful evaluation exactly there, so
         // the sides ranking only m+1 were dropped from the searched map along the way and
-        // result holds the rank-m sides alone. The tiebreaking comparison domain spans
-        // ranks m and m+1, so re-seed a wider map from the original grouping to recover
-        // them. Sides qualifying at m belong to the wider domain by monotonicity and need
-        // no re-evaluation, so only the remaining sides are tested at m+1; each survivor
-        // there ranks exactly m+1 and keeps that as its recorded rank
+        // result holds the rank-m sides alone (the searched map itself ends up holding
+        // exactly these sides, so it doubles as the skip-set below). The tiebreaking
+        // comparison domain spans ranks m and m+1, so re-seed a wider map from the
+        // original grouping to recover them. Sides qualifying at m belong to the wider
+        // domain by monotonicity and need no re-evaluation, so only the remaining sides
+        // are tested at m+1; each survivor there ranks exactly m+1 and keeps that as its
+        // recorded rank
         let mut best_groups = result.result;
         let mut wide_map: HashMap<_, _> = agreeing_subgroups
             .iter()
-            .filter(|(genesis, _)| !best_groups.iter().any(|g| g.conflict_genesis == **genesis))
-            .map(|(genesis, subgroup)| (*genesis, subgroup.clone()))
+            .filter(|&(nca, _)| !group_map.contains_key(nca))
+            .map(|(nca, subgroup)| (*nca, subgroup.clone()))
             .collect();
         if let Some(wider) = evaluate_at(&mut wide_map, result.k.saturating_add(1)) {
             best_groups.extend(wider);
@@ -1339,7 +1341,7 @@ mod tests {
             }
             let tips: Vec<Hash> = grouping.values().flat_map(|v| v.iter().copied()).collect();
             let (_, ranked) = self.executor.rank(self.genesis, &grouping, &tips);
-            ranked.into_iter().map(|g| (g.conflict_genesis, g.k)).collect()
+            ranked.into_iter().map(|g| (g.nca, g.k)).collect()
         }
     }
 
