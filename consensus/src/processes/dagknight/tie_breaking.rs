@@ -1,6 +1,8 @@
+use std::cmp::Reverse;
 use std::sync::Arc;
 
 use kaspa_consensus_core::{BlockHashSet, KType};
+use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
@@ -21,9 +23,6 @@ use crate::{
     },
 };
 
-/// Chain blocks from a subgroup's conditioned k-colouring.
-pub type SubgroupChainBlocks = Vec<Hash>;
-
 /// Result of free-search k-colouring reference cluster computation.
 pub struct ReferenceCluster {
     /// Set of blue block hashes in the resulting colouring.
@@ -40,8 +39,16 @@ pub struct TieBreakContext<'a> {
     pub all_tips: &'a [Hash],
     /// The tied subgroups — each subgroup is a slice of tip hashes that agree on a common chain ancestor above the conflict genesis.
     pub subgroups: &'a [GroupMetadata],
-    /// The mutual rank `k` shared by all tied subgroups.
+    /// The minimum rank among the compared subgroups; sides may qualify one rank above it.
     pub k: KType,
+}
+
+/// Conjectured horizon capping the witness scan: (ell+2)^2, quadratic in the liveness window and never cutting inside the window itself.
+///
+/// TODO[DK]: tighten to the justified bound once the conjecture is proven.
+fn witness_horizon(ell: KType) -> u64 {
+    let side = ell as u64 + 2;
+    side * side
 }
 
 /// Trait for tie-breaking logic, isolating it from the DAGKnight executor for testability.
@@ -75,6 +82,18 @@ impl<
     R: ReachabilityStoreReader + Clone,
 > DagknightTieBreaker<C, O, D, R>
 {
+    /// A block chains to the deciding endpoint (the list head) when it sits
+    /// within ell+2 positions of it, or when it is a DAG ancestor of a witness
+    /// at most ell+2 positions earlier in the list.
+    fn chains_to_endpoint(&self, block: Hash, i: usize, descending_f: &[Hash], is_witness: &[bool], ell: KType) -> bool {
+        let window = ell as usize + 2;
+        i < window
+            || descending_f[i - window..i]
+                .iter()
+                .zip(&is_witness[i - window..i])
+                .any(|(&later, &witness)| witness && self.reachability_service.is_dag_ancestor_of(block, later))
+    }
+
     pub fn new(
         coloring_store: Arc<C>,
         headers_store: Arc<O>,
@@ -139,92 +158,41 @@ impl<
         ReferenceCluster { blues: blue_set, chain_blocks }
     }
 
-    /// Computes the k'-chain conditioned on the virtual block agreeing with a specific subgroup.
-    ///
-    /// Returns the chain blocks from virtual towards conflict_genesis (inclusive).
-    pub fn compute_subgroup_chain_blocks(
-        &self,
-        conflict_genesis: Hash,
-        group_tips: &[Hash],
-        all_tips: &[Hash],
-        k_prime: KType,
-    ) -> SubgroupChainBlocks {
-        let reachability_service = self.reachability_service.clone();
-        let relations_store = self.relations_store.read();
-        let relations_service = FutureIntersectRelations::new(relations_store.clone(), reachability_service.clone(), conflict_genesis);
-
-        // Committed (non-free-search) manager
-        let conflict_zone_manager = ConflictZoneManager::with_free_search(
-            k_prime,
-            conflict_genesis,
-            self.coloring_store.clone(),
-            self.headers_store.clone(),
-            relations_service,
-            reachability_service.clone(),
-            false, // free_search = false (committed)
-        );
-
-        // A single CG-scoped fill over all tips colors the whole zone
-        conflict_zone_manager.fill_zone_data(all_tips);
-
-        // Condition virtual on the group: force selected parent from group_tips
-        let subgroup_virtual_sp = conflict_zone_manager.find_selected_parent(group_tips.iter().copied());
-        let virtual_cd: ColoringData = conflict_zone_manager.k_colouring(all_tips, k_prime, Some(subgroup_virtual_sp));
-
-        // Walk the chain from virtual's selected parent back to conflict_genesis
-        let mut chain_blocks: Vec<Hash> = Vec::new();
-        let mut curr_sp = virtual_cd.selected_parent;
-        while curr_sp != conflict_genesis {
-            chain_blocks.push(curr_sp);
-            curr_sp = conflict_zone_manager.get_selected_parent(curr_sp).unwrap();
-        }
-        chain_blocks.push(conflict_genesis);
-
-        chain_blocks
-    }
-
-    /// Counts how many blocks in `chain` are in the anticone of `b`.
-    ///
-    /// A chain block `c` is in `anticone(b)` iff neither `b` is a DAG ancestor of `c`
-    /// nor `c` is a DAG ancestor of `b`.
-    fn count_anticone_with_chain(&self, b: Hash, chain: &[Hash]) -> KType {
-        chain
-            .iter()
-            .filter(|&&c| !self.reachability_service.is_dag_ancestor_of(b, c) && !self.reachability_service.is_dag_ancestor_of(c, b))
-            .count() as KType
-    }
-
-    /// Computes the "high-rank witnesses" set C_i for a subgroup.
-    ///
-    /// Per Algorithm 4, C_i is the union over k' ∈ {⌊k/2⌋, ..., k} of all blocks B in
-    /// the reference cluster F where |anticone(B) ∩ chain_{i,k'}| > k'. The conflict
-    /// genesis is always included in C_i as a baseline witness.
-    pub fn compute_high_rank_witnesses(
-        &self,
-        conflict_genesis: Hash,
-        group_tips: &[Hash],
-        all_tips: &[Hash],
-        f_cluster: &BlockHashSet,
-        k: KType,
-    ) -> SortableBlock {
-        let mut witness_block_data: SortableBlock =
-            SortableBlock { hash: conflict_genesis, blue_work: self.headers_store.get_header(conflict_genesis).unwrap().blue_work };
-
-        // TODO[DK]: Revisit - as it only checks k - 1 against the reference block
-        let k_prime = k.saturating_sub(1);
-        let chain = self.compute_subgroup_chain_blocks(conflict_genesis, group_tips, all_tips, k_prime);
-
-        for &b in f_cluster.iter() {
-            if self.count_anticone_with_chain(b, &chain) > k_prime {
-                let curr_witness_data = SortableBlock { hash: b, blue_work: self.headers_store.get_header(b).unwrap().blue_work };
-
-                if witness_block_data.cmp(&curr_witness_data) == std::cmp::Ordering::Less {
-                    witness_block_data = curr_witness_data;
-                }
+    /// Returns the earliest start of the side's suffix-witness chain along the descending-ordered reference, in ascending 0-based positions, or the list length when no witness exists. A block is a witness when its chain anchor is the side's and it chains to the endpoint. The scan stops once the last witness is over ell+1 positions behind (a causal chain cannot cross a wider gap), so anchors past the stop are never queried.
+    fn suffix_witness_start(&self, descending_f: &[Hash], conflict_genesis: Hash, anchor: Hash, ell: KType) -> usize {
+        let n = descending_f.len();
+        let window = ell as usize + 2;
+        let mut is_witness: Vec<bool> = Vec::new();
+        let mut last_witness: Option<usize> = None;
+        let anchors =
+            descending_f.iter().map(|&block| self.reachability_service.try_get_next_chain_ancestor(block, conflict_genesis).unwrap());
+        for (i, (&block, chain_anchor)) in descending_f.iter().zip(anchors).enumerate() {
+            if i >= window && !matches!(last_witness, Some(p) if p >= i - window) {
+                break;
+            }
+            let witness =
+                chain_anchor == Some(anchor) && (i < window || self.chains_to_endpoint(block, i, descending_f, &is_witness, ell));
+            is_witness.push(witness);
+            if witness {
+                last_witness = Some(i);
             }
         }
+        debug!("dk::tiebreak: scanned {} of {} reference positions", is_witness.len(), n);
+        match last_witness {
+            Some(p) => n - 1 - p,
+            None => n,
+        }
+    }
 
-        witness_block_data
+    /// Free reference F at width g, ordered future-to-past by descending SortableBlock key so the suffix-witness scan runs forward from the deciding endpoint at the head; blue work grows along ancestry, keeping parents after children.
+    fn ordered_reference(&self, conflict_genesis: Hash, all_tips: &[Hash], g: KType) -> Vec<Hash> {
+        // TODO[DK]: get the reference cluster already sorted (e.g. keep the coloring's
+        // blues in SortableBlock order when collecting the chain walk) instead of
+        // sorting O(F log F) online on every tie break
+        let mut ordered_f: Vec<Hash> = self.compute_reference_cluster(conflict_genesis, all_tips, g).blues.iter().copied().collect();
+        ordered_f
+            .sort_by_cached_key(|block| Reverse(SortableBlock::new(*block, self.headers_store.get_header(*block).unwrap().blue_work)));
+        ordered_f
     }
 }
 
@@ -235,39 +203,44 @@ impl<
     R: ReachabilityStoreReader + Clone,
 > TieBreaker for DagknightTieBreaker<C, O, D, R>
 {
-    /// Implements Algorithm 4 from the DAGKnight paper.
+    /// Tiebreaking through a common reference: prefers the side whose committed path can follow the free reference F furthest back.
     ///
-    /// 1. Compute reference cluster F using free search at g(k) = floor(sqrt(k))
-    /// 2. For each subgroup, compute C_i = high-rank witnesses against F
-    /// 3. Select the subgroup whose max(C_i) is earliest (argmin by blue_work, ties by hash)
-    ///
-    /// If any C_i is empty (small conflict zone), falls back to SimpleTieBreaker
-    /// logic (pick the subgroup with the highest selected_parent).
+    /// Sides are scored by the earliest start of their suffix-witness chain along F (see [`suffix_witness_start`]), capped at the conjectured horizon. A side whose chain is still live at the cap outranks every measured start; equal scores fall back to the smallest selected-parent hash.
     fn tie_break(&self, input: &TieBreakContext<'_>) -> usize {
         let TieBreakContext { conflict_genesis, all_tips, subgroups, k } = input;
+        let m = *k;
+        let g = m.isqrt() as KType;
+        let ell = g.max(m / 2);
+        debug!("dk::tiebreak: m = {} | g(m) = {} | ell = {} | sides = {}", m, g, ell, subgroups.len());
 
-        // Step 1: Compute reference cluster F using free search with g(k) = floor(sqrt(k))
-        let g_k = k.isqrt() as KType;
-        let ref_cluster = self.compute_reference_cluster(*conflict_genesis, all_tips, g_k);
-        let f_cluster = ref_cluster.blues;
+        // Free reference F at width g(m), future-to-past, truncated at the horizon
+        let ordered_full = self.ordered_reference(*conflict_genesis, all_tips, g);
+        let n = ordered_full.len();
+        let horizon = (witness_horizon(ell) as usize).min(n);
+        let truncated = n > horizon;
+        let ordered_f = &ordered_full[..horizon];
+        debug!("dk::tiebreak: reference F of {} blocks, horizon {}: {:?}", n, horizon, ordered_f);
 
-        // Step 2: For each group P_i, compute C_i (high-rank witnesses)
-        let mut group_scores: Vec<Option<(usize, SortableBlock, Hash)>> = Vec::with_capacity(subgroups.len());
-
-        for (idx, group_metadata) in subgroups.iter().enumerate() {
-            let group_tips = group_metadata.subgroup.clone();
-            let max_c_i = self.compute_high_rank_witnesses(*conflict_genesis, &group_tips, all_tips, &f_cluster, *k);
-
-            group_scores.push(Some((idx, max_c_i, group_metadata.selected_parent.hash)));
-        }
-
-        // Step 3: Select winner
-        group_scores
+        // Score each side by its earliest suffix-witness start. A start within the
+        // liveness window of the cut may continue past the horizon: classify the side
+        // live (-1), outranking every measured start
+        let window = ell as usize + 2;
+        let winner = subgroups
             .iter()
-            .flatten()
-            .min_by(|(_, a, ah), (_, b, bh)| a.cmp(b).then_with(|| ah.cmp(bh)))
-            .map(|(idx, _, _)| *idx)
-            .unwrap()
+            .map(|group| {
+                let start = self.suffix_witness_start(ordered_f, *conflict_genesis, group.nca, ell);
+                let score = if truncated && start < window { -1 } else { start as isize };
+                debug!("dk::tiebreak: side {} (rank {}) witness score {} (-1 = live at horizon)", group.nca, group.k, score);
+                (group, score)
+            })
+            .enumerate()
+            .min_by(|(_, (group, score)), (_, (other, other_score))| {
+                score.cmp(other_score).then_with(|| group.selected_parent.hash.cmp(&other.selected_parent.hash))
+            })
+            .expect("subgroups should be non-empty")
+            .0;
+        debug!("dk::tiebreak: winner is side {} (index {})", subgroups[winner].nca, winner);
+        winner
     }
 }
 
@@ -367,39 +340,6 @@ mod tests {
         }
     }
 
-    /// Verifies that `compute_subgroup_chain_blocks` follows the reachability store's chain
-    /// parents (committed mode).
-    ///
-    /// Conditioned on [X]: chain follows reachability chain X → Y → Z → A
-    /// Conditioned on [D]: chain follows reachability chain D → C → B → A
-    #[test]
-    fn test_subgroup_chain_blocks() {
-        let dag = TestDag::new();
-        let all_tips = vec![dag.hash_x, dag.hash_d];
-
-        // Conditioned on [X]: must follow reachability chain X → Y → Z → A
-        let chain_x = dag.tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_x], &all_tips, 2);
-        assert_eq!(chain_x.len(), 4, "X conditioned chain should have 4 blocks: X, Y, Z, A");
-        assert_eq!(chain_x[0], dag.hash_x, "virtual selected parent is X");
-        assert_eq!(chain_x[1], dag.hash_y, "X's committed parent must be Y");
-        assert_eq!(chain_x[2], dag.hash_z, "Y's committed parent must be Z");
-        assert_eq!(chain_x[3], dag.hash_a, "Z's committed parent is genesis A");
-
-        // Conditioned on [D]: must follow reachability chain D → C → B → A
-        let chain_d = dag.tie_breaker.compute_subgroup_chain_blocks(dag.hash_a, &[dag.hash_d], &all_tips, 2);
-        assert_eq!(chain_d.len(), 4, "D conditioned chain should have 4 blocks: D, C, B, A");
-        assert_eq!(chain_d[0], dag.hash_d, "virtual selected parent is D");
-        assert_eq!(chain_d[1], dag.hash_c, "D's committed parent must be C");
-        assert_eq!(chain_d[2], dag.hash_b, "C's committed parent must be B");
-        assert_eq!(chain_d[3], dag.hash_a, "B's committed parent is genesis A");
-
-        // The two chains diverge: X-side goes through Y/Z, D-side goes through C/B
-        assert!(!chain_d.contains(&dag.hash_y), "D's chain must NOT contain Y (different side of conflict)");
-        assert!(!chain_d.contains(&dag.hash_z), "D's chain must NOT contain Z (different side of conflict)");
-        assert!(!chain_x.contains(&dag.hash_b), "X's chain must NOT contain B (different side of conflict)");
-        assert!(!chain_x.contains(&dag.hash_c), "X's chain must NOT contain C (different side of conflict)");
-    }
-
     /// Verifies that `compute_reference_cluster` overrides the reachability store's chain
     /// parents and follows the max blue work path.
     ///
@@ -427,135 +367,11 @@ mod tests {
         assert!(!ref_cluster.blues.contains(&dag.hash_d), "D is not discovered by zone traversal (dead-end)");
     }
 
-    /// Verifies that `count_anticone_with_chain` correctly identifies anticone blocks.
-    ///
-    /// Uses a symmetric diamond DAG with two concurrent branches from A merging at D:
-    ///
-    /// ```text
-    ///       A
-    ///      / \
-    ///     B   Z
-    ///     |   |
-    ///     C   Y
-    ///     |   |
-    ///     |   X
-    ///      \ /
-    ///       D  (D's parents: [C, X], sp: C)
-    /// ```
-    ///
-    /// Left branch:  A → B → C
-    /// Right branch: A → Z → Y → X
-    ///
-    /// Chain 1: [C, B, A] (left side, towards genesis)
-    /// Chain 2: [X, Y, Z, A] (right side, towards genesis)
-    ///
-    /// Key property: every block on one side is concurrent with every block on the other.
-    /// B and C are concurrent with all of {Z, Y, X} → anticone count = 3 against Chain 2.
-    /// Z, Y, X are concurrent with all of {B, C} → anticone count = 2 against Chain 1.
-    #[test]
-    fn test_count_anticone_with_chain() {
-        let hash_a: Hash = 1_u64.into();
-        let hash_b: Hash = 2_u64.into();
-        let hash_c: Hash = 3_u64.into();
-        let hash_z: Hash = 4_u64.into();
-        let hash_y: Hash = 5_u64.into();
-        let hash_x: Hash = 6_u64.into();
-        let hash_d: Hash = 7_u64.into();
-
-        let dk_map = RefCell::new(HashMap::new());
-        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
-        let headers_store = Arc::new(MemoryHeaderStore::new());
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations_store = MemoryRelationsStore::new();
-
-        {
-            let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
-            builder.init();
-            builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
-            builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_c, vec![hash_b]), hash_b);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_z, vec![hash_a]), hash_a);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_y, vec![hash_z]), hash_z);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_x, vec![hash_y]), hash_y);
-            builder.add_block_with_selected_parent(DagBlock::new(hash_d, vec![hash_c, hash_x]), hash_c);
-
-            let insert = |h: Hash, p: Vec<Hash>, bits: u32, store: &Arc<MemoryHeaderStore>, bw: BlueWorkType| {
-                let mut header = Header::from_precomputed_hash(h, p);
-                header.bits = bits;
-                header.blue_work = bw;
-                store.insert(Arc::new(header));
-            };
-
-            insert(hash_a, vec![], 0x207fffff, &headers_store, 0.into());
-            insert(hash_b, vec![hash_a], 0x207fffff, &headers_store, 1.into());
-            insert(hash_c, vec![hash_b], 0x207fffff, &headers_store, 2.into());
-            insert(hash_z, vec![hash_a], 0x207fffff, &headers_store, 1.into());
-            insert(hash_y, vec![hash_z], 0x207fffff, &headers_store, 2.into());
-            insert(hash_x, vec![hash_y], 0x207fffff, &headers_store, 3.into());
-            insert(hash_d, vec![hash_c, hash_x], 0x207fffff, &headers_store, 4.into());
-        }
-
-        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
-        let tie_breaker =
-            DagknightTieBreaker::new(coloring_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
-
-        // Chain 2: [X, Y, Z, A] (right side, towards genesis)
-        let chain_right = vec![hash_x, hash_y, hash_z, hash_a];
-
-        // B is concurrent with Z, Y, X → anticone count = 3
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_b, &chain_right), 3, "B is concurrent with Z, Y, X");
-
-        // C is concurrent with Z, Y, X → anticone count = 3
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_c, &chain_right), 3, "C is concurrent with Z, Y, X");
-
-        // A is ancestor of everything → anticone count = 0
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_a, &chain_right), 0, "genesis A is ancestor of all chain blocks");
-
-        // X, Y, Z are in the chain → anticone count = 0
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_x, &chain_right), 0, "X is in its own chain");
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_y, &chain_right), 0, "Y is in its own chain");
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_z, &chain_right), 0, "Z is in its own chain");
-
-        // Chain 1: [C, B, A] (left side, towards genesis)
-        let chain_left = vec![hash_c, hash_b, hash_a];
-
-        // Z is concurrent with B, C → anticone count = 2
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_z, &chain_left), 2, "Z is concurrent with B, C");
-
-        // Y is concurrent with B, C → anticone count = 2
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_y, &chain_left), 2, "Y is concurrent with B, C");
-
-        // X is concurrent with B, C → anticone count = 2
-        assert_eq!(tie_breaker.count_anticone_with_chain(hash_x, &chain_left), 2, "X is concurrent with B, C");
-    }
-
-    /// Verifies that `compute_high_rank_witnesses` correctly identifies F blocks
-    /// that exceed the k'-cluster bound against the conditioned chain.
-    ///
-    /// With k=4, k' iterates from 2 to 4. The method computes conditioned chains
-    /// for each k' and collects F blocks whose anticone with the chain exceeds k'.
-    #[test]
-    fn test_high_rank_witnesses() {
-        let dag = TestDag::new();
-        let all_tips = vec![dag.hash_x, dag.hash_d];
-
-        // Compute F cluster at g(4) = 2
-        let ref_cluster = dag.tie_breaker.compute_reference_cluster(dag.hash_a, &all_tips, 2);
-        let f_cluster = ref_cluster.blues;
-
-        // Compute C_i for [X] side
-        let c_x = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_x], &all_tips, &f_cluster, 4);
-
-        // Compute C_i for [D] side
-        let c_d = dag.tie_breaker.compute_high_rank_witnesses(dag.hash_a, &[dag.hash_d], &all_tips, &f_cluster, 4);
-
-        // All non-genesis blocks in C_i must be a subset of F
-        assert!(f_cluster.contains(&c_x.hash), "X's witness must be in F");
-        assert!(f_cluster.contains(&c_d.hash), "D's witness must be in F");
-    }
-
     /// Verifies that `tie_break` is invariant to the order of subgroups in the
-    /// input — the winning *subgroup content* must be the same even if the index differs.
+    /// input: the winning subgroup content must be the same even if the index differs.
+    ///
+    /// Sides: D anchored at B, X anchored at Z (see TestDag above); at mutual k=4
+    /// the reference covers the zone reachable from both tips [X, D].
     #[test]
     fn test_tie_break_subgroup_ordering_invariance() {
         let dag = TestDag::new();
@@ -568,7 +384,7 @@ mod tests {
         let sg_d = Arc::new(vec![dag.hash_d]);
         let subgroups_forward = vec![
             GroupMetadata {
-                conflict_genesis: dag.hash_z,
+                nca: dag.hash_z,
                 subgroup: sg_x,
                 k: mutual_k,
                 selected_parent: SortableBlock {
@@ -577,7 +393,7 @@ mod tests {
                 },
             },
             GroupMetadata {
-                conflict_genesis: dag.hash_b,
+                nca: dag.hash_b,
                 subgroup: sg_d,
                 k: mutual_k,
                 selected_parent: SortableBlock {
@@ -594,7 +410,7 @@ mod tests {
         let sg_x2 = Arc::new(vec![dag.hash_x]);
         let subgroups_reversed = vec![
             GroupMetadata {
-                conflict_genesis: dag.hash_b,
+                nca: dag.hash_b,
                 subgroup: sg_d2,
                 k: mutual_k,
                 selected_parent: SortableBlock {
@@ -603,7 +419,7 @@ mod tests {
                 },
             },
             GroupMetadata {
-                conflict_genesis: dag.hash_z,
+                nca: dag.hash_z,
                 subgroup: sg_x2,
                 k: mutual_k,
                 selected_parent: SortableBlock {
@@ -626,5 +442,347 @@ mod tests {
 
         // The winning_index must be flipped (forward index 0 == reversed index 1, etc.)
         // But we only assert content equality since the tie-break could pick either side.
+    }
+
+    type TestTieBreaker =
+        DagknightTieBreaker<MemoryConflictZoneColoringStore, MemoryHeaderStore, MemoryRelationsStore, MemoryReachabilityStore>;
+
+    /// Builds linear chain sides above a shared genesis with per-block (blue_score,
+    /// blue_work), blue_work controlling the reference order; returns the tie breaker,
+    /// the genesis and the per-side chains (anchor first)
+    fn chain_sides_dag(sides: &[&[(u64, u64)]]) -> (TestTieBreaker, Hash, Vec<Vec<Hash>>) {
+        let genesis: Hash = 1_u64.into();
+        let dk_map = RefCell::new(HashMap::new());
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations_store = MemoryRelationsStore::new();
+        let mut chains = Vec::with_capacity(sides.len());
+        {
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+            builder.init();
+            builder.add_block(DagBlock::new(genesis, vec![ORIGIN]));
+            let mut header = Header::from_precomputed_hash(genesis, vec![]);
+            header.bits = 0x207fffff;
+            headers_store.insert(Arc::new(header));
+
+            let mut next_id = 2_u64;
+            for side in sides {
+                let mut chain = Vec::with_capacity(side.len());
+                let mut parent = genesis;
+                for &(blue_score, blue_work) in side.iter() {
+                    let hash: Hash = next_id.into();
+                    next_id += 1;
+                    builder.add_block_with_selected_parent(DagBlock::new(hash, vec![parent]), parent);
+                    let mut header = Header::from_precomputed_hash(hash, vec![parent]);
+                    header.bits = 0x207fffff;
+                    header.blue_score = blue_score;
+                    header.blue_work = blue_work.into();
+                    headers_store.insert(Arc::new(header));
+                    chain.push(hash);
+                    parent = hash;
+                }
+                chains.push(chain);
+            }
+        }
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+        let tie_breaker =
+            DagknightTieBreaker::new(coloring_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
+        (tie_breaker, genesis, chains)
+    }
+
+    fn tips(chains: &[Vec<Hash>]) -> Vec<Hash> {
+        chains.iter().map(|c| *c.last().unwrap()).collect()
+    }
+
+    fn group_metadata(anchor: Hash, tip: Hash, k: KType, blue_work: u64) -> GroupMetadata {
+        GroupMetadata { nca: anchor, subgroup: Arc::new(vec![tip]), k, selected_parent: SortableBlock::new(tip, blue_work.into()) }
+    }
+
+    fn short(hash: &Hash) -> u64 {
+        hash.to_le_u64()[3]
+    }
+
+    /// Walks the tiebreaking rule stage by stage, printing the reference, per-side
+    /// agreement and witness starts. Run with `-- --nocapture` to follow along.
+    ///
+    /// Two chain sides interleaved by blue work (B1 < Z1 < B2 < Z2 in work), so
+    /// F is [Z2, B2, Z1, B1, genesis] future-to-past and side 0's witness chain
+    /// starts one position further back than side 1's.
+    #[test]
+    fn test_tiebreak_walkthrough() {
+        let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(1, 1), (3, 3)], &[(2, 2), (4, 4)]]);
+        let all_tips = tips(&chains);
+        let m: KType = 4;
+        let g = m.isqrt() as KType;
+        let ell = g.max(m / 2);
+
+        // The reference F at width g(m), ordered and anchored like the production path
+        let ordered = tie_breaker.ordered_reference(genesis, &all_tips, g);
+        let anchors = |block: Hash| tie_breaker.reachability_service.try_get_next_chain_ancestor(block, genesis).unwrap();
+
+        println!("m = {m} | g(m) = {g} | ell = {ell} | window (ell+2) = {}", ell + 2);
+        println!("reference F, future-to-past (genesis last): {:?}", ordered.iter().map(short).collect::<Vec<_>>());
+
+        let mut starts = vec![];
+        for (side_idx, chain) in chains.iter().enumerate() {
+            let anchor = chain[0];
+            let agreement: Vec<usize> =
+                ordered.iter().enumerate().filter(|&(_, &block)| anchors(block) == Some(anchor)).map(|(i, _)| i).collect();
+            let start = tie_breaker.suffix_witness_start(&ordered, genesis, anchor, ell);
+            println!(
+                "side {} (anchor {}): agrees at future-to-past positions {agreement:?}, witness score {start:?}",
+                side_idx,
+                short(&anchor)
+            );
+            starts.push(start);
+        }
+
+        let subgroups = vec![group_metadata(chains[0][0], chains[0][1], m, 1), group_metadata(chains[1][0], chains[1][1], m, 1)];
+        let input = TieBreakContext { conflict_genesis: genesis, all_tips: &all_tips, subgroups: &subgroups, k: m };
+        let winner = tie_breaker.tie_break(&input);
+        println!("winner: side {winner}");
+        assert_eq!(starts, vec![1, 2], "the earlier-interleaved side witnesses further back");
+        assert_eq!(winner, 0);
+    }
+
+    /// The side whose agreeing reference blocks start earliest wins, regardless of
+    /// input order.
+    ///
+    /// ```text
+    ///         genesis (0)
+    ///         /      \
+    ///     B1 (1)     Z1 (2)
+    ///       |          |
+    ///     B2 (3)     Z2 (4)
+    /// ```
+    ///
+    /// Side 0 anchors at B1, side 1 at Z1. At m=4 (window 4) F is all five blocks,
+    /// future-to-past [Z2, B2, Z1, B1, genesis]: side 0 agrees at {1, 3} and side 1
+    /// at {0, 2} (0-based, future-to-past); ascending 0-based puts B1 at 1 and
+    /// Z1 at 2, so side 0's B1 start beats side 1's Z1.
+    #[test]
+    fn test_tie_break_earliest_start_wins() {
+        let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(1, 1), (3, 3)], &[(2, 2), (4, 4)]]);
+        let all_tips = tips(&chains);
+        // Order: [genesis, B1, Z1, B2, Z2]; at m=4 the window ell+2 = 4 covers both chains
+        let subgroups = vec![group_metadata(chains[0][0], chains[0][1], 4, 1), group_metadata(chains[1][0], chains[1][1], 4, 1)];
+        let input = TieBreakContext { conflict_genesis: genesis, all_tips: &all_tips, subgroups: &subgroups, k: 4 };
+        assert_eq!(tie_breaker.tie_break(&input), 0, "witness start at 1 beats 2");
+
+        let subgroups = vec![group_metadata(chains[1][0], chains[1][1], 4, 1), group_metadata(chains[0][0], chains[0][1], 4, 1)];
+        let input = TieBreakContext { conflict_genesis: genesis, all_tips: &all_tips, subgroups: &subgroups, k: 4 };
+        assert_eq!(tie_breaker.tie_break(&input), 1, "index flips with input order, same winner");
+    }
+
+    /// A gap between agreeing blocks beyond ell+2 breaks the witness chain.
+    ///
+    /// ```text
+    ///         genesis (0)
+    ///         /      \
+    ///     B1 (2)     Z1 (3)
+    ///       |          |
+    ///     B2 (5)     Z2 (4)
+    /// ```
+    ///
+    /// Side 0 anchors at B1, side 1 at Z1. F by work, future-to-past:
+    /// [B2, Z2, Z1, B1, genesis]; at ell=0 the window is 2. The B side agrees at
+    /// B2@0 and B1@3, three positions apart, so only B2 witnesses (start 4); the
+    /// Z side agrees at Z2@1 and Z1@2 with gap 1 and witnesses from Z1 (start 2).
+    #[test]
+    fn test_witness_start_respects_gap_limit() {
+        let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 2), (5, 5)], &[(3, 3), (4, 4)]]);
+        // Future-to-past reference by blue work: [B2, Z2, Z1, B1, genesis]; at ell=0 the window is 2
+        let ordered = vec![chains[0][1], chains[1][1], chains[1][0], chains[0][0], genesis];
+        assert_eq!(
+            tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0),
+            4,
+            "B1 at position 1 is 3 positions from B2, beyond the window"
+        );
+        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[1][0], 0), 2);
+    }
+
+    /// A side whose agreeing blocks never reach the endpoint within the window has
+    /// no witness and scores the endpoint position n.
+    ///
+    /// ```text
+    ///              genesis (0)
+    ///            /    |      \
+    ///        B (2)   Z (3)   Y1 (4) -> Y2 (5) -> Y3 (6) -> Y4 (7)
+    /// ```
+    ///
+    /// F by work, future-to-past: [Y4, Y3, Y2, Y1, Z, B, genesis]; at ell=0 the
+    /// window is 2. The B side agrees only at B@5, too far from any other agreeing
+    /// block, so it scores the endpoint 7; the Y side chains with gap 1 and
+    /// witnesses from Y1 (start 3).
+    #[test]
+    fn test_witness_without_witness_returns_endpoint_position() {
+        let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 2)], &[(3, 3)], &[(4, 4), (5, 5), (6, 6), (7, 7)]]);
+        // Future-to-past reference by blue work: [Y4, Y3, Y2, Y1, Z, B, genesis]
+        let ordered = vec![chains[2][3], chains[2][2], chains[2][1], chains[2][0], chains[1][0], chains[0][0], genesis];
+        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0), 7);
+        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[2][0], 0), 3);
+    }
+
+    /// Concurrent agreeing blocks within the window do not extend the witness; the
+    /// same topology with a causal link does.
+    ///
+    /// ```text
+    ///  fork:  A <- B <- {C1, Z}, C2 <- B    (C1 and C2 concurrent)
+    ///  chain: A <- B <- Z, B <- C1 <- C2    (C1 causally below C2)
+    /// ```
+    ///
+    /// Works: A=0, B=1, C1=2, Z=3, C2=4; the side anchors at B and agrees at C2,
+    /// C1 and B. F is [C2, Z, C1, B, A] in both variants, and at ell=0 the window
+    /// is 2. In the fork C1@2 is concurrent with C2@0 and cannot chain into it, so
+    /// only C2 witnesses (start 4); in the chain C1 links to C2 and B to C1,
+    /// reaching start 1.
+    #[test]
+    fn test_witness_requires_causality() {
+        let build = |c2_parents: Vec<Hash>| {
+            let hash_a: Hash = 1_u64.into();
+            let hash_b: Hash = 2_u64.into();
+            let hash_c1: Hash = 3_u64.into();
+            let hash_z: Hash = 4_u64.into();
+            let hash_c2: Hash = 5_u64.into();
+
+            let dk_map = RefCell::new(HashMap::new());
+            let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
+            let headers_store = Arc::new(MemoryHeaderStore::new());
+            let mut reachability = MemoryReachabilityStore::new();
+            let mut relations_store = MemoryRelationsStore::new();
+            {
+                let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+                builder.init();
+                builder.add_block(DagBlock::new(hash_a, vec![ORIGIN]));
+                builder.add_block_with_selected_parent(DagBlock::new(hash_b, vec![hash_a]), hash_a);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_c1, vec![hash_b]), hash_b);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_z, vec![hash_a]), hash_a);
+                builder.add_block_with_selected_parent(DagBlock::new(hash_c2, c2_parents.clone()), c2_parents[0]);
+
+                let insert = |h: Hash, p: Vec<Hash>, blue_work: u64| {
+                    let mut header = Header::from_precomputed_hash(h, p);
+                    header.bits = 0x207fffff;
+                    header.blue_work = blue_work.into();
+                    headers_store.insert(Arc::new(header));
+                };
+                insert(hash_a, vec![], 0);
+                insert(hash_b, vec![hash_a], 1);
+                insert(hash_c1, vec![hash_b], 2);
+                insert(hash_z, vec![hash_a], 3);
+                insert(hash_c2, c2_parents, 4);
+            }
+            let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+            let tie_breaker =
+                DagknightTieBreaker::new(coloring_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
+            (tie_breaker, hash_a, hash_b)
+        };
+
+        // Future-to-past reference by blue work: [C2, Z, C1, B, A]; at ell=0 the window is 2
+        let ordered = vec![5_u64.into(), 4_u64.into(), 3_u64.into(), 2_u64.into(), 1_u64.into()];
+
+        let (tie_breaker, hash_a, hash_b) = build(vec![2_u64.into()]);
+        assert_eq!(tie_breaker.suffix_witness_start(&ordered, hash_a, hash_b, 0), 4, "concurrent C1 cannot chain into C2");
+
+        let (tie_breaker, hash_a, hash_b) = build(vec![3_u64.into()]);
+        assert_eq!(tie_breaker.suffix_witness_start(&ordered, hash_a, hash_b, 0), 1, "the causal chain B < C1 < C2 witnesses from B");
+    }
+
+    /// The scan stops exactly once the last witness is more than ell+1 positions
+    /// behind: blocks beyond the gap are never evaluated (the lazy anchor
+    /// iterator is simply never pulled further), and the score equals the
+    /// full-list result.
+    ///
+    /// ```text
+    ///              genesis
+    ///            /    |      \
+    ///       B1-B2    Z     T1-T2-T3-T4
+    /// ```
+    ///
+    /// F by work, future-to-past: [B1(100), T1(90), T2(80), T3(70), T4(60),
+    /// B2(50), Z(1)]. At ell=0 the window is 2: B1@0 is a witness, the T run
+    /// opens a gap, so B2@5 could not chain to the endpoint even if scanned:
+    /// the scan breaks at i=3 and the start is the full-list answer n-1 = 6.
+    #[test]
+    fn test_early_stop_never_fetches_past_the_gap() {
+        let (tie_breaker, genesis, chains) =
+            chain_sides_dag(&[&[(2, 100), (3, 50)], &[(4, 1)], &[(5, 90), (6, 80), (7, 70), (8, 60)]]);
+        let ordered = vec![chains[0][0], chains[2][0], chains[2][1], chains[2][2], chains[2][3], chains[0][1], chains[1][0]];
+        assert_eq!(
+            tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0),
+            6,
+            "exact stop: full-list answer without scanning past the gap"
+        );
+    }
+
+    /// The horizon truncation drives the live/dead classification in `tie_break`: a start within the liveness window of the cut marks the side live, a dead side keeps its measured start.
+    ///
+    /// Reference [B2, Z2, Z1, B1, genesis] at ell=0 (window 2), truncated to 3: the Z side's deepest witness Z1@2 gives start 0 < 2 (live), the B side's B2@0 gives start 2 (dead); untruncated scores stay 4 and 2.
+    #[test]
+    fn test_horizon_cap_marks_live_sides() {
+        let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 2), (5, 5)], &[(3, 3), (4, 4)]]);
+        let ordered = vec![chains[0][1], chains[1][1], chains[1][0], chains[0][0], genesis];
+        let (window, horizon) = (2_usize, 3_usize);
+        let truncated = ordered.len() > horizon;
+
+        // tie_break's classification over the truncated reference
+        let score = |anchor| {
+            let start = tie_breaker.suffix_witness_start(&ordered[..horizon], genesis, anchor, 0);
+            if truncated && start < window { -1 } else { start as isize }
+        };
+        assert_eq!(score(chains[1][0]), -1, "Z's deepest witness sits at the cut: live at horizon");
+        assert_eq!(score(chains[0][0]), 2, "B's chain is dead at the cut: exact truncated start");
+
+        // Untruncated scores are unchanged by the cap
+        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0), 4);
+        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[1][0], 0), 2);
+    }
+
+    /// `witness_horizon` is quadratic in the liveness window and never cuts inside it: (ell+2)^2.
+    #[test]
+    fn test_witness_horizon_is_quadratic() {
+        assert_eq!(witness_horizon(0), 4);
+        assert_eq!(witness_horizon(1), 9);
+        assert_eq!(witness_horizon(2), 16);
+        assert_eq!(witness_horizon(10), 144);
+    }
+
+    /// End-to-end tie break under a binding horizon: at m=0 the free reference is B's max-work chain (6 blocks > horizon 4, truncated); B's witnesses are live at the cut and beat Z's no-witness score.
+    #[test]
+    fn test_tie_break_with_binding_horizon() {
+        let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(1, 10), (2, 20), (3, 30), (4, 40), (5, 50)], &[(6, 1)]]);
+        let all_tips = tips(&chains);
+        let subgroups = vec![group_metadata(chains[0][0], chains[0][4], 0, 50), group_metadata(chains[1][0], chains[1][0], 0, 1)];
+        let input = TieBreakContext { conflict_genesis: genesis, all_tips: &all_tips, subgroups: &subgroups, k: 0 };
+        assert_eq!(tie_breaker.tie_break(&input), 0, "the live-at-horizon side wins");
+
+        let subgroups = vec![group_metadata(chains[1][0], chains[1][0], 0, 1), group_metadata(chains[0][0], chains[0][4], 0, 50)];
+        let input = TieBreakContext { conflict_genesis: genesis, all_tips: &all_tips, subgroups: &subgroups, k: 0 };
+        assert_eq!(tie_breaker.tie_break(&input), 1, "index flips with input order, same winner");
+    }
+
+    /// With both sides witness-less the smallest selected-parent hash decides.
+    ///
+    /// ```text
+    ///              genesis (0)
+    ///            /    |      \
+    ///        B (1)   Z (1)   Y1..Y4 (work 9 each, one chain)
+    /// ```
+    ///
+    /// At m=0 the free coloring at g=0 is a single chain following max work, so F
+    /// holds only the Y chain: the compared sides B and Z have no agreeing
+    /// reference blocks at all, both score the endpoint, and B's smaller tip hash
+    /// wins in either input order.
+    #[test]
+    fn test_tie_break_fallback_on_equal_starts() {
+        let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 1)], &[(3, 1)], &[(4, 9), (5, 9), (6, 9), (7, 9)]]);
+        let all_tips = tips(&chains);
+        let subgroups = vec![group_metadata(chains[0][0], chains[0][0], 0, 1), group_metadata(chains[1][0], chains[1][0], 0, 1)];
+        let input = TieBreakContext { conflict_genesis: genesis, all_tips: &all_tips, subgroups: &subgroups, k: 0 };
+        assert_eq!(tie_breaker.tie_break(&input), 0, "the smaller tip hash wins");
+
+        let subgroups = vec![group_metadata(chains[1][0], chains[1][0], 0, 1), group_metadata(chains[0][0], chains[0][0], 0, 1)];
+        let input = TieBreakContext { conflict_genesis: genesis, all_tips: &all_tips, subgroups: &subgroups, k: 0 };
+        assert_eq!(tie_breaker.tie_break(&input), 1, "the smaller tip hash wins regardless of input order");
     }
 }

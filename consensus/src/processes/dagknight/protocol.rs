@@ -1,4 +1,4 @@
-use std::{cell::Cell, collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet, KType};
@@ -173,15 +173,15 @@ impl<
             }
 
             // Pick a "winner" among these subgroups
-            let (winning_conflict_genesis, winning_subgroup) = {
-                let best_groups = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
+            let (winning_nca, winning_subgroup) = {
+                let (m, best_groups) = self.rank(conflict_genesis, &agreement_grouping, &curr_subgroup);
 
                 #[allow(clippy::style)]
                 let final_winner = if best_groups.len() > 1 {
-                    self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups)
+                    self.tie_breaking(conflict_genesis, &curr_subgroup, &best_groups, m)
                 } else {
                     let single_winner = best_groups.into_iter().next().expect("best_groups should be non-empty after filtering");
-                    (single_winner.conflict_genesis, single_winner.subgroup)
+                    (single_winner.nca, single_winner.subgroup)
                 };
 
                 // This will always be Some since curr_subgroup.len() > 1 and thus there is at least one subgroup
@@ -189,9 +189,9 @@ impl<
             };
 
             // Add the non-winners to the ordered parents
-            agreement_grouping.iter().for_each(|(&conflict_genesis, subgroup)| {
+            agreement_grouping.iter().for_each(|(&nca, subgroup)| {
                 // TODO[DK]: Asserting here that order of the non-winning parents within a conflict hierarchy doesn't matter
-                if conflict_genesis != winning_conflict_genesis {
+                if nca != winning_nca {
                     conflict_ordered_parents.extend(subgroup.as_ref().iter().copied());
                 }
             });
@@ -267,23 +267,27 @@ impl<
         voter.vote(&ctx)
     }
 
-    /// Tie-breaking rule in case of multiple winning subgroups with the same rank value.
-    fn tie_breaking(&self, conflict_genesis: Hash, all_tips: &[Hash], subgroups: &[GroupMetadata]) -> (Hash, Arc<Vec<Hash>>) {
-        debug!("Winning groups had rank k = {}", subgroups[0].k);
-        let mutual_k = subgroups[0].k;
-
+    /// Common-reference tiebreaking over the compared sides, spanning ranks m and m+1;
+    /// m is the minimum qualifying rank driving the reference width
+    fn tie_breaking(
+        &self,
+        conflict_genesis: Hash,
+        all_tips: &[Hash],
+        subgroups: &[GroupMetadata],
+        m: KType,
+    ) -> (Hash, Arc<Vec<Hash>>) {
         let winning_index = DagknightTieBreaker::new(
             self.coloring_store.clone(),
             self.headers_store.clone(),
             self.relations_store.clone(),
             self.reachability_service.clone(),
         )
-        .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: mutual_k });
+        .tie_break(&TieBreakContext { conflict_genesis, all_tips, subgroups, k: m });
 
-        let winning_conflict_genesis = subgroups[winning_index].conflict_genesis;
+        let winning_nca = subgroups[winning_index].nca;
         let winning_subgroup = subgroups[winning_index].subgroup.clone();
 
-        (winning_conflict_genesis, winning_subgroup)
+        (winning_nca, winning_subgroup)
     }
 
     /// Follows the Calculate-Rank algorithm in the DK paper
@@ -291,16 +295,17 @@ impl<
     /// Currently returns both the Rank and a selected parent (deviates from the paper) since the tie breaking logic
     /// in the caller is simply using blue_work + hash to break ties between subgroups.
     ///
-    /// Returns an array of winning subgroups with their metadata
+    /// Returns the minimum qualifying rank m and the sides ranked at most m+1 (the tiebreaking comparison domain: a side ranked m+1 can still win). Each side carries its actual rank; the returned m drives the tiebreaking reference width.
     fn rank(
         &self,
         conflict_genesis: Hash,
         agreeing_subgroups: &HashMap<Hash, Arc<Vec<Hash>>>,
         all_tips: &[Hash],
-    ) -> Vec<GroupMetadata> {
-        let mut group_map = Cell::new(agreeing_subgroups.clone());
-        let best_groups_cell = Cell::new(vec![]);
-        let evaluate = |k: KType| -> Option<()> {
+    ) -> (KType, Vec<GroupMetadata>) {
+        let mut group_map = agreeing_subgroups.clone();
+        // Evaluates every side in `map` at width k, narrowing `map` to the qualifying
+        // sides. Returns their metadata, or None when no side qualifies.
+        let evaluate_at = |map: &mut HashMap<Hash, Arc<Vec<Hash>>>, k: KType| -> Option<Vec<GroupMetadata>> {
             let reachability_service = self.reachability_service.clone();
             let relations_store = self.relations_store.read();
             let relations_service =
@@ -319,39 +324,38 @@ impl<
             // committed coloring rule and may only have SP that agrees with it (if committed coloring).
             conflict_zone_manager.fill_zone_data(all_tips);
 
-            let (filtered_groups_kv, best_groups): (HashMap<_, _>, Vec<GroupMetadata>) = group_map
-                .get_mut()
-                .iter()
-                .filter_map(|(curr_conflict_genesis, subgroup)| {
-                    // `subgroup` is an `&Arc<Vec<Hash>>` here; pass a `&[Hash]` to the colouring function
-                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k, &conflict_zone_manager).map(
-                        |selected_parent| {
-                            (
-                                (*curr_conflict_genesis, subgroup.clone()),
-                                GroupMetadata {
-                                    conflict_genesis: *curr_conflict_genesis,
-                                    subgroup: subgroup.clone(),
-                                    k,
-                                    selected_parent,
-                                },
-                            )
-                        },
-                    )
-                })
-                .unzip();
-
-            if filtered_groups_kv.is_empty() {
+            let mut survivors = HashMap::with_capacity(map.len());
+            let mut best_groups = Vec::with_capacity(map.len());
+            for (curr_nca, subgroup) in map.iter() {
+                if let Some(selected_parent) =
+                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k, &conflict_zone_manager)
+                {
+                    survivors.insert(*curr_nca, subgroup.clone());
+                    best_groups.push(GroupMetadata { nca: *curr_nca, subgroup: subgroup.clone(), k, selected_parent });
+                }
+            }
+            if best_groups.is_empty() {
                 None
             } else {
-                group_map.swap(&Cell::new(filtered_groups_kv));
-                best_groups_cell.swap(&Cell::new(best_groups));
-                Some(())
+                *map = survivors;
+                Some(best_groups)
             }
         };
 
-        let _search_result = RankSearcher::search(evaluate);
-        // let (best_k) = search_result.map(|r| (r.k, r.result)).unwrap();
-        best_groups_cell.take()
+        let Some(result) = RankSearcher::search(|k| evaluate_at(&mut group_map, k)) else { return (0, vec![]) };
+        // The k-search leaves `group_map` holding exactly the rank-m survivors; the
+        // m+1-only sides were dropped, so re-seed from the original grouping and
+        // evaluate just those at m+1 to complete the comparison domain
+        let mut best_groups = result.result;
+        let mut wide_map: HashMap<_, _> = agreeing_subgroups
+            .iter()
+            .filter(|&(nca, _)| !group_map.contains_key(nca))
+            .map(|(nca, subgroup)| (*nca, subgroup.clone()))
+            .collect();
+        if let Some(wider) = evaluate_at(&mut wide_map, result.k.saturating_add(1)) {
+            best_groups.extend(wider);
+        }
+        (result.k, best_groups)
     }
 
     /// Applies a coloring to the conflict zone, and determines if the
@@ -378,7 +382,7 @@ impl<
             // These use different acceptance criteria and are not expected to always agree.
             // The baseline is Algorithm 6 from the paper; the cascade is the optimized implementation.
             let baseline_result =
-                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_cd.clone(), k_to_check, &conflict_zone_manager);
+                self.baseline_umc_cascade_voting(conflict_genesis, subgroup, virtual_cd.clone(), k_to_check, conflict_zone_manager);
 
             if baseline_result.virtual_score != cascade_result.virtual_score {
                 if baseline_result.accepted != cascade_result.accepted {
@@ -678,6 +682,37 @@ mod tests {
         blue_score: u64,
         daa_score: u64,
         selected_parent: Hash,
+    }
+
+    #[test]
+    fn test_cascade() {
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+
+        // Build the DAG
+        {
+            let plan = DagPlan {
+                genesis: 1,
+                blocks: vec![
+                    (2, vec![1]),
+                    (3, vec![1]),
+                    (4, vec![2, 3]),
+                    (5, vec![4]),
+                    (6, vec![1]),
+                    (7, vec![5, 6]),
+                    (8, vec![1]),
+                    (9, vec![1]),
+                    (10, vec![7, 8, 9]),
+                    (11, vec![1]),
+                    (12, vec![11, 10]),
+                ],
+            };
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+            builder.init().add_block(DagBlock::genesis(plan.genesis.into()));
+            for (block, parents) in plan.blocks.iter() {
+                builder.add_block(DagBlock::new((*block).into(), parents.iter().map(|&i| i.into()).collect()));
+            }
+        }
     }
 
     /// This is the main body of the test.
@@ -1202,5 +1237,133 @@ mod tests {
             t1_hash,
             t2_hash
         );
+    }
+
+    /// Executor over competing linear chain sides above a shared conflict genesis, with unit blue work per block: a side of length p opposite length q ranks max(0, q-p).
+    struct RankDag {
+        executor: DagknightExecutor<
+            MemoryConflictZoneColoringStore,
+            MemoryHeaderStore,
+            MemoryRelationsStore,
+            MemoryUmcCascadeStore,
+            MemoryReachabilityStore,
+        >,
+        genesis: Hash,
+        side1: Vec<Hash>,
+        side2: Vec<Hash>,
+    }
+
+    /// Wires `len` chain blocks above `parent` with chain parents, headers and unit blue work
+    fn add_chain_side(
+        builder: &mut DagBuilder<'_, MemoryReachabilityStore, MemoryRelationsStore>,
+        headers_store: &Arc<MemoryHeaderStore>,
+        parent: Hash,
+        len: usize,
+        next_id: &mut u64,
+    ) -> Vec<Hash> {
+        let mut chain = Vec::with_capacity(len);
+        let mut parent = parent;
+        for _ in 0..len {
+            let hash: Hash = (*next_id).into();
+            *next_id += 1;
+            builder.add_block_with_selected_parent(DagBlock::new(hash, vec![parent]), parent);
+            let mut header = Header::from_precomputed_hash(hash, vec![parent]);
+            header.bits = 0x207fffff;
+            header.daa_score = 1;
+            header.blue_work = 1.into();
+            headers_store.insert(Arc::new(header));
+            chain.push(hash);
+            parent = hash;
+        }
+        chain
+    }
+
+    impl RankDag {
+        fn new(side1_len: usize, side2_len: usize) -> Self {
+            let genesis: Hash = 1_u64.into();
+            let dk_map = RefCell::new(HashMap::new());
+            let mut reachability = MemoryReachabilityStore::new();
+            let mut relations_store = MemoryRelationsStore::new();
+            let headers_store = Arc::new(MemoryHeaderStore::new());
+
+            let side1;
+            let side2;
+            {
+                let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+                builder.init();
+                builder.add_block(DagBlock::new(genesis, vec![ORIGIN]));
+                let mut genesis_header = Header::from_precomputed_hash(genesis, vec![]);
+                genesis_header.bits = 0x207fffff;
+                headers_store.insert(Arc::new(genesis_header));
+
+                let mut next_id = 2_u64;
+                side1 = add_chain_side(&mut builder, &headers_store, genesis, side1_len, &mut next_id);
+                side2 = add_chain_side(&mut builder, &headers_store, genesis, side2_len, &mut next_id);
+            }
+
+            let executor = DagknightExecutor {
+                genesis_hash: genesis,
+                coloring_store: Arc::new(MemoryConflictZoneColoringStore::new(dk_map)),
+                headers_store,
+                reachability_service: MTReachabilityService::new(Arc::new(RwLock::new(reachability))),
+                relations_store: Arc::new(RwLock::new(relations_store)),
+                counters: Arc::new(DagknightCounters::new()),
+                umc_persistence_store: Arc::new(MemoryUmcCascadeStore::new()),
+            };
+            Self { executor, genesis, side1, side2 }
+        }
+
+        /// Ranks the sides, returning (anchor, rank) per side
+        fn rank_sides(&self) -> Vec<(Hash, KType)> {
+            let mut grouping: HashMap<Hash, Arc<Vec<Hash>>> = HashMap::new();
+            for side in [&self.side1, &self.side2] {
+                if !side.is_empty() {
+                    grouping.insert(side[0], Arc::new(vec![*side.last().unwrap()]));
+                }
+            }
+            let tips: Vec<Hash> = grouping.values().flat_map(|v| v.iter().copied()).collect();
+            let (_, ranked) = self.executor.rank(self.genesis, &grouping, &tips);
+            ranked.into_iter().map(|g| (g.nca, g.k)).collect()
+        }
+    }
+
+    /// A single unopposed side qualifies at rank 0 and forms the whole comparison domain
+    #[test]
+    fn test_rank_single_group() {
+        let dag = RankDag::new(3, 0);
+        let ranked = dag.rank_sides();
+        assert_eq!(ranked.len(), 1, "the single side is returned");
+        assert_eq!(ranked[0], (dag.side1[0], 0), "an unopposed side has no red deficit");
+    }
+
+    /// Two symmetric sides share the minimal rank and both enter the comparison domain
+    #[test]
+    fn test_rank_equal_groups() {
+        let dag = RankDag::new(2, 2);
+        let ranked = dag.rank_sides();
+        assert_eq!(ranked.len(), 2, "both sides are returned");
+        assert_eq!(ranked[0].1, ranked[1].1, "symmetric sides share a rank");
+        assert!(ranked.iter().any(|&(anchor, _)| anchor == dag.side1[0]));
+        assert!(ranked.iter().any(|&(anchor, _)| anchor == dag.side2[0]));
+    }
+
+    /// Sides of lengths 2 and 3 rank 1 and 0: the domain spans m=0 and m+1=1, keeping both
+    #[test]
+    fn test_rank_domain_spans_m_and_m_plus_one() {
+        let dag = RankDag::new(2, 3);
+        let ranked = dag.rank_sides();
+        assert_eq!(ranked.len(), 2, "the rank m+1 side stays in the comparison domain");
+        let ranks: HashMap<Hash, KType> = ranked.into_iter().collect();
+        assert_eq!(ranks[&dag.side1[0]], 1, "shorter side ranks by its genesis deficit");
+        assert_eq!(ranks[&dag.side2[0]], 0);
+    }
+
+    /// Sides of lengths 1 and 3 rank 2 and 0: the domain caps at m+1=1 and drops the rank-2 side
+    #[test]
+    fn test_rank_domain_caps_at_m_plus_one() {
+        let dag = RankDag::new(1, 3);
+        let ranked = dag.rank_sides();
+        assert_eq!(ranked.len(), 1, "a side ranked beyond m+1 is excluded");
+        assert_eq!(ranked[0], (dag.side2[0], 0));
     }
 }
