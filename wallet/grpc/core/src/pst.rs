@@ -7,6 +7,7 @@ use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_consensus_core::tx::{PopulatedTransaction, Transaction, UtxoEntry, VerifiableTransaction};
 use kaspa_rpc_core::{RpcScriptPublicKey, RpcTransaction};
+use kaspa_wallet_keys::derivation::gen1::WalletDerivationManager;
 use prost::Message;
 use std::str::FromStr;
 use tonic::Status;
@@ -37,8 +38,8 @@ pub fn account_extended_private_key(
     master: ExtendedPrivateKey<secp256k1::SecretKey>,
     account_index: u64,
 ) -> Result<ExtendedPrivateKey<secp256k1::SecretKey>, Status> {
-    let path =
-        DerivationPath::from_str(&format!("m/44'/111111'/{account_index}'")).map_err(|err| Status::internal(err.to_string()))?;
+    let path = WalletDerivationManager::build_derivate_path(false, account_index, None, None)
+        .map_err(|err| Status::internal(err.to_string()))?;
     master.derive_path(&path).map_err(|err| Status::internal(err.to_string()))
 }
 
@@ -163,7 +164,6 @@ mod tests {
     use kaspa_wallet_core::account::variants::bip32::BIP32_ACCOUNT_KIND;
     use kaspa_wallet_core::derivation::{create_address, create_xpub_from_mnemonic};
     use kaspa_wallet_core::prelude::{AccountKind, AddressPrefix};
-    use kaspa_wallet_keys::derivation::gen1::WalletDerivationManager;
     use kaspa_wallet_keys::derivation::traits::WalletDerivationManagerTrait;
     use tonic::Code;
 
