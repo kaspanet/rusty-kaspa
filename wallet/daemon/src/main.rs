@@ -6,10 +6,11 @@ use kaspa_core::{error, info, warn};
 use kaspa_wallet_core::{
     api::WalletApi,
     rpc::{ConnectOptions, ConnectStrategy, Resolver, WrpcEncoding},
+    utxo::set_user_transaction_maturity_period_daa,
     wallet::Wallet,
 };
 use kaspa_wallet_grpc_core::kaspawalletd::kaspawalletd_server::KaspawalletdServer;
-use kaspa_wallet_grpc_server::service::Service;
+use kaspa_wallet_grpc_server::{policy, service::Service};
 use std::{error::Error, str::FromStr, sync::Arc};
 use tokio::sync::oneshot;
 use tonic::transport::Server;
@@ -18,6 +19,7 @@ use tonic::transport::Server;
 async fn main() -> Result<(), Box<dyn Error>> {
     kaspa_core::log::init_logger(None, "");
     let args = Args::parse();
+    let requested_network_id = args.network_id.as_deref().map(NetworkId::from_str).transpose()?;
 
     let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, Some(Resolver::default()), None)?);
     wallet.clone().wallet_open(args.password.into(), args.name, false, false).await?;
@@ -27,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let rpc_address = if let Some(address) = args.rpc_server {
             address
         } else {
-            let network_id = NetworkId::from_str(&args.network_id.ok_or("either --rpc-server or --network-id must be specified")?)?;
+            let network_id = requested_network_id.ok_or("either --rpc-server or --network-id must be specified")?;
             warn!("Using PNN may expose your data to third parties. For privacy, use a private, self-hosted node.");
             Resolver::default().get_url(WrpcEncoding::Borsh, network_id).await.map_err(|e| e.to_string())?
         };
@@ -44,7 +46,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let dag_info = wallet.rpc_api().get_block_dag_info().await?;
+    if let Some(network_id) = requested_network_id
+        && network_id != dag_info.network
+    {
+        return Err(format!("--network-id {} does not match the node network {}", network_id, dag_info.network).into());
+    }
+    policy::ensure_supported_network(dag_info.network).map_err(|err| err.message().to_string())?;
     wallet.set_network_id(&dag_info.network)?;
+    set_user_transaction_maturity_period_daa(&dag_info.network, 1);
     info!("Connected to node on {} with DAA score {}.", dag_info.network, dag_info.virtual_daa_score);
 
     wallet.start().await?;
@@ -62,8 +71,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Server::builder()
             .add_service(KaspawalletdServer::new(service))
             .serve_with_shutdown(args.listen_address, async {
-                let _ = shutdown_receiver.await;
-                info!("Shutdown initiated, stopping gRPC server...");
+                let trigger = shutdown_trigger(shutdown_receiver).await;
+                info!("Shutdown initiated by {}, stopping gRPC server...", trigger);
             })
             .await
     });
@@ -77,4 +86,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
     server_result??;
 
     Ok(())
+}
+
+async fn shutdown_trigger(shutdown_receiver: oneshot::Receiver<()>) -> &'static str {
+    let interrupt = async {
+        if let Err(err) = tokio::signal::ctrl_c().await {
+            error!("Failed to listen for interrupt signal: {}", err);
+            std::future::pending::<()>().await;
+        }
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(err) => {
+                error!("Failed to listen for SIGTERM: {}", err);
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = shutdown_receiver => "shutdown request",
+        _ = interrupt => "interrupt signal",
+        _ = terminate => "SIGTERM",
+    }
 }

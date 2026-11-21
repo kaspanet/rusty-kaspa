@@ -9,6 +9,8 @@ use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 use kaspa_wallet_core::account::Account;
 use kaspa_wallet_core::account::variants::bip32::{BIP32_ACCOUNT_KIND, Payload};
 use kaspa_wallet_core::api::NewAddressKind;
+use kaspa_wallet_core::derivation::AddressManager;
+use kaspa_wallet_core::error::Error;
 use kaspa_wallet_core::tx::PendingTransaction;
 use kaspa_wallet_core::utxo::UtxoEntryReference;
 use kaspa_wallet_core::{
@@ -23,26 +25,36 @@ use kaspa_wallet_grpc_core::protoserialization::PartiallySignedTransaction;
 use kaspa_wallet_grpc_core::pst;
 use log::{error, info};
 use std::cmp::Reverse;
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot};
 use tonic::Status;
+
+const RELOAD_ATTEMPTS: u32 = 3;
+const RELOAD_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 pub struct Service {
     wallet: Arc<Wallet>,
     shutdown_sender: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     // TODO: Extend the partially serialized transaction or transaction structure with a boolean field 'ecdsa'
     ecdsa: bool,
-    lock: RwLock<()>,
+    lock: Arc<RwLock<()>>,
+    reloading: Arc<AtomicBool>,
     used_outpoints: Mutex<UsedOutpoints>,
 }
 
 impl Service {
     pub fn with_notification_pipe_task(wallet: Arc<Wallet>, shutdown_sender: oneshot::Sender<()>, ecdsa: bool) -> Self {
         let channel = wallet.multiplexer().channel();
+        let lock = Arc::new(RwLock::new(()));
+        let reloading = Arc::new(AtomicBool::new(false));
 
         tokio::spawn({
             let wallet = wallet.clone();
+            let lock = lock.clone();
+            let reloading = reloading.clone();
 
             async move {
                 loop {
@@ -51,15 +63,12 @@ impl Service {
                             if let Ok(msg) = msg {
                                 match *msg {
                                     Events::SyncState { sync_state } => {
-                                        if sync_state.is_synced()
-                                            && let Err(err) = wallet.clone().wallet_reload(true).await {
-                                                error!("Wallet reloading failed: {}", err);
-                                            }
+                                        if sync_state.is_synced() {
+                                            Self::reload_wallet(&wallet, &lock, &reloading).await;
+                                        }
                                     },
                                     Events::UtxoProcStart => {
-                                        if let Err(err) = wallet.clone().wallet_reload(true).await {
-                                            error!("Wallet reloading failed: {}", err);
-                                        }
+                                        Self::reload_wallet(&wallet, &lock, &reloading).await;
                                     },
                                     _ => {}
                                 }
@@ -76,9 +85,33 @@ impl Service {
             wallet,
             shutdown_sender: Arc::new(Mutex::new(Some(shutdown_sender))),
             ecdsa,
-            lock: RwLock::new(()),
+            lock,
+            reloading,
             used_outpoints: Mutex::new(UsedOutpoints::default()),
         }
+    }
+
+    async fn reload_wallet(wallet: &Arc<Wallet>, lock: &RwLock<()>, reloading: &AtomicBool) {
+        {
+            let _guard = lock.write().await;
+            reloading.store(true, Ordering::SeqCst);
+        }
+        let mut attempt = 1;
+        loop {
+            match wallet.clone().wallet_reload(true).await {
+                Ok(()) => break,
+                Err(err) => error!("Wallet reloading failed (attempt {attempt}/{RELOAD_ATTEMPTS}): {err}"),
+            }
+            if attempt >= RELOAD_ATTEMPTS {
+                break;
+            }
+            tokio::time::sleep(RELOAD_RETRY_DELAY).await;
+            if !wallet.is_connected() {
+                break;
+            }
+            attempt = attempt.saturating_add(1);
+        }
+        reloading.store(false, Ordering::SeqCst);
     }
 
     pub async fn read_guard(&self) -> RwLockReadGuard<'_, ()> {
@@ -94,6 +127,9 @@ impl Service {
     }
 
     pub fn ensure_synced(&self) -> Result<(), Status> {
+        if self.reloading.load(Ordering::SeqCst) {
+            return Err(Status::unavailable("wallet daemon is not synced yet"));
+        }
         let account = self.wallet.account().map_err(|err| Status::failed_precondition(err.to_string()))?;
         let has_balance = account.descriptor().is_ok_and(|descriptor| descriptor.balance.is_some());
         if self.wallet.is_connected() && self.wallet.is_synced() && has_balance {
@@ -105,28 +141,14 @@ impl Service {
 
     pub async fn calculate_fee_limits(&self, fee_policy: Option<kaspawalletd::FeePolicy>) -> Result<(f64, u64), Status> {
         let fee_policy = fee_policy.and_then(|fee_policy| fee_policy.fee_policy);
-        const MIN_FEE_RATE: f64 = policy::MIN_FEE_RATE;
         let fees: (f64, u64) = if let Some(policy) = fee_policy {
             match policy {
                 FeePolicy::MaxFeeRate(max_fee_rate) => {
-                    if max_fee_rate < MIN_FEE_RATE {
-                        return Err(Status::invalid_argument(format!(
-                            "requested max fee rate {} is too low, minimum fee rate is {}",
-                            max_fee_rate, MIN_FEE_RATE
-                        )));
-                    };
+                    let max_fee_rate = policy::validate_fee_rate(max_fee_rate, "max fee rate")?;
                     let fee_rate = max_fee_rate.min(self.normal_fee_rate().await?);
                     (fee_rate, u64::MAX)
                 }
-                FeePolicy::ExactFeeRate(exact_fee_rate) => {
-                    if exact_fee_rate < MIN_FEE_RATE {
-                        return Err(Status::invalid_argument(format!(
-                            "requested fee rate {} is too low, minimum fee rate is {}",
-                            exact_fee_rate, MIN_FEE_RATE
-                        )));
-                    }
-                    (exact_fee_rate, u64::MAX)
-                }
+                FeePolicy::ExactFeeRate(exact_fee_rate) => (policy::validate_fee_rate(exact_fee_rate, "fee rate")?, u64::MAX),
                 FeePolicy::MaxFee(max_fee) => (self.normal_fee_rate().await?, max_fee),
             }
         } else {
@@ -137,24 +159,41 @@ impl Service {
 
     async fn normal_fee_rate(&self) -> Result<f64, Status> {
         let estimate = self.wallet.rpc_api().get_fee_estimate().await.map_err(|err| Status::unavailable(err.to_string()))?;
-        estimate
+        let fee_rate = estimate
             .normal_buckets
             .first()
             .map(|bucket| bucket.feerate)
-            .ok_or_else(|| Status::unavailable("missing normal feerate bucket"))
+            .ok_or_else(|| Status::unavailable("missing normal feerate bucket"))?;
+        policy::node_fee_rate(fee_rate)
     }
 
     pub fn receive_addresses(&self) -> Result<Vec<Address>, Status> {
         // TODO: move into WalletApi
-        let manager = self
+        let (receive, _) = self.address_managers()?;
+        Self::addresses_through_current_index(&receive, "receive")
+    }
+
+    pub fn wallet_addresses(&self) -> Result<Vec<Address>, Status> {
+        let (receive, change) = self.address_managers()?;
+        let mut addresses = Self::addresses_through_current_index(&receive, "receive")?;
+        addresses.extend(Self::addresses_through_current_index(&change, "change")?);
+        Ok(addresses)
+    }
+
+    fn address_managers(&self) -> Result<(Arc<AddressManager>, Arc<AddressManager>), Status> {
+        let derivation = self
             .wallet
             .account()
             .map_err(|err| Status::failed_precondition(err.to_string()))?
             .as_derivation_capable()
             .map_err(|err| Status::failed_precondition(err.to_string()))?
-            .derivation()
-            .receive_address_manager();
-        let end_exclusive = manager.index().checked_add(1).ok_or_else(|| Status::internal("receive address index overflow"))?;
+            .derivation();
+        Ok((derivation.receive_address_manager(), derivation.change_address_manager()))
+    }
+
+    fn addresses_through_current_index(manager: &AddressManager, kind: &str) -> Result<Vec<Address>, Status> {
+        let end_exclusive =
+            manager.index().checked_add(1).ok_or_else(|| Status::internal(format!("{kind} address index overflow")))?;
         manager.get_range_with_args(0..end_exclusive, false).map_err(|err| Status::internal(err.to_string()))
     }
 
@@ -213,7 +252,7 @@ impl Service {
 
         info!("Processing request for account_id: {}", self.descriptor()?.account_id);
 
-        let addresses = account.account_addresses().map_err(|err| Status::internal(err.to_string()))?;
+        let addresses = self.wallet_addresses()?;
         if let Some(non_existent_address) = from_addresses.iter().find(|from| addresses.iter().all(|address| &address != from)) {
             return Err(Status::invalid_argument(format!("specified from address {non_existent_address} does not exists")));
         }
@@ -228,14 +267,19 @@ impl Service {
             Some(from_addresses.clone())
         };
 
+        let mempool_addresses = search_addresses.clone().unwrap_or(addresses);
         let utxos = account.clone().get_utxos(search_addresses, None).await.map_err(|err| Status::internal(err.to_string()))?;
+        let mempool_spent = self.mempool_spent_outpoints(mempool_addresses).await?;
         let now = Instant::now();
         let utxos = {
             let mut used_outpoints = self.used_outpoints();
             used_outpoints.prune(now);
             utxos
                 .into_iter()
-                .filter(|utxo| !used_outpoints.is_used(&TransactionOutpoint::from(&utxo.outpoint), now))
+                .filter(|utxo| {
+                    let outpoint = TransactionOutpoint::from(&utxo.outpoint);
+                    !mempool_spent.contains(&outpoint) && !used_outpoints.is_used(&outpoint, now)
+                })
                 .collect::<Vec<_>>()
         };
 
@@ -299,14 +343,23 @@ impl Service {
         Ok(response.transaction_id)
     }
 
+    async fn mempool_spent_outpoints(&self, addresses: Vec<Address>) -> Result<HashSet<TransactionOutpoint>, Status> {
+        let mempool_entries = self
+            .wallet
+            .rpc_api()
+            .get_mempool_entries_by_addresses(addresses, true, false)
+            .await
+            .map_err(|err| Status::unavailable(err.to_string()))?;
+        Ok(policy::mempool_spent_outpoints(&mempool_entries))
+    }
+
     fn input_outpoints(transaction: &RpcTransaction) -> Vec<TransactionOutpoint> {
         transaction.inputs.iter().map(|input| TransactionOutpoint::from(input.previous_outpoint)).collect()
     }
 
     pub async fn balances(&self) -> Result<Balances, Status> {
         self.ensure_synced()?;
-        let account = self.wallet.account().map_err(|err| Status::failed_precondition(err.to_string()))?;
-        let addresses = account.account_addresses().map_err(|err| Status::internal(err.to_string()))?;
+        let addresses = self.wallet_addresses()?;
         let rpc = self.wallet.rpc_api();
         let mempool_entries = rpc
             .get_mempool_entries_by_addresses(addresses.clone(), true, false)
@@ -353,6 +406,9 @@ impl Service {
             .map_err(|err| Status::internal(err.to_string()))?;
         if payload.xpub_keys.len() != 1 {
             return Err(Status::unimplemented("only bip32 single-signature accounts are supported"));
+        }
+        if payload.ecdsa || self.use_ecdsa() {
+            return Err(Status::unimplemented("Ecdsa signing is not supported yet"));
         }
         Ok((account, payload))
     }
@@ -410,16 +466,12 @@ impl Service {
         transactions: Vec<PartiallySignedTransaction>,
         password: String,
     ) -> Result<Vec<PartiallySignedTransaction>, Status> {
-        if self.use_ecdsa() {
-            return Err(Status::unimplemented("Ecdsa signing is not supported yet"));
-        }
-
         let (account, payload) = self.single_signature_bip32_account()?;
-        if payload.ecdsa {
-            return Err(Status::unimplemented("Ecdsa signing is not supported yet"));
-        }
         let network_type = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?.network_type();
-        let prv_key_data = account.prv_key_data(password.into()).await.map_err(|err| Status::internal(err.to_string()))?;
+        let prv_key_data = account.prv_key_data(password.into()).await.map_err(|err| match err {
+            Error::Chacha20poly1305(_) => Status::invalid_argument(err.to_string()),
+            err => Status::internal(err.to_string()),
+        })?;
         let master = prv_key_data.get_xprv(None).map_err(|err| Status::internal(err.to_string()))?;
         let account_xprv = pst::account_extended_private_key(master, payload.account_index)?;
 

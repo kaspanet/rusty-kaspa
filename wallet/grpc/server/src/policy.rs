@@ -1,12 +1,14 @@
 use kaspa_consensus_core::config::params::Params;
+use kaspa_consensus_core::constants::MAX_SOMPI;
 use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint};
 use kaspa_rpc_core::{RpcMempoolEntryByAddress, RpcUtxoEntry, RpcUtxosByAddressesEntry};
 use kaspa_wallet_core::api::{TransactionOutpointWrapper, UtxoEntryWrapper};
+use kaspa_wallet_core::error::Error;
 use kaspa_wallet_core::prelude::{Address, PaymentDestination, PaymentOutput, PaymentOutputs};
-use kaspa_wallet_core::tx::{Fees, Generator, GeneratorSettings, PendingTransaction};
+use kaspa_wallet_core::tx::{Fees, Generator, GeneratorSettings, MAXIMUM_STANDARD_TRANSACTION_MASS, PendingTransaction};
 use kaspa_wallet_core::utxo::{NetworkParams, UtxoEntryReference};
 use kaspa_wallet_grpc_core::kaspawalletd::AddressBalances;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -14,8 +16,29 @@ use std::time::{Duration, Instant};
 use tonic::Status;
 
 pub const MIN_FEE_RATE: f64 = 100.0;
+pub const MAX_FEE_RATE: f64 = MAX_SOMPI as f64 / MAXIMUM_STANDARD_TRANSACTION_MASS as f64;
 pub const USED_OUTPOINT_EXPIRY: Duration = Duration::from_secs(60);
 const SIGNED_SCHNORR_SIGNATURE_SCRIPT_SIZE: usize = 66;
+
+pub fn validate_fee_rate(fee_rate: f64, name: &str) -> Result<f64, Status> {
+    if !fee_rate.is_finite() {
+        return Err(Status::invalid_argument(format!("requested {name} {fee_rate} is not a finite number")));
+    }
+    if fee_rate < MIN_FEE_RATE {
+        return Err(Status::invalid_argument(format!("requested {name} {fee_rate} is too low, minimum fee rate is {MIN_FEE_RATE}")));
+    }
+    if fee_rate > MAX_FEE_RATE {
+        return Err(Status::invalid_argument(format!("requested {name} {fee_rate} is too high, maximum fee rate is {MAX_FEE_RATE}")));
+    }
+    Ok(fee_rate)
+}
+
+pub fn node_fee_rate(fee_rate: f64) -> Result<f64, Status> {
+    if !fee_rate.is_finite() || fee_rate <= 0.0 {
+        return Err(Status::unavailable(format!("node returned an invalid fee rate estimate {fee_rate}")));
+    }
+    Ok(fee_rate.clamp(MIN_FEE_RATE, MAX_FEE_RATE))
+}
 
 pub fn capped_fee_rate(transactions: impl IntoIterator<Item = (u64, u64)>, max_fee: u64) -> Option<f64> {
     transactions
@@ -27,7 +50,7 @@ pub fn capped_fee_rate(transactions: impl IntoIterator<Item = (u64, u64)>, max_f
 
 pub fn fee_cap_error(max_fee: u64, capped_rate: f64) -> Status {
     Status::failed_precondition(format!(
-        "setting max fee to {max_fee} results in a fee rate of {capped_rate}, which is below the minimum allowed fee rate of {MIN_FEE_RATE:.1} sompi/gram"
+        "setting --max-fee to {max_fee} results in a fee rate of {capped_rate:.6}, which is below the minimum allowed fee rate of {MIN_FEE_RATE:.1} sompi/gram"
     ))
 }
 
@@ -40,6 +63,13 @@ pub struct GenerationParams<'a> {
     pub to: &'a Address,
     pub amount: u64,
     pub is_send_all: bool,
+}
+
+fn generator_error(err: Error) -> Status {
+    match err {
+        Error::InsufficientFunds { .. } => Status::failed_precondition(err.to_string()),
+        err => Status::internal(err.to_string()),
+    }
 }
 
 pub fn generate(params: &GenerationParams<'_>, fee_rate: f64) -> Result<Vec<PendingTransaction>, Status> {
@@ -59,9 +89,9 @@ pub fn generate(params: &GenerationParams<'_>, fee_rate: f64) -> Result<Vec<Pend
         None,
         None,
     )
-    .map_err(|err| Status::internal(err.to_string()))?;
-    let generator = Generator::try_new(settings, None, None).map_err(|err| Status::internal(err.to_string()))?;
-    generator.iter().collect::<Result<Vec<_>, _>>().map_err(|err| Status::internal(err.to_string()))
+    .map_err(generator_error)?;
+    let generator = Generator::try_new(settings, None, None).map_err(generator_error)?;
+    generator.iter().collect::<Result<Vec<_>, _>>().map_err(generator_error)
 }
 
 pub fn generate_with_max_fee(params: &GenerationParams<'_>, fee_rate: f64, max_fee: u64) -> Result<Vec<PendingTransaction>, Status> {
@@ -101,6 +131,7 @@ pub struct UsedOutpoints {
 
 impl UsedOutpoints {
     pub fn record(&mut self, outpoints: impl IntoIterator<Item = TransactionOutpoint>, now: Instant) {
+        self.prune(now);
         for outpoint in outpoints {
             self.entries.insert(outpoint, now);
         }
@@ -123,10 +154,15 @@ impl UsedOutpoints {
     }
 }
 
-pub fn coinbase_maturity(network_id: NetworkId) -> Result<u64, Status> {
+pub fn ensure_supported_network(network_id: NetworkId) -> Result<(), Status> {
     if network_id.network_type == NetworkType::Testnet && !matches!(network_id.suffix, Some(10) | Some(12)) {
         return Err(Status::internal(format!("unsupported network {network_id}")));
     }
+    Ok(())
+}
+
+pub fn coinbase_maturity(network_id: NetworkId) -> Result<u64, Status> {
+    ensure_supported_network(network_id)?;
     Ok(NetworkParams::from(network_id).coinbase_transaction_maturity_period_daa())
 }
 
@@ -333,8 +369,75 @@ mod tests {
         let generation = params(utxos(3, 10 * SOMPI_PER_KASPA), &address(2), &address(3), 5 * SOMPI_PER_KASPA, false);
         let err = generate_with_max_fee(&generation, 1000.0, 1000).unwrap_err();
         assert_eq!(err.code(), Code::FailedPrecondition);
-        assert!(err.message().starts_with("setting max fee to 1000 results in a fee rate of "));
+        assert!(err.message().starts_with("setting --max-fee to 1000 results in a fee rate of "));
         assert!(err.message().ends_with("which is below the minimum allowed fee rate of 100.0 sompi/gram"));
+    }
+
+    #[test]
+    fn fee_cap_error_matches_go() {
+        let err = fee_cap_error(1000, 0.5);
+        assert_eq!(err.code(), Code::FailedPrecondition);
+        assert_eq!(
+            err.message(),
+            "setting --max-fee to 1000 results in a fee rate of 0.500000, which is below the minimum allowed fee rate of 100.0 sompi/gram"
+        );
+        assert!(fee_cap_error(7, 1.0 / 3.0).message().contains("a fee rate of 0.333333,"));
+    }
+
+    #[test]
+    fn send_all_with_fees_exceeding_funds_is_rejected() {
+        for (amount, fee_rate) in [(100, 100.0), (1_000_000, 1000.0)] {
+            let err = generate(&params(utxos(1, amount), &address(2), &address(3), 0, true), fee_rate).unwrap_err();
+            assert_eq!(err.code(), Code::FailedPrecondition);
+            let err =
+                generate_with_max_fee(&params(utxos(1, amount), &address(2), &address(3), 0, true), fee_rate, u64::MAX).unwrap_err();
+            assert_eq!(err.code(), Code::FailedPrecondition);
+        }
+    }
+
+    #[test]
+    fn insufficient_funds_is_failed_precondition() {
+        let err =
+            generate(&params(utxos(1, SOMPI_PER_KASPA), &address(2), &address(3), 5 * SOMPI_PER_KASPA, false), 1000.0).unwrap_err();
+        assert_eq!(err.code(), Code::FailedPrecondition);
+    }
+
+    #[test]
+    fn fee_rate_validation() {
+        for rate in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 1e30, 99.9, MAX_FEE_RATE * 1.000_001, MAX_FEE_RATE + 1.0] {
+            assert_eq!(validate_fee_rate(rate, "fee rate").unwrap_err().code(), Code::InvalidArgument, "{rate}");
+        }
+        assert_eq!(
+            validate_fee_rate(99.9, "fee rate").unwrap_err().message(),
+            "requested fee rate 99.9 is too low, minimum fee rate is 100"
+        );
+        assert_eq!(
+            validate_fee_rate(99.9, "max fee rate").unwrap_err().message(),
+            "requested max fee rate 99.9 is too low, minimum fee rate is 100"
+        );
+        assert!(validate_fee_rate(f64::NAN, "fee rate").unwrap_err().message().contains("is not a finite number"));
+        assert!(validate_fee_rate(1e30, "fee rate").unwrap_err().message().contains("is too high, maximum fee rate is"));
+        assert_eq!(validate_fee_rate(100.0, "fee rate").unwrap(), 100.0);
+        assert_eq!(validate_fee_rate(MAX_FEE_RATE, "fee rate").unwrap(), MAX_FEE_RATE);
+        assert_eq!(MAX_FEE_RATE, 5_800_000_000_000.0);
+    }
+
+    #[test]
+    fn maximum_fee_rate_does_not_overflow() {
+        for is_send_all in [true, false] {
+            let generation = params(utxos(3, 10 * SOMPI_PER_KASPA), &address(2), &address(3), 5 * SOMPI_PER_KASPA, is_send_all);
+            assert_eq!(generate(&generation, MAX_FEE_RATE).unwrap_err().code(), Code::FailedPrecondition);
+        }
+    }
+
+    #[test]
+    fn node_fee_rate_validation() {
+        for rate in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 0.0, -1.0] {
+            assert_eq!(node_fee_rate(rate).unwrap_err().code(), Code::Unavailable, "{rate}");
+        }
+        assert_eq!(node_fee_rate(1.0).unwrap(), MIN_FEE_RATE);
+        assert_eq!(node_fee_rate(150.5).unwrap(), 150.5);
+        assert_eq!(node_fee_rate(1e30).unwrap(), MAX_FEE_RATE);
     }
 
     #[test]
@@ -377,6 +480,29 @@ mod tests {
         assert!(used.is_used(&outpoint(3, 0), expired));
         used.prune(start.checked_add(Duration::from_secs(200)).unwrap());
         assert!(used.is_empty());
+    }
+
+    #[test]
+    fn record_prunes_expired_entries() {
+        let start = Instant::now();
+        let mut used = UsedOutpoints::default();
+        used.record([outpoint(1, 0), outpoint(2, 0)], start);
+        let later = start.checked_add(USED_OUTPOINT_EXPIRY).unwrap();
+        used.record([outpoint(3, 0)], later);
+        assert_eq!(used.len(), 1);
+        assert!(used.is_used(&outpoint(3, 0), later));
+        assert!(!used.is_used(&outpoint(1, 0), later));
+    }
+
+    #[test]
+    fn supported_networks() {
+        assert!(ensure_supported_network(NetworkId::new(NetworkType::Mainnet)).is_ok());
+        assert!(ensure_supported_network(testnet()).is_ok());
+        assert!(ensure_supported_network(NetworkId::with_suffix(NetworkType::Testnet, 12)).is_ok());
+        assert!(ensure_supported_network(NetworkId::new(NetworkType::Devnet)).is_ok());
+        assert!(ensure_supported_network(NetworkId::new(NetworkType::Simnet)).is_ok());
+        assert!(ensure_supported_network(NetworkId::with_suffix(NetworkType::Testnet, 11)).is_err());
+        assert!(ensure_supported_network(NetworkId { network_type: NetworkType::Testnet, suffix: None }).is_err());
     }
 
     fn node_entry(

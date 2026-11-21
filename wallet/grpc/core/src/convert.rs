@@ -78,14 +78,16 @@ fn extract_tx_deserialized(
                     .drain();
                 tx_input.signature_script = sig_script;
             }
-            pairs_len => {
-                for pair in signed_input.pub_key_signature_pairs.iter() {
+            _ => {
+                let mut signature_count: usize = 0;
+                for pair in signed_input.pub_key_signature_pairs.iter().filter(|pair| !pair.signature.is_empty()) {
                     script_builder.add_data(pair.signature.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
+                    signature_count = signature_count.saturating_add(1);
                 }
-                if pairs_len < signed_input.minimum_signatures as usize {
+                if signature_count < signed_input.minimum_signatures as usize {
                     return Err(Status::invalid_argument(format!(
                         "missing {} signatures on input: {idx}",
-                        (signed_input.minimum_signatures as usize).saturating_sub(pairs_len)
+                        (signed_input.minimum_signatures as usize).saturating_sub(signature_count)
                     )));
                 }
                 let redeem_script = partially_signed_input_multisig_redeem_script(signed_input, ecdsa, "m")?;
@@ -316,8 +318,57 @@ impl From<RpcSubnetworkId> for protoserialization::SubnetworkId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaspa_bip32::secp256k1::SecretKey;
+    use kaspa_bip32::{ExtendedPrivateKey, Prefix};
     use kaspa_rpc_core::RpcScriptVec;
     use kaspa_wallet_core::prelude::Address;
+
+    fn multisig_transaction(signatures: &[&[u8]], minimum_signatures: u32) -> protoserialization::PartiallySignedTransaction {
+        let pub_key_signature_pairs = signatures
+            .iter()
+            .enumerate()
+            .map(|(index, signature)| {
+                let seed = [u8::try_from(index).unwrap().checked_add(1).unwrap(); 32];
+                let xprv = ExtendedPrivateKey::<SecretKey>::new(seed).unwrap();
+                protoserialization::PubKeySignaturePair {
+                    extended_pub_key: xprv.public_key().to_string(Some(Prefix::KPUB)),
+                    signature: signature.to_vec(),
+                }
+            })
+            .collect();
+        protoserialization::PartiallySignedTransaction {
+            tx: Some(protoserialization::TransactionMessage {
+                inputs: vec![protoserialization::TransactionInput::default()],
+                ..Default::default()
+            }),
+            partially_signed_inputs: vec![protoserialization::PartiallySignedInput {
+                minimum_signatures,
+                pub_key_signature_pairs,
+                ..Default::default()
+            }],
+        }
+    }
+
+    #[test]
+    fn multisig_skips_empty_signatures() {
+        let first = [1u8; 65];
+        let third = [3u8; 65];
+        let partially_signed_tx = multisig_transaction(&[&first, &[], &third], 2);
+        let redeem_script =
+            partially_signed_input_multisig_redeem_script(&partially_signed_tx.partially_signed_inputs[0], false, "m").unwrap();
+        let mut expected = ScriptBuilder::new();
+        expected.add_data(&first).unwrap().add_data(&third).unwrap().add_data(&redeem_script).unwrap();
+        let tx = extract_tx_deserialized(partially_signed_tx, false).unwrap();
+        assert_eq!(tx.inputs[0].signature_script, expected.drain());
+    }
+
+    #[test]
+    fn multisig_counts_only_present_signatures() {
+        let first = [1u8; 65];
+        let err = extract_tx_deserialized(multisig_transaction(&[&first, &[]], 2), false).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert_eq!(err.message(), "missing 1 signatures on input: 0");
+    }
 
     #[test]
     fn utxo_entry_wrapper_to_utxos_by_addresses_entry() {
