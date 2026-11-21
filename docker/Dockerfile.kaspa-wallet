@@ -24,14 +24,14 @@ ENV RUSTFLAGS="-C target-feature=-crt-static" \
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL="sparse"
 
 # Build dependencies - this is the caching Docker layer
-RUN cargo chef cook --release --recipe-path recipe.json -p kaspa-wallet --bin kaspa-wallet
+RUN cargo chef cook --release --recipe-path recipe.json -p kaspa-cli --bin kaspa-cli
 
 COPY . .
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,id=cargo-target,target=/app/target,sharing=locked \
-    cargo build --release --bin kaspa-wallet \
-    && cp /app/target/release/kaspa-wallet /app/kaspa-wallet   # <-- outside the mount, persists
+    cargo build --release --bin kaspa-cli \
+    && cp /app/target/release/kaspa-cli /app/kaspa-wallet   # <-- outside the mount, persists
 
 
 # ---------------------------------------- Runtime image ----------------------------------------

@@ -1188,11 +1188,11 @@ impl Generator {
 
                 if self.inner.final_transaction_priority_fee.receiver_pays() {
                     let output = final_outputs.get_mut(0).expect("include fees requires one output");
-                    if aggregate_input_value < output.value {
-                        output.value = aggregate_input_value - transaction_fees;
-                    } else {
-                        output.value -= transaction_fees;
-                    }
+                    let value = if aggregate_input_value < output.value { aggregate_input_value } else { output.value };
+                    output.value = value.checked_sub(transaction_fees).ok_or_else(|| Error::InsufficientFunds {
+                        additional_needed: transaction_fees.saturating_sub(value),
+                        origin: "final",
+                    })?;
                 }
 
                 let change_output_index = if change_output_value > 0 {

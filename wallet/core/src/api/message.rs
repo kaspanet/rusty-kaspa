@@ -694,8 +694,8 @@ pub struct AccountsEstimateResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeRateEstimateBucket {
-    feerate: f64,
-    seconds: f64,
+    pub feerate: f64,
+    pub seconds: f64,
 }
 
 impl From<RpcFeerateBucket> for FeeRateEstimateBucket {
