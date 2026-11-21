@@ -15,6 +15,7 @@ pub mod manager;
 pub mod protocol;
 pub mod rank_search;
 pub mod tie_breaking;
+pub mod topology_iterator;
 #[cfg(feature = "baseline-debugging")]
 pub mod umc_baseline;
 pub mod umc_cascade;
