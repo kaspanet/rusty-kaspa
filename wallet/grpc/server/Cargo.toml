@@ -22,6 +22,7 @@ tonic.workspace = true
 log.workspace = true
 
 [dev-dependencies]
+kaspa-txscript.workspace = true
 tokio = { workspace = true, features = ["macros", "test-util"] }
 
 [lints]

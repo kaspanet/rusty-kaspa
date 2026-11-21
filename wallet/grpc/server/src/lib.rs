@@ -1,30 +1,30 @@
+pub mod policy;
 pub mod service;
 
-use kaspa_addresses::Version;
+use kaspa_wallet_core::api::NewAddressKind;
 use kaspa_wallet_core::api::WalletApi;
-use kaspa_wallet_core::{
-    api::{AccountsGetUtxosRequest, AccountsSendRequest, NewAddressKind},
-    prelude::Address,
-    tx::{Fees, PaymentDestination, PaymentOutputs},
-};
 use kaspa_wallet_grpc_core::convert::deserialize_txs;
 use kaspa_wallet_grpc_core::kaspawalletd::{
     BroadcastRequest, BroadcastResponse, BumpFeeRequest, BumpFeeResponse, CreateUnsignedTransactionsRequest,
     CreateUnsignedTransactionsResponse, GetBalanceRequest, GetBalanceResponse, GetExternalSpendableUtxOsRequest,
     GetExternalSpendableUtxOsResponse, GetVersionRequest, GetVersionResponse, NewAddressRequest, NewAddressResponse, SendRequest,
     SendResponse, ShowAddressesRequest, ShowAddressesResponse, ShutdownRequest, ShutdownResponse, SignRequest, SignResponse,
-    fee_policy::FeePolicy, kaspawalletd_server::Kaspawalletd,
+    kaspawalletd_server::Kaspawalletd,
 };
 use kaspa_wallet_grpc_core::pst::decode_partially_signed_transaction;
 use service::Service;
-use tonic::{Code, Request, Response, Status};
+use tonic::{Request, Response, Status};
 
 #[tonic::async_trait]
 impl Kaspawalletd for Service {
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
-        let balances =
-            self.descriptor()?.balance.ok_or_else(|| Status::unavailable("balance is not available yet, wallet is synchronizing"))?;
-        let response = GetBalanceResponse { available: balances.mature, pending: balances.pending, address_balances: vec![] };
+        let _guard = self.read_guard().await;
+        let balances = self.balances().await?;
+        let response = GetBalanceResponse {
+            available: balances.available,
+            pending: balances.pending,
+            address_balances: balances.address_balances,
+        };
         Ok(Response::new(response))
     }
 
@@ -32,45 +32,32 @@ impl Kaspawalletd for Service {
         &self,
         request: Request<GetExternalSpendableUtxOsRequest>,
     ) -> Result<Response<GetExternalSpendableUtxOsResponse>, Status> {
-        let address = Address::try_from(request.get_ref().address.clone())
-            .map_err(|_| Status::new(tonic::Code::InvalidArgument, "Invalid address provided"))?;
-        let request = AccountsGetUtxosRequest {
-            account_id: self.descriptor()?.account_id,
-            addresses: Some(vec![address]),
-            min_amount_sompi: None,
-        };
-        let utxos = self.wallet().accounts_get_utxos(request).await.map_err(|err| Status::internal(err.to_string()))?.utxos;
-        let response = GetExternalSpendableUtxOsResponse { entries: utxos.into_iter().map(Into::into).collect() };
-        Ok(Response::new(response))
+        let _guard = self.read_guard().await;
+        let entries = self.external_spendable_utxos(request.into_inner().address).await?;
+        Ok(Response::new(GetExternalSpendableUtxOsResponse { entries }))
     }
 
     async fn create_unsigned_transactions(
         &self,
         request: Request<CreateUnsignedTransactionsRequest>,
     ) -> Result<Response<CreateUnsignedTransactionsResponse>, Status> {
-        let CreateUnsignedTransactionsRequest { address, amount, from, use_existing_change_address, is_send_all, fee_policy } =
-            request.into_inner();
-        let to_address = Address::try_from(address).map_err(|err| Status::invalid_argument(err.to_string()))?;
-        let (fee_rate, max_fee) = self.calculate_fee_limits(fee_policy).await?;
-        let from_addresses = from
-            .iter()
-            .map(|a| Address::try_from(a.as_str()))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|err| Status::invalid_argument(err.to_string()))?;
-        let transactions =
-            self.unsigned_txs(to_address, amount, use_existing_change_address, is_send_all, fee_rate, max_fee, from_addresses).await?;
+        let _guard = self.write_guard().await;
         let unsigned_transactions =
-            self.unsigned_partially_signed_transactions(transactions)?.into_iter().map(|pst| pst.encode_to_vec()).collect();
+            self.create_unsigned_transactions(request.into_inner()).await?.into_iter().map(|pst| pst.encode_to_vec()).collect();
         Ok(Response::new(CreateUnsignedTransactionsResponse { unsigned_transactions }))
     }
 
     async fn show_addresses(&self, _request: Request<ShowAddressesRequest>) -> Result<Response<ShowAddressesResponse>, Status> {
+        let _guard = self.read_guard().await;
+        self.ensure_synced()?;
         let addresses = self.receive_addresses()?.iter().map(|addr| addr.to_string()).collect::<Vec<String>>();
         let response = ShowAddressesResponse { address: addresses };
         Ok(Response::new(response))
     }
 
     async fn new_address(&self, _request: Request<NewAddressRequest>) -> Result<Response<NewAddressResponse>, Status> {
+        let _guard = self.write_guard().await;
+        self.ensure_synced()?;
         let address = self
             .wallet()
             .accounts_create_new_address(self.descriptor()?.account_id, NewAddressKind::Receive)
@@ -92,18 +79,19 @@ impl Kaspawalletd for Service {
     // - New parameters like allow_parallel should be introduced
     // - Client behavior should be considered as they may expect sequential processing until the first error when sending batches
     async fn broadcast(&self, request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
+        let _guard = self.write_guard().await;
         let request = request.into_inner();
         let txs = deserialize_txs(request.transactions, request.is_domain, self.use_ecdsa())?;
         let mut tx_ids: Vec<String> = Vec::with_capacity(txs.len());
         for tx in txs {
-            let tx_id =
-                self.wallet().rpc_api().submit_transaction(tx, false).await.map_err(|e| Status::new(Code::Internal, e.to_string()))?;
+            let tx_id = self.submit_transaction(tx).await?;
             tx_ids.push(tx_id.to_string());
         }
         Ok(Response::new(BroadcastResponse { tx_ids }))
     }
 
     async fn broadcast_replacement(&self, request: Request<BroadcastRequest>) -> Result<Response<BroadcastResponse>, Status> {
+        let _guard = self.write_guard().await;
         let request = request.into_inner();
         let txs = deserialize_txs(request.transactions, request.is_domain, self.use_ecdsa())?;
         let mut tx_ids: Vec<String> = Vec::with_capacity(txs.len());
@@ -111,63 +99,50 @@ impl Kaspawalletd for Service {
             // Once the first transaction is added to the mempool, the transactions that depend
             // on the replaced transaction will be removed, so there's no need to submit them
             // as RBF transactions.
-            let tx_id = if i == 0 {
-                let submit_transaction_replacement_response = self
-                    .wallet()
-                    .rpc_api()
-                    .submit_transaction_replacement(tx)
-                    .await
-                    .map_err(|e| Status::new(Code::Internal, e.to_string()))?;
-                submit_transaction_replacement_response.transaction_id
-            } else {
-                self.wallet().rpc_api().submit_transaction(tx, false).await.map_err(|e| Status::new(Code::Internal, e.to_string()))?
-            };
+            let tx_id = if i == 0 { self.submit_transaction_replacement(tx).await? } else { self.submit_transaction(tx).await? };
             tx_ids.push(tx_id.to_string());
         }
         Ok(Response::new(BroadcastResponse { tx_ids }))
     }
 
     async fn send(&self, request: Request<SendRequest>) -> Result<Response<SendResponse>, Status> {
-        let acc = self.wallet().account().map_err(|err| Status::internal(err.to_string()))?;
-        if acc.minimum_signatures() != 1 {
-            return Err(Status::unimplemented("Only single signature wallets are supported"));
+        let _guard = self.write_guard().await;
+        let SendRequest { to_address, amount, password, from, use_existing_change_address, is_send_all, fee_policy } =
+            request.into_inner();
+        let unsigned_transactions = self
+            .create_unsigned_transactions(CreateUnsignedTransactionsRequest {
+                address: to_address,
+                amount,
+                from,
+                use_existing_change_address,
+                is_send_all,
+                fee_policy,
+            })
+            .await?;
+        let signed_transactions = self
+            .sign_partially_signed_transactions(unsigned_transactions, password)
+            .await?
+            .into_iter()
+            .map(|pst| pst.encode_to_vec())
+            .collect::<Vec<_>>();
+        let transactions = deserialize_txs(signed_transactions.clone(), false, self.use_ecdsa())?;
+        let mut tx_ids: Vec<String> = Vec::with_capacity(transactions.len());
+        for transaction in transactions {
+            match self.submit_transaction(transaction).await {
+                Ok(tx_id) => tx_ids.push(tx_id.to_string()),
+                Err(err) => {
+                    return Err(Status::new(
+                        err.code(),
+                        format!("{}; already submitted transactions: [{}]", err.message(), tx_ids.join(", ")),
+                    ));
+                }
+            }
         }
-        if acc.receive_address().map_err(|err| Status::internal(err.to_string()))?.version == Version::PubKeyECDSA {
-            return Err(Status::unimplemented("Ecdsa wallets are not supported yet"));
-        }
-
-        // todo call unsigned tx and sign it to be consistent
-
-        let data = request.get_ref();
-        let fee_rate_estimate = self.wallet().fee_rate_estimate().await.map_err(|err| Status::unavailable(err.to_string()))?;
-        let fee_rate = data.fee_policy.and_then(|policy| policy.fee_policy).and_then(|policy| match policy {
-            FeePolicy::MaxFeeRate(rate) => Some(fee_rate_estimate.normal.feerate.min(rate)),
-            FeePolicy::ExactFeeRate(rate) => Some(rate),
-            _ => None, // TODO: we dont support maximum_amount policy so think if we should supply default fee_rate_estimate or just 1 on this case...
-        });
-        let to_address = Address::try_from(data.to_address.clone()).map_err(|err| Status::invalid_argument(err.to_string()))?;
-        let request = AccountsSendRequest {
-            account_id: self.descriptor()?.account_id,
-            wallet_secret: data.password.clone().into(),
-            payment_secret: None,
-            destination: PaymentDestination::PaymentOutputs(PaymentOutputs::from((to_address, data.amount))),
-            fee_rate,
-            priority_fee_sompi: Fees::SenderPays(0),
-            payload: None,
-        };
-        let result = self
-            .wallet()
-            .accounts_send(request)
-            .await
-            .map_err(|err| Status::new(tonic::Code::Internal, format!("Generator: {}", err)))?;
-        let final_transaction =
-            result.final_transaction_id.ok_or_else(|| Status::internal("missing final transaction id"))?.to_string();
-        // todo return all transactions
-        let response = SendResponse { tx_ids: vec![final_transaction], signed_transactions: vec![] };
-        Ok(Response::new(response))
+        Ok(Response::new(SendResponse { tx_ids, signed_transactions }))
     }
 
     async fn sign(&self, request: Request<SignRequest>) -> Result<Response<SignResponse>, Status> {
+        let _guard = self.write_guard().await;
         let SignRequest { unsigned_transactions, password } = request.into_inner();
 
         let unsigned_transactions = unsigned_transactions

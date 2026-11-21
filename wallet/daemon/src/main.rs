@@ -2,7 +2,7 @@ mod args;
 
 use crate::args::Args;
 use kaspa_consensus_core::network::NetworkId;
-use kaspa_core::{info, warn};
+use kaspa_core::{error, info, warn};
 use kaspa_wallet_core::{
     api::WalletApi,
     rpc::{ConnectOptions, ConnectStrategy, Resolver, WrpcEncoding},
@@ -68,7 +68,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .await
     });
     info!("gRPC server is listening on {}:{}.", args.listen_address.ip(), args.listen_address.port());
-    server_handle.await??;
+    let server_result = server_handle.await;
+
+    if let Err(err) = wallet.stop().await {
+        error!("Failed to stop wallet: {}", err);
+    }
+
+    server_result??;
 
     Ok(())
 }

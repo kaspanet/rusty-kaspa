@@ -1,12 +1,15 @@
+use crate::policy::{self, Balances, ChangeAddressSource, GenerationParams, UsedOutpoints};
 use fee_policy::FeePolicy;
-use futures_util::{FutureExt, TryStreamExt, select};
+use futures_util::{FutureExt, select};
 use kaspa_addresses::Prefix;
+use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
+use kaspa_consensus_core::tx::TransactionOutpoint;
+use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 use kaspa_wallet_core::account::Account;
 use kaspa_wallet_core::account::variants::bip32::{BIP32_ACCOUNT_KIND, Payload};
 use kaspa_wallet_core::api::NewAddressKind;
-use kaspa_wallet_core::prelude::{PaymentDestination, PaymentOutput, PaymentOutputs};
-use kaspa_wallet_core::tx::{Fees, Generator, GeneratorSettings, PendingTransaction};
+use kaspa_wallet_core::tx::PendingTransaction;
 use kaspa_wallet_core::utxo::UtxoEntryReference;
 use kaspa_wallet_core::{
     api::WalletApi,
@@ -15,13 +18,14 @@ use kaspa_wallet_core::{
     wallet::Wallet,
 };
 use kaspa_wallet_grpc_core::kaspawalletd;
-use kaspa_wallet_grpc_core::kaspawalletd::fee_policy;
+use kaspa_wallet_grpc_core::kaspawalletd::{CreateUnsignedTransactionsRequest, UtxosByAddressesEntry, fee_policy};
 use kaspa_wallet_grpc_core::protoserialization::PartiallySignedTransaction;
 use kaspa_wallet_grpc_core::pst;
 use log::{error, info};
 use std::cmp::Reverse;
-use std::sync::{Arc, Mutex, PoisonError};
-use tokio::sync::oneshot;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot};
 use tonic::Status;
 
 pub struct Service {
@@ -29,6 +33,8 @@ pub struct Service {
     shutdown_sender: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     // TODO: Extend the partially serialized transaction or transaction structure with a boolean field 'ecdsa'
     ecdsa: bool,
+    lock: RwLock<()>,
+    used_outpoints: Mutex<UsedOutpoints>,
 }
 
 impl Service {
@@ -55,9 +61,6 @@ impl Service {
                                             error!("Wallet reloading failed: {}", err);
                                         }
                                     },
-                                    Events::Balance { balance: _new_balance, .. } => {
-                                        // TBD: index balance per address for call
-                                    },
                                     _ => {}
                                 }
                             } else {
@@ -69,12 +72,40 @@ impl Service {
             }
         });
 
-        Service { wallet, shutdown_sender: Arc::new(Mutex::new(Some(shutdown_sender))), ecdsa }
+        Service {
+            wallet,
+            shutdown_sender: Arc::new(Mutex::new(Some(shutdown_sender))),
+            ecdsa,
+            lock: RwLock::new(()),
+            used_outpoints: Mutex::new(UsedOutpoints::default()),
+        }
+    }
+
+    pub async fn read_guard(&self) -> RwLockReadGuard<'_, ()> {
+        self.lock.read().await
+    }
+
+    pub async fn write_guard(&self) -> RwLockWriteGuard<'_, ()> {
+        self.lock.write().await
+    }
+
+    fn used_outpoints(&self) -> MutexGuard<'_, UsedOutpoints> {
+        self.used_outpoints.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub fn ensure_synced(&self) -> Result<(), Status> {
+        let account = self.wallet.account().map_err(|err| Status::failed_precondition(err.to_string()))?;
+        let has_balance = account.descriptor().is_ok_and(|descriptor| descriptor.balance.is_some());
+        if self.wallet.is_connected() && self.wallet.is_synced() && has_balance {
+            Ok(())
+        } else {
+            Err(Status::unavailable("wallet daemon is not synced yet"))
+        }
     }
 
     pub async fn calculate_fee_limits(&self, fee_policy: Option<kaspawalletd::FeePolicy>) -> Result<(f64, u64), Status> {
         let fee_policy = fee_policy.and_then(|fee_policy| fee_policy.fee_policy);
-        const MIN_FEE_RATE: f64 = 1.0;
+        const MIN_FEE_RATE: f64 = policy::MIN_FEE_RATE;
         let fees: (f64, u64) = if let Some(policy) = fee_policy {
             match policy {
                 FeePolicy::MaxFeeRate(max_fee_rate) => {
@@ -155,17 +186,18 @@ impl Service {
         self.ecdsa
     }
 
-    pub async fn unsigned_txs(
+    pub async fn create_unsigned_transactions(
         &self,
-        to: Address,
-        amount: u64,
-        use_existing_change_address: bool,
-        is_send_all: bool,
-        fee_rate: f64,
-        max_fee: u64,
-        from_addresses: Vec<Address>,
-    ) -> Result<Vec<PendingTransaction>, Status> {
-        let current_network = self.wallet().network_id().map_err(|err| Status::internal(err.to_string()))?;
+        request: CreateUnsignedTransactionsRequest,
+    ) -> Result<Vec<PartiallySignedTransaction>, Status> {
+        let (account, payload) = self.single_signature_bip32_account()?;
+        self.ensure_synced()?;
+
+        let CreateUnsignedTransactionsRequest { address, amount, from, use_existing_change_address, is_send_all, fee_policy } =
+            request;
+        let (fee_rate, max_fee) = self.calculate_fee_limits(fee_policy).await?;
+        let to = Address::try_from(address).map_err(|err| Status::invalid_argument(err.to_string()))?;
+        let current_network = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?;
         if to.prefix != Prefix::from(current_network) {
             return Err(Status::invalid_argument(format!(
                 "decoded address is of wrong network. Expected {} but got {}",
@@ -173,8 +205,11 @@ impl Service {
                 to.prefix
             )));
         }
-
-        let account = self.wallet().account().map_err(|err| Status::internal(err.to_string()))?;
+        let from_addresses = from
+            .iter()
+            .map(|address| Address::try_from(address.as_str()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| Status::invalid_argument(err.to_string()))?;
 
         info!("Processing request for account_id: {}", self.descriptor()?.account_id);
 
@@ -190,61 +225,123 @@ impl Service {
             None // Search UTXO from all addresses in wallet
         } else {
             info!("Searching UTXOs in specified addresses: {:?}", from_addresses);
-            Some(from_addresses)
+            Some(from_addresses.clone())
         };
 
         let utxos = account.clone().get_utxos(search_addresses, None).await.map_err(|err| Status::internal(err.to_string()))?;
+        let now = Instant::now();
+        let utxos = {
+            let mut used_outpoints = self.used_outpoints();
+            used_outpoints.prune(now);
+            utxos
+                .into_iter()
+                .filter(|utxo| !used_outpoints.is_used(&TransactionOutpoint::from(&utxo.outpoint), now))
+                .collect::<Vec<_>>()
+        };
 
         // Sort UTXOs by amount descending to optimize transaction weight
         // Use large UTXOs in priority to minimize the number of inputs
         let mut sorted_utxos = utxos;
         sorted_utxos.sort_unstable_by_key(|a| Reverse(a.amount));
 
-        let change_address = if !use_existing_change_address {
-            self.wallet()
-                .accounts_create_new_address(self.descriptor()?.account_id, NewAddressKind::Change)
-                .await
-                .map_err(|err| Status::internal(err.to_string()))?
-                .address
-        } else {
-            self.descriptor()?.change_address.ok_or(Status::internal("change address doesn't exist"))?.clone()
+        if sorted_utxos.is_empty() {
+            return Err(Status::failed_precondition("couldn't find funds to spend"));
+        }
+
+        let change_address = match policy::change_address_source(use_existing_change_address, &from_addresses) {
+            ChangeAddressSource::FirstFrom(address) => address,
+            ChangeAddressSource::Current => {
+                self.descriptor()?.change_address.ok_or(Status::internal("change address doesn't exist"))?
+            }
+            ChangeAddressSource::New => {
+                self.wallet()
+                    .accounts_create_new_address(*account.id(), NewAddressKind::Change)
+                    .await
+                    .map_err(|err| Status::internal(err.to_string()))?
+                    .address
+            }
         };
 
-        let total_balance: u64 = sorted_utxos.iter().map(|utxo| utxo.amount).sum();
-        let output_amount = if is_send_all { total_balance } else { amount };
-
+        let total_balance = sorted_utxos.iter().fold(0u64, |total, utxo| total.saturating_add(utxo.amount));
         info!("Found {} UTXOs with total value {} sompi", sorted_utxos.len(), total_balance);
 
-        let settings = GeneratorSettings::try_new_with_iterator(
-            current_network,
-            Box::new(sorted_utxos.into_iter().map(|utxo| UtxoEntryReference { utxo: Arc::new(utxo) })),
-            None,
-            change_address,
-            account.sig_op_count(),
-            account.minimum_signatures(),
-            PaymentDestination::PaymentOutputs(PaymentOutputs { outputs: vec![PaymentOutput::new(to, output_amount)] }),
-            Some(fee_rate),
-            Fees::SenderPays(0), // FIXME: @zelenevn
-            None,
-            None,
-        )
-        .map_err(|err| Status::internal(err.to_string()))?;
+        let generation = GenerationParams {
+            network_id: current_network,
+            utxos: sorted_utxos.into_iter().map(|utxo| UtxoEntryReference { utxo: Arc::new(utxo) }).collect(),
+            change_address: &change_address,
+            sig_op_count: account.sig_op_count(),
+            minimum_signatures: account.minimum_signatures(),
+            to: &to,
+            amount,
+            is_send_all,
+        };
+        let transactions = policy::generate_with_max_fee(&generation, fee_rate, max_fee)?;
+        self.unsigned_partially_signed_transactions(&account, &payload, transactions)
+    }
 
-        let generator = Generator::try_new(settings, None, None).map_err(|err| Status::internal(err.to_string()))?;
+    pub async fn submit_transaction(&self, transaction: RpcTransaction) -> Result<RpcTransactionId, Status> {
+        let outpoints = Self::input_outpoints(&transaction);
+        let transaction_id =
+            self.wallet.rpc_api().submit_transaction(transaction, false).await.map_err(|err| Status::internal(err.to_string()))?;
+        self.used_outpoints().record(outpoints, Instant::now());
+        Ok(transaction_id)
+    }
 
-        let mut stream = generator.stream();
-        let mut txs = vec![];
-        while let Some(transaction) = stream.try_next().await.map_err(|err| Status::internal(err.to_string()))? {
-            txs.push(transaction);
-        }
-        if generator.summary().aggregate_fees > max_fee {
-            return Err(Status::failed_precondition(format!(
-                "aggregate fees {} exceeds requested max {}",
-                generator.summary().aggregate_fees,
-                max_fee
+    pub async fn submit_transaction_replacement(&self, transaction: RpcTransaction) -> Result<RpcTransactionId, Status> {
+        let outpoints = Self::input_outpoints(&transaction);
+        let response = self
+            .wallet
+            .rpc_api()
+            .submit_transaction_replacement(transaction)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+        self.used_outpoints().record(outpoints, Instant::now());
+        Ok(response.transaction_id)
+    }
+
+    fn input_outpoints(transaction: &RpcTransaction) -> Vec<TransactionOutpoint> {
+        transaction.inputs.iter().map(|input| TransactionOutpoint::from(input.previous_outpoint)).collect()
+    }
+
+    pub async fn balances(&self) -> Result<Balances, Status> {
+        self.ensure_synced()?;
+        let account = self.wallet.account().map_err(|err| Status::failed_precondition(err.to_string()))?;
+        let addresses = account.account_addresses().map_err(|err| Status::internal(err.to_string()))?;
+        let rpc = self.wallet.rpc_api();
+        let mempool_entries = rpc
+            .get_mempool_entries_by_addresses(addresses.clone(), true, false)
+            .await
+            .map_err(|err| Status::unavailable(err.to_string()))?;
+        let entries = rpc.get_utxos_by_addresses(addresses).await.map_err(|err| Status::unavailable(err.to_string()))?;
+        let virtual_daa_score = rpc.get_block_dag_info().await.map_err(|err| Status::unavailable(err.to_string()))?.virtual_daa_score;
+        let network_id = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?;
+        let coinbase_maturity = policy::coinbase_maturity(network_id)?;
+        let excluded = policy::mempool_spent_outpoints(&mempool_entries);
+        Ok(policy::compute_balances(&entries, &excluded, virtual_daa_score, coinbase_maturity))
+    }
+
+    pub async fn external_spendable_utxos(&self, address: String) -> Result<Vec<UtxosByAddressesEntry>, Status> {
+        let address = Address::try_from(address).map_err(|err| Status::invalid_argument(err.to_string()))?;
+        let network_id = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?;
+        if address.prefix != Prefix::from(network_id) {
+            return Err(Status::invalid_argument(format!(
+                "decoded address is of wrong network. Expected {} but got {}",
+                Prefix::from(network_id),
+                address.prefix
             )));
         }
-        Ok(txs)
+        let rpc = self.wallet.rpc_api();
+        let entries = rpc.get_utxos_by_addresses(vec![address]).await.map_err(|err| Status::unavailable(err.to_string()))?;
+        let fee_rate = self.normal_fee_rate().await?;
+        let virtual_daa_score = rpc.get_block_dag_info().await.map_err(|err| Status::unavailable(err.to_string()))?.virtual_daa_score;
+        let coinbase_maturity = policy::coinbase_maturity(network_id)?;
+        let fee_per_input =
+            policy::fee_per_input(policy::signed_p2pk_input_compute_mass(&Params::from(network_id.network_type)), fee_rate);
+        Ok(entries
+            .into_iter()
+            .filter(|entry| policy::is_external_utxo_spendable(&entry.utxo_entry, virtual_daa_score, coinbase_maturity, fee_per_input))
+            .map(|entry| policy::utxo_entry_wrapper(entry).into())
+            .collect())
     }
 
     fn single_signature_bip32_account(&self) -> Result<(Arc<dyn Account>, Payload), Status> {
@@ -260,15 +357,17 @@ impl Service {
         Ok((account, payload))
     }
 
-    pub fn unsigned_partially_signed_transactions(
+    fn unsigned_partially_signed_transactions(
         &self,
+        account: &Arc<dyn Account>,
+        payload: &Payload,
         transactions: Vec<PendingTransaction>,
     ) -> Result<Vec<PartiallySignedTransaction>, Status> {
-        let (account, payload) = self.single_signature_bip32_account()?;
         let account_xpub =
             payload.xpub_keys.first().ok_or_else(|| Status::unimplemented("only bip32 single-signature accounts are supported"))?;
         let network_type = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?.network_type();
-        let derivation = account.as_derivation_capable().map_err(|err| Status::failed_precondition(err.to_string()))?.derivation();
+        let derivation =
+            account.clone().as_derivation_capable().map_err(|err| Status::failed_precondition(err.to_string()))?.derivation();
 
         transactions
             .into_iter()

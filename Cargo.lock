@@ -4455,6 +4455,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-rpc-core",
+ "kaspa-txscript",
  "kaspa-wallet-core",
  "kaspa-wallet-grpc-core",
  "log",
