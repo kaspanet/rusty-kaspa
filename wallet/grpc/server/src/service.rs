@@ -16,9 +16,9 @@ use kaspa_wallet_core::{
 };
 use kaspa_wallet_grpc_core::kaspawalletd;
 use kaspa_wallet_grpc_core::kaspawalletd::fee_policy;
-use log::info;
+use log::{error, info};
 use std::cmp::Reverse;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use tokio::sync::oneshot;
 use tonic::Status;
 
@@ -44,15 +44,22 @@ impl Service {
                                 match *msg {
                                     Events::SyncState { sync_state } => {
                                         if sync_state.is_synced()
-                                            && let Err(err) = wallet.clone().wallet_reload(false).await {
-                                                panic!("Wallet reloading failed: {}", err)
+                                            && let Err(err) = wallet.clone().wallet_reload(true).await {
+                                                error!("Wallet reloading failed: {}", err);
                                             }
+                                    },
+                                    Events::UtxoProcStart => {
+                                        if let Err(err) = wallet.clone().wallet_reload(true).await {
+                                            error!("Wallet reloading failed: {}", err);
+                                        }
                                     },
                                     Events::Balance { balance: _new_balance, .. } => {
                                         // TBD: index balance per address for call
                                     },
                                     _ => {}
                                 }
+                            } else {
+                                break;
                             }
                         }
                     }
@@ -75,8 +82,7 @@ impl Service {
                             max_fee_rate, MIN_FEE_RATE
                         )));
                     };
-                    let estimate = self.wallet.rpc_api().get_fee_estimate().await.unwrap();
-                    let fee_rate = max_fee_rate.min(estimate.normal_buckets[0].feerate);
+                    let fee_rate = max_fee_rate.min(self.normal_fee_rate().await?);
                     (fee_rate, u64::MAX)
                 }
                 FeePolicy::ExactFeeRate(exact_fee_rate) => {
@@ -88,35 +94,51 @@ impl Service {
                     }
                     (exact_fee_rate, u64::MAX)
                 }
-                FeePolicy::MaxFee(max_fee) => {
-                    let estimate = self.wallet.rpc_api().get_fee_estimate().await.unwrap();
-                    (estimate.normal_buckets[0].feerate, max_fee)
-                }
+                FeePolicy::MaxFee(max_fee) => (self.normal_fee_rate().await?, max_fee),
             }
         } else {
-            let estimate = self.wallet.rpc_api().get_fee_estimate().await.unwrap();
-            (estimate.normal_buckets[0].feerate, SOMPI_PER_KASPA)
+            (self.normal_fee_rate().await?, SOMPI_PER_KASPA)
         };
         Ok(fees)
     }
 
-    pub fn receive_addresses(&self) -> Vec<Address> {
+    async fn normal_fee_rate(&self) -> Result<f64, Status> {
+        let estimate = self.wallet.rpc_api().get_fee_estimate().await.map_err(|err| Status::unavailable(err.to_string()))?;
+        estimate
+            .normal_buckets
+            .first()
+            .map(|bucket| bucket.feerate)
+            .ok_or_else(|| Status::unavailable("missing normal feerate bucket"))
+    }
+
+    pub fn receive_addresses(&self) -> Result<Vec<Address>, Status> {
         // TODO: move into WalletApi
-        let manager = self.wallet.account().unwrap().as_derivation_capable().unwrap().derivation().receive_address_manager();
-        let end_exclusive = manager.index().checked_add(1).expect("receive address index overflow");
-        manager.get_range_with_args(0..end_exclusive, false).unwrap()
+        let manager = self
+            .wallet
+            .account()
+            .map_err(|err| Status::failed_precondition(err.to_string()))?
+            .as_derivation_capable()
+            .map_err(|err| Status::failed_precondition(err.to_string()))?
+            .derivation()
+            .receive_address_manager();
+        let end_exclusive = manager.index().checked_add(1).ok_or_else(|| Status::internal("receive address index overflow"))?;
+        manager.get_range_with_args(0..end_exclusive, false).map_err(|err| Status::internal(err.to_string()))
     }
 
     pub fn wallet(&self) -> Arc<Wallet> {
         self.wallet.clone()
     }
 
-    pub fn descriptor(&self) -> AccountDescriptor {
-        self.wallet.account().unwrap().descriptor().unwrap()
+    pub fn descriptor(&self) -> Result<AccountDescriptor, Status> {
+        self.wallet
+            .account()
+            .map_err(|err| Status::failed_precondition(err.to_string()))?
+            .descriptor()
+            .map_err(|err| Status::internal(err.to_string()))
     }
 
     pub fn initiate_shutdown(&self) {
-        let mut sender = self.shutdown_sender.lock().unwrap();
+        let mut sender = self.shutdown_sender.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(shutdown_sender) = sender.take() {
             let _ = shutdown_sender.send(());
         }
@@ -152,7 +174,7 @@ impl Service {
 
         let account = self.wallet().account().map_err(|err| Status::internal(err.to_string()))?;
 
-        info!("Processing request for account_id: {}", self.descriptor().account_id);
+        info!("Processing request for account_id: {}", self.descriptor()?.account_id);
 
         let addresses = account.account_addresses().map_err(|err| Status::internal(err.to_string()))?;
         if let Some(non_existent_address) = from_addresses.iter().find(|from| addresses.iter().all(|address| &address != from)) {
@@ -178,12 +200,12 @@ impl Service {
 
         let change_address = if !use_existing_change_address {
             self.wallet()
-                .accounts_create_new_address(self.descriptor().account_id, NewAddressKind::Change)
+                .accounts_create_new_address(self.descriptor()?.account_id, NewAddressKind::Change)
                 .await
                 .map_err(|err| Status::internal(err.to_string()))?
                 .address
         } else {
-            self.descriptor().change_address.ok_or(Status::internal("change address doesn't exist"))?.clone()
+            self.descriptor()?.change_address.ok_or(Status::internal("change address doesn't exist"))?.clone()
         };
 
         let total_balance: u64 = sorted_utxos.iter().map(|utxo| utxo.amount).sum();

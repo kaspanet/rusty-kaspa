@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let rpc_address = if let Some(address) = args.rpc_server {
             address
         } else {
-            let network_id = NetworkId::from_str(&args.network_id.expect("Specifying network id is needed for PNN"))?;
+            let network_id = NetworkId::from_str(&args.network_id.ok_or("either --rpc-server or --network-id must be specified")?)?;
             warn!("Using PNN may expose your data to third parties. For privacy, use a private, self-hosted node.");
             Resolver::default().get_url(WrpcEncoding::Borsh, network_id).await.map_err(|e| e.to_string())?
         };
@@ -53,7 +53,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let service = Service::with_notification_pipe_task(wallet.clone(), shutdown_sender, args.ecdsa);
     service.wallet().accounts_activate(None).await?;
     wallet.autoselect_default_account_if_single().await?;
-    info!("Activated account {}, synchronizing...", wallet.account().unwrap().id().short());
+    let account = wallet.account().map_err(|_| {
+        format!("the daemon requires a wallet with exactly one account, found {} active accounts", wallet.active_accounts().len())
+    })?;
+    info!("Activated account {}, synchronizing...", account.id().short());
 
     let server_handle = tokio::spawn(async move {
         Server::builder()
@@ -63,10 +66,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 info!("Shutdown initiated, stopping gRPC server...");
             })
             .await
-            .unwrap();
     });
     info!("gRPC server is listening on {}:{}.", args.listen_address.ip(), args.listen_address.port());
-    server_handle.await?;
+    server_handle.await??;
 
     Ok(())
 }

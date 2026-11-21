@@ -23,7 +23,8 @@ use tonic::{Code, Request, Response, Status};
 #[tonic::async_trait]
 impl Kaspawalletd for Service {
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
-        let balances = self.descriptor().balance.unwrap();
+        let balances =
+            self.descriptor()?.balance.ok_or_else(|| Status::unavailable("balance is not available yet, wallet is synchronizing"))?;
         let response = GetBalanceResponse { available: balances.mature, pending: balances.pending, address_balances: vec![] };
         Ok(Response::new(response))
     }
@@ -35,11 +36,11 @@ impl Kaspawalletd for Service {
         let address = Address::try_from(_request.get_ref().address.clone())
             .map_err(|_| Status::new(tonic::Code::InvalidArgument, "Invalid address provided"))?;
         let request = AccountsGetUtxosRequest {
-            account_id: self.descriptor().account_id,
+            account_id: self.descriptor()?.account_id,
             addresses: Some(vec![address]),
             min_amount_sompi: None,
         };
-        let utxos = self.wallet().accounts_get_utxos(request).await.unwrap().utxos;
+        let utxos = self.wallet().accounts_get_utxos(request).await.map_err(|err| Status::internal(err.to_string()))?.utxos;
         let response = GetExternalSpendableUtxOsResponse { entries: utxos.into_iter().map(Into::into).collect() };
         Ok(Response::new(response))
     }
@@ -65,7 +66,7 @@ impl Kaspawalletd for Service {
     }
 
     async fn show_addresses(&self, _request: Request<ShowAddressesRequest>) -> Result<Response<ShowAddressesResponse>, Status> {
-        let addresses = self.receive_addresses().iter().map(|addr| addr.to_string()).collect::<Vec<String>>();
+        let addresses = self.receive_addresses()?.iter().map(|addr| addr.to_string()).collect::<Vec<String>>();
         let response = ShowAddressesResponse { address: addresses };
         Ok(Response::new(response))
     }
@@ -73,7 +74,7 @@ impl Kaspawalletd for Service {
     async fn new_address(&self, _request: Request<NewAddressRequest>) -> Result<Response<NewAddressResponse>, Status> {
         let address = self
             .wallet()
-            .accounts_create_new_address(self.descriptor().account_id, NewAddressKind::Receive)
+            .accounts_create_new_address(self.descriptor()?.account_id, NewAddressKind::Receive)
             .await
             .map_err(|err| Status::internal(err.to_string()))?
             .address;
@@ -139,20 +140,18 @@ impl Kaspawalletd for Service {
         // todo call unsigned tx and sign it to be consistent
 
         let data = _request.get_ref();
-        let fee_rate_estimate = self.wallet().fee_rate_estimate().await.unwrap();
-        let fee_rate = data.fee_policy.and_then(|policy| match policy.fee_policy.unwrap() {
+        let fee_rate_estimate = self.wallet().fee_rate_estimate().await.map_err(|err| Status::unavailable(err.to_string()))?;
+        let fee_rate = data.fee_policy.and_then(|policy| policy.fee_policy).and_then(|policy| match policy {
             FeePolicy::MaxFeeRate(rate) => Some(fee_rate_estimate.normal.feerate.min(rate)),
             FeePolicy::ExactFeeRate(rate) => Some(rate),
             _ => None, // TODO: we dont support maximum_amount policy so think if we should supply default fee_rate_estimate or just 1 on this case...
         });
+        let to_address = Address::try_from(data.to_address.clone()).map_err(|err| Status::invalid_argument(err.to_string()))?;
         let request = AccountsSendRequest {
-            account_id: self.descriptor().account_id,
+            account_id: self.descriptor()?.account_id,
             wallet_secret: data.password.clone().into(),
             payment_secret: None,
-            destination: PaymentDestination::PaymentOutputs(PaymentOutputs::from((
-                Address::try_from(data.to_address.clone()).unwrap(),
-                data.amount,
-            ))),
+            destination: PaymentDestination::PaymentOutputs(PaymentOutputs::from((to_address, data.amount))),
             fee_rate,
             priority_fee_sompi: Fees::SenderPays(0),
             payload: None,
@@ -162,7 +161,8 @@ impl Kaspawalletd for Service {
             .accounts_send(request)
             .await
             .map_err(|err| Status::new(tonic::Code::Internal, format!("Generator: {}", err)))?;
-        let final_transaction = result.final_transaction_id.unwrap().to_string();
+        let final_transaction =
+            result.final_transaction_id.ok_or_else(|| Status::internal("missing final transaction id"))?.to_string();
         // todo return all transactions
         let response = SendResponse { tx_ids: vec![final_transaction], signed_transactions: vec![] };
         Ok(Response::new(response))
