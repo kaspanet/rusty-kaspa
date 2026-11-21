@@ -23,7 +23,7 @@ use kaspa_wallet_grpc_core::kaspawalletd;
 use kaspa_wallet_grpc_core::kaspawalletd::{CreateUnsignedTransactionsRequest, UtxosByAddressesEntry, fee_policy};
 use kaspa_wallet_grpc_core::protoserialization::PartiallySignedTransaction;
 use kaspa_wallet_grpc_core::pst;
-use log::{error, info};
+use log::{error, info, warn};
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,7 +32,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard, oneshot};
 use tonic::Status;
 
-const RELOAD_ATTEMPTS: u32 = 3;
 const RELOAD_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 pub struct Service {
@@ -41,7 +40,7 @@ pub struct Service {
     // TODO: Extend the partially serialized transaction or transaction structure with a boolean field 'ecdsa'
     ecdsa: bool,
     lock: Arc<RwLock<()>>,
-    reloading: Arc<AtomicBool>,
+    ready: Arc<AtomicBool>,
     used_outpoints: Mutex<UsedOutpoints>,
 }
 
@@ -49,12 +48,12 @@ impl Service {
     pub fn with_notification_pipe_task(wallet: Arc<Wallet>, shutdown_sender: oneshot::Sender<()>, ecdsa: bool) -> Self {
         let channel = wallet.multiplexer().channel();
         let lock = Arc::new(RwLock::new(()));
-        let reloading = Arc::new(AtomicBool::new(false));
+        let ready = Arc::new(AtomicBool::new(true));
 
         tokio::spawn({
             let wallet = wallet.clone();
             let lock = lock.clone();
-            let reloading = reloading.clone();
+            let ready = ready.clone();
 
             async move {
                 loop {
@@ -62,13 +61,17 @@ impl Service {
                         msg = channel.receiver.recv().fuse() => {
                             if let Ok(msg) = msg {
                                 match *msg {
-                                    Events::SyncState { sync_state } => {
-                                        if sync_state.is_synced() {
-                                            Self::reload_wallet(&wallet, &lock, &reloading).await;
-                                        }
+                                    Events::SyncState { sync_state } if sync_state.is_synced() => {
+                                        Self::reload_wallet(&wallet, &lock, &ready).await;
                                     },
                                     Events::UtxoProcStart => {
-                                        Self::reload_wallet(&wallet, &lock, &reloading).await;
+                                        Self::reload_wallet(&wallet, &lock, &ready).await;
+                                    },
+                                    Events::Connect { ref url, .. } => {
+                                        info!("Connected to node {}", url.as_deref().unwrap_or("(unknown url)"));
+                                    },
+                                    Events::Disconnect { ref url, .. } => {
+                                        warn!("Disconnected from node {}", url.as_deref().unwrap_or("(unknown url)"));
                                     },
                                     _ => {}
                                 }
@@ -86,32 +89,34 @@ impl Service {
             shutdown_sender: Arc::new(Mutex::new(Some(shutdown_sender))),
             ecdsa,
             lock,
-            reloading,
+            ready,
             used_outpoints: Mutex::new(UsedOutpoints::default()),
         }
     }
 
-    async fn reload_wallet(wallet: &Arc<Wallet>, lock: &RwLock<()>, reloading: &AtomicBool) {
+    async fn reload_wallet(wallet: &Arc<Wallet>, lock: &RwLock<()>, ready: &AtomicBool) {
         {
             let _guard = lock.write().await;
-            reloading.store(true, Ordering::SeqCst);
+            ready.store(false, Ordering::SeqCst);
         }
-        let mut attempt = 1;
         loop {
             match wallet.clone().wallet_reload(true).await {
-                Ok(()) => break,
-                Err(err) => error!("Wallet reloading failed (attempt {attempt}/{RELOAD_ATTEMPTS}): {err}"),
+                Ok(()) => {
+                    ready.store(true, Ordering::SeqCst);
+                    return;
+                }
+                Err(err) => error!("Wallet reloading failed: {err}"),
             }
-            if attempt >= RELOAD_ATTEMPTS {
-                break;
+            if !wallet.is_connected() {
+                warn!("Node connection lost, wallet reload will be retried after reconnection");
+                return;
             }
             tokio::time::sleep(RELOAD_RETRY_DELAY).await;
             if !wallet.is_connected() {
-                break;
+                warn!("Node connection lost, wallet reload will be retried after reconnection");
+                return;
             }
-            attempt = attempt.saturating_add(1);
         }
-        reloading.store(false, Ordering::SeqCst);
     }
 
     pub async fn read_guard(&self) -> RwLockReadGuard<'_, ()> {
@@ -127,7 +132,7 @@ impl Service {
     }
 
     pub fn ensure_synced(&self) -> Result<(), Status> {
-        if self.reloading.load(Ordering::SeqCst) {
+        if !self.ready.load(Ordering::SeqCst) {
             return Err(Status::unavailable("wallet daemon is not synced yet"));
         }
         let account = self.wallet.account().map_err(|err| Status::failed_precondition(err.to_string()))?;
@@ -178,6 +183,30 @@ impl Service {
         let mut addresses = Self::addresses_through_current_index(&receive, "receive")?;
         addresses.extend(Self::addresses_through_current_index(&change, "change")?);
         Ok(addresses)
+    }
+
+    pub fn tracked_addresses(&self) -> Result<Vec<Address>, Status> {
+        let account = self.wallet.account().map_err(|err| Status::failed_precondition(err.to_string()))?;
+        let registered = account.utxo_context().addresses().iter().map(|address| address.as_ref().clone()).collect::<Vec<_>>();
+        Ok(policy::merge_addresses(self.wallet_addresses()?, registered))
+    }
+
+    pub async fn ensure_payment_secret_not_required(&self) -> Result<(), Status> {
+        let account = self.wallet.account().map_err(|err| Status::failed_precondition(err.to_string()))?;
+        let prv_key_data_id = account.prv_key_data_id().map_err(|err| Status::failed_precondition(err.to_string()))?;
+        let info = self
+            .wallet
+            .store()
+            .as_prv_key_data_store()
+            .map_err(|err| Status::internal(err.to_string()))?
+            .load_key_info(prv_key_data_id)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?
+            .ok_or_else(|| Status::internal(format!("private key data {prv_key_data_id} not found")))?;
+        if info.is_encrypted() {
+            return Err(Status::failed_precondition("wallets protected with a payment secret are not supported"));
+        }
+        Ok(())
     }
 
     fn address_managers(&self) -> Result<(Arc<AddressManager>, Arc<AddressManager>), Status> {
@@ -234,6 +263,7 @@ impl Service {
 
         let CreateUnsignedTransactionsRequest { address, amount, from, use_existing_change_address, is_send_all, fee_policy } =
             request;
+        policy::validate_payment_amount(amount, is_send_all)?;
         let (fee_rate, max_fee) = self.calculate_fee_limits(fee_policy).await?;
         let to = Address::try_from(address).map_err(|err| Status::invalid_argument(err.to_string()))?;
         let current_network = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?;
@@ -252,7 +282,7 @@ impl Service {
 
         info!("Processing request for account_id: {}", self.descriptor()?.account_id);
 
-        let addresses = self.wallet_addresses()?;
+        let addresses = self.tracked_addresses()?;
         if let Some(non_existent_address) = from_addresses.iter().find(|from| addresses.iter().all(|address| &address != from)) {
             return Err(Status::invalid_argument(format!("specified from address {non_existent_address} does not exists")));
         }
@@ -268,8 +298,16 @@ impl Service {
         };
 
         let mempool_addresses = search_addresses.clone().unwrap_or(addresses);
-        let utxos = account.clone().get_utxos(search_addresses, None).await.map_err(|err| Status::internal(err.to_string()))?;
         let mempool_spent = self.mempool_spent_outpoints(mempool_addresses).await?;
+        let utxos = account.clone().get_utxos(search_addresses, None).await.map_err(|err| Status::internal(err.to_string()))?;
+        let coinbase_maturity = policy::coinbase_maturity(current_network)?;
+        let current_daa_score =
+            self.wallet.current_daa_score().ok_or_else(|| Status::unavailable("current DAA score is not available yet"))?;
+        let utxos = policy::spendable_utxos(
+            utxos.into_iter().map(|utxo| UtxoEntryReference { utxo: Arc::new(utxo) }).collect(),
+            coinbase_maturity,
+            current_daa_score,
+        );
         let now = Instant::now();
         let utxos = {
             let mut used_outpoints = self.used_outpoints();
@@ -277,7 +315,7 @@ impl Service {
             utxos
                 .into_iter()
                 .filter(|utxo| {
-                    let outpoint = TransactionOutpoint::from(&utxo.outpoint);
+                    let outpoint = TransactionOutpoint::from(&utxo.utxo.outpoint);
                     !mempool_spent.contains(&outpoint) && !used_outpoints.is_used(&outpoint, now)
                 })
                 .collect::<Vec<_>>()
@@ -286,7 +324,7 @@ impl Service {
         // Sort UTXOs by amount descending to optimize transaction weight
         // Use large UTXOs in priority to minimize the number of inputs
         let mut sorted_utxos = utxos;
-        sorted_utxos.sort_unstable_by_key(|a| Reverse(a.amount));
+        sorted_utxos.sort_unstable_by_key(|a| Reverse(a.utxo.amount));
 
         if sorted_utxos.is_empty() {
             return Err(Status::failed_precondition("couldn't find funds to spend"));
@@ -306,12 +344,12 @@ impl Service {
             }
         };
 
-        let total_balance = sorted_utxos.iter().fold(0u64, |total, utxo| total.saturating_add(utxo.amount));
+        let total_balance = sorted_utxos.iter().fold(0u64, |total, utxo| total.saturating_add(utxo.utxo.amount));
         info!("Found {} UTXOs with total value {} sompi", sorted_utxos.len(), total_balance);
 
         let generation = GenerationParams {
             network_id: current_network,
-            utxos: sorted_utxos.into_iter().map(|utxo| UtxoEntryReference { utxo: Arc::new(utxo) }).collect(),
+            utxos: sorted_utxos,
             change_address: &change_address,
             sig_op_count: account.sig_op_count(),
             minimum_signatures: account.minimum_signatures(),
@@ -359,7 +397,7 @@ impl Service {
 
     pub async fn balances(&self) -> Result<Balances, Status> {
         self.ensure_synced()?;
-        let addresses = self.wallet_addresses()?;
+        let addresses = self.tracked_addresses()?;
         let rpc = self.wallet.rpc_api();
         let mempool_entries = rpc
             .get_mempool_entries_by_addresses(addresses.clone(), true, false)
@@ -466,6 +504,7 @@ impl Service {
         transactions: Vec<PartiallySignedTransaction>,
         password: String,
     ) -> Result<Vec<PartiallySignedTransaction>, Status> {
+        self.ensure_payment_secret_not_required().await?;
         let (account, payload) = self.single_signature_bip32_account()?;
         let network_type = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?.network_type();
         let prv_key_data = account.prv_key_data(password.into()).await.map_err(|err| match err {

@@ -20,7 +20,7 @@ kaspa-wallet-grpc-server.workspace = true
 kaspa-consensus-core.workspace = true
 log.workspace = true
 tonic.workspace = true
-tokio = { workspace = true, features = ["signal"] }
+tokio = { workspace = true, features = ["signal", "time"] }
 clap.workspace = true
 
 [lints]

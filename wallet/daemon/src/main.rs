@@ -11,9 +11,17 @@ use kaspa_wallet_core::{
 };
 use kaspa_wallet_grpc_core::kaspawalletd::kaspawalletd_server::KaspawalletdServer;
 use kaspa_wallet_grpc_server::{policy, service::Service};
-use std::{error::Error, str::FromStr, sync::Arc};
+use std::{error::Error, str::FromStr, sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 use tonic::transport::Server;
+
+const STARTUP_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const FORCED_EXIT_CODE: i32 = 130;
+
+enum ShutdownTrigger {
+    Request,
+    Signal(&'static str),
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -38,11 +46,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let options = ConnectOptions {
             block_async_connect: true,
-            strategy: ConnectStrategy::Fallback,
-            url: Some(rpc_address),
+            strategy: ConnectStrategy::Retry,
+            url: Some(rpc_address.clone()),
             ..Default::default()
         };
-        wrpc_client.connect(Some(options)).await?;
+        match tokio::time::timeout(STARTUP_CONNECT_TIMEOUT, wrpc_client.connect(Some(options))).await {
+            Ok(result) => {
+                result?;
+            }
+            Err(_) => {
+                if let Err(err) = wrpc_client.disconnect().await {
+                    error!("Failed to stop connecting to {}: {}", rpc_address, err);
+                }
+                return Err(
+                    format!("failed to connect to {} within {} seconds", rpc_address, STARTUP_CONNECT_TIMEOUT.as_secs()).into()
+                );
+            }
+        }
     }
 
     let dag_info = wallet.rpc_api().get_block_dag_info().await?;
@@ -71,8 +91,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Server::builder()
             .add_service(KaspawalletdServer::new(service))
             .serve_with_shutdown(args.listen_address, async {
-                let trigger = shutdown_trigger(shutdown_receiver).await;
-                info!("Shutdown initiated by {}, stopping gRPC server...", trigger);
+                match shutdown_trigger(shutdown_receiver).await {
+                    ShutdownTrigger::Request => {
+                        info!("Shutdown initiated by shutdown request, stopping gRPC server...");
+                    }
+                    ShutdownTrigger::Signal(signal) => {
+                        info!("Shutdown initiated by {}, stopping gRPC server...", signal);
+                        tokio::spawn(force_exit_on_next_signal());
+                    }
+                }
             })
             .await
     });
@@ -88,7 +115,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn shutdown_trigger(shutdown_receiver: oneshot::Receiver<()>) -> &'static str {
+async fn shutdown_trigger(shutdown_receiver: oneshot::Receiver<()>) -> ShutdownTrigger {
+    tokio::select! {
+        _ = shutdown_receiver => ShutdownTrigger::Request,
+        signal = next_signal() => ShutdownTrigger::Signal(signal),
+    }
+}
+
+async fn force_exit_on_next_signal() {
+    let signal = next_signal().await;
+    warn!("Received another {} during shutdown, exiting immediately", signal);
+    std::process::exit(FORCED_EXIT_CODE);
+}
+
+async fn next_signal() -> &'static str {
     let interrupt = async {
         if let Err(err) = tokio::signal::ctrl_c().await {
             error!("Failed to listen for interrupt signal: {}", err);
@@ -112,7 +152,6 @@ async fn shutdown_trigger(shutdown_receiver: oneshot::Receiver<()>) -> &'static 
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = shutdown_receiver => "shutdown request",
         _ = interrupt => "interrupt signal",
         _ = terminate => "SIGTERM",
     }

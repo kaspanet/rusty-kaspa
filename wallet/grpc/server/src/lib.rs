@@ -109,6 +109,7 @@ impl Kaspawalletd for Service {
         let _guard = self.write_guard().await;
         let SendRequest { to_address, amount, password, from, use_existing_change_address, is_send_all, fee_policy } =
             request.into_inner();
+        self.ensure_payment_secret_not_required().await?;
         let unsigned_transactions = self
             .create_unsigned_transactions(CreateUnsignedTransactionsRequest {
                 address: to_address,

@@ -20,6 +20,19 @@ pub const MAX_FEE_RATE: f64 = MAX_SOMPI as f64 / MAXIMUM_STANDARD_TRANSACTION_MA
 pub const USED_OUTPOINT_EXPIRY: Duration = Duration::from_secs(60);
 const SIGNED_SCHNORR_SIGNATURE_SCRIPT_SIZE: usize = 66;
 
+pub fn validate_payment_amount(amount: u64, is_send_all: bool) -> Result<(), Status> {
+    if is_send_all {
+        return Ok(());
+    }
+    if amount == 0 {
+        return Err(Status::invalid_argument("amount must be greater than zero unless is_send_all is set"));
+    }
+    if amount > MAX_SOMPI {
+        return Err(Status::invalid_argument(format!("amount {amount} exceeds the maximum of {MAX_SOMPI} sompi")));
+    }
+    Ok(())
+}
+
 pub fn validate_fee_rate(fee_rate: f64, name: &str) -> Result<f64, Status> {
     if !fee_rate.is_finite() {
         return Err(Status::invalid_argument(format!("requested {name} {fee_rate} is not a finite number")));
@@ -54,6 +67,12 @@ pub fn fee_cap_error(max_fee: u64, capped_rate: f64) -> Status {
     ))
 }
 
+pub fn max_fee_unsatisfiable_error(max_fee: u64, fee: u64, fee_rate: f64) -> Status {
+    Status::failed_precondition(format!(
+        "max fee {max_fee} cannot be satisfied: transaction fee {fee} exceeds it at fee rate {fee_rate:.6}"
+    ))
+}
+
 pub struct GenerationParams<'a> {
     pub network_id: NetworkId,
     pub utxos: Vec<UtxoEntryReference>,
@@ -67,7 +86,8 @@ pub struct GenerationParams<'a> {
 
 fn generator_error(err: Error) -> Status {
     match err {
-        Error::InsufficientFunds { .. } => Status::failed_precondition(err.to_string()),
+        Error::InsufficientFunds { .. } | Error::TransactionFeesAreTooHigh => Status::failed_precondition(err.to_string()),
+        Error::GeneratorPaymentOutputZeroAmount => Status::invalid_argument(err.to_string()),
         err => Status::internal(err.to_string()),
     }
 }
@@ -103,8 +123,8 @@ pub fn generate_with_max_fee(params: &GenerationParams<'_>, fee_rate: f64, max_f
         return Err(fee_cap_error(max_fee, capped_rate));
     }
     let transactions = generate(params, capped_rate)?;
-    if let Some(rate) = capped_fee_rate(transactions.iter().map(|tx| (tx.fees(), tx.mass())), max_fee) {
-        return Err(fee_cap_error(max_fee, rate));
+    if let Some(fee) = transactions.iter().map(|tx| tx.fees()).find(|fee| *fee > max_fee) {
+        return Err(max_fee_unsatisfiable_error(max_fee, fee, capped_rate));
     }
     Ok(transactions)
 }
@@ -168,6 +188,23 @@ pub fn coinbase_maturity(network_id: NetworkId) -> Result<u64, Status> {
 
 pub fn is_utxo_spendable(is_coinbase: bool, block_daa_score: u64, coinbase_maturity: u64, virtual_daa_score: u64) -> bool {
     !is_coinbase || block_daa_score.saturating_add(coinbase_maturity) < virtual_daa_score
+}
+
+pub fn spendable_utxos(utxos: Vec<UtxoEntryReference>, coinbase_maturity: u64, virtual_daa_score: u64) -> Vec<UtxoEntryReference> {
+    utxos
+        .into_iter()
+        .filter(|utxo| is_utxo_spendable(utxo.utxo.is_coinbase, utxo.utxo.block_daa_score, coinbase_maturity, virtual_daa_score))
+        .collect()
+}
+
+pub fn merge_addresses(primary: Vec<Address>, tracked: impl IntoIterator<Item = Address>) -> Vec<Address> {
+    let known = primary.iter().cloned().collect::<HashSet<_>>();
+    let mut extra = tracked.into_iter().filter(|address| !known.contains(address)).collect::<Vec<_>>();
+    extra.sort_by_cached_key(|address| address.to_string());
+    extra.dedup();
+    let mut addresses = primary;
+    addresses.extend(extra);
+    addresses
 }
 
 pub fn mempool_spent_outpoints(entries: &[RpcMempoolEntryByAddress]) -> HashSet<TransactionOutpoint> {
@@ -371,6 +408,87 @@ mod tests {
         assert_eq!(err.code(), Code::FailedPrecondition);
         assert!(err.message().starts_with("setting --max-fee to 1000 results in a fee rate of "));
         assert!(err.message().ends_with("which is below the minimum allowed fee rate of 100.0 sompi/gram"));
+    }
+
+    #[test]
+    fn payment_amount_validation() {
+        for amount in [0, 1, MAX_SOMPI, MAX_SOMPI + 1, u64::MAX] {
+            assert!(validate_payment_amount(amount, true).is_ok(), "{amount}");
+        }
+        assert!(validate_payment_amount(1, false).is_ok());
+        assert!(validate_payment_amount(MAX_SOMPI, false).is_ok());
+        for amount in [0, MAX_SOMPI + 1, u64::MAX] {
+            assert_eq!(validate_payment_amount(amount, false).unwrap_err().code(), Code::InvalidArgument, "{amount}");
+        }
+        assert_eq!(
+            validate_payment_amount(0, false).unwrap_err().message(),
+            "amount must be greater than zero unless is_send_all is set"
+        );
+        assert_eq!(
+            validate_payment_amount(u64::MAX, false).unwrap_err().message(),
+            format!("amount {} exceeds the maximum of {MAX_SOMPI} sompi", u64::MAX)
+        );
+    }
+
+    #[test]
+    fn overflowing_payment_amount_is_rejected_before_generation() {
+        assert_eq!(validate_payment_amount(u64::MAX, false).unwrap_err().code(), Code::InvalidArgument);
+        let generation = params(utxos(1000, SOMPI_PER_KASPA), &address(2), &address(3), MAX_SOMPI, false);
+        assert!(validate_payment_amount(generation.amount, generation.is_send_all).is_ok());
+        assert_eq!(generate(&generation, 1000.0).unwrap_err().code(), Code::FailedPrecondition);
+    }
+
+    #[test]
+    fn send_all_with_fees_too_high_is_failed_precondition() {
+        let err = generate(&params(utxos(1000, 100), &address(2), &address(3), 0, true), 100.0).unwrap_err();
+        assert_eq!(err.code(), Code::FailedPrecondition);
+        assert_eq!(err.message(), Error::TransactionFeesAreTooHigh.to_string());
+    }
+
+    #[test]
+    fn max_fee_unsatisfiable_after_capping() {
+        let generation = params(utxos(1, 50_000_000), &address(2), &address(3), 25_000_000, false);
+        let err = generate_with_max_fee(&generation, 1000.0, 17_500_000).unwrap_err();
+        assert_eq!(err.code(), Code::FailedPrecondition);
+        assert_eq!(err.message(), "max fee 17500000 cannot be satisfied: transaction fee 25000000 exceeds it at fee rate 875.000000");
+    }
+
+    #[test]
+    fn coinbase_maturity_boundary() {
+        let maturity = 100;
+        let entry = |is_coinbase: bool, block_daa_score: u64| {
+            let mut utxo = (*UtxoEntryReference::simulated_with_address(1, &address(1)).utxo).clone();
+            utxo.is_coinbase = is_coinbase;
+            utxo.block_daa_score = block_daa_score;
+            UtxoEntryReference { utxo: std::sync::Arc::new(utxo) }
+        };
+        let block_daa_score = 1000;
+        let spendable_at = |is_coinbase: bool, virtual_daa_score: u64| {
+            spendable_utxos(vec![entry(is_coinbase, block_daa_score)], maturity, virtual_daa_score).len() == 1
+        };
+        assert!(!spendable_at(true, block_daa_score + maturity - 1));
+        assert!(!spendable_at(true, block_daa_score + maturity));
+        assert!(spendable_at(true, block_daa_score + maturity + 1));
+        for virtual_daa_score in [block_daa_score + maturity - 1, block_daa_score + maturity, block_daa_score + maturity + 1] {
+            assert!(spendable_at(false, virtual_daa_score));
+        }
+        let mixed = vec![entry(true, block_daa_score), entry(false, block_daa_score), entry(true, 0)];
+        let kept = spendable_utxos(mixed, maturity, block_daa_score + maturity);
+        assert_eq!(kept.len(), 2);
+        assert!(kept.iter().all(|utxo| !utxo.utxo.is_coinbase || utxo.utxo.block_daa_score == 0));
+    }
+
+    #[test]
+    fn tracked_addresses_are_merged_deterministically() {
+        let primary = vec![address(9), address(1), address(5)];
+        let tracked = vec![address(4), address(1), address(7), address(2), address(4)];
+        let mut expected_extra = vec![address(4), address(7), address(2)];
+        expected_extra.sort_by_cached_key(|address| address.to_string());
+        let mut expected = primary.clone();
+        expected.extend(expected_extra);
+        assert_eq!(merge_addresses(primary.clone(), tracked.clone()), expected);
+        assert_eq!(merge_addresses(primary.clone(), tracked.into_iter().rev()), expected);
+        assert_eq!(merge_addresses(primary.clone(), Vec::new()), primary);
     }
 
     #[test]
