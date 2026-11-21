@@ -1,4 +1,5 @@
 pub mod convert;
+pub mod pst;
 pub mod kaspawalletd {
     include!(concat!(env!("OUT_DIR"), "/kaspawalletd.rs"));
 }

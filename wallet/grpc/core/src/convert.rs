@@ -259,15 +259,6 @@ impl TryFrom<protoserialization::Outpoint> for RpcTransactionOutpoint {
     }
 }
 
-impl protoserialization::PartiallySignedTransaction {
-    pub fn from_unsigned(value: RpcTransaction) -> Self {
-        protoserialization::PartiallySignedTransaction {
-            partially_signed_inputs: vec![],
-            tx: Some(protoserialization::TransactionMessage::from(value)),
-        }
-    }
-}
-
 impl From<RpcTransaction> for protoserialization::TransactionMessage {
     fn from(value: RpcTransaction) -> Self {
         protoserialization::TransactionMessage {

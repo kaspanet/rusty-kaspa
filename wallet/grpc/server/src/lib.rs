@@ -1,14 +1,13 @@
 pub mod service;
 
 use kaspa_addresses::Version;
-use kaspa_consensus_core::tx::Transaction;
 use kaspa_wallet_core::api::WalletApi;
 use kaspa_wallet_core::{
     api::{AccountsGetUtxosRequest, AccountsSendRequest, NewAddressKind},
     prelude::Address,
     tx::{Fees, PaymentDestination, PaymentOutputs},
 };
-use kaspa_wallet_grpc_core::convert::{deserialize_txs, extract_tx};
+use kaspa_wallet_grpc_core::convert::deserialize_txs;
 use kaspa_wallet_grpc_core::kaspawalletd::{
     BroadcastRequest, BroadcastResponse, BumpFeeRequest, BumpFeeResponse, CreateUnsignedTransactionsRequest,
     CreateUnsignedTransactionsResponse, GetBalanceRequest, GetBalanceResponse, GetExternalSpendableUtxOsRequest,
@@ -16,7 +15,7 @@ use kaspa_wallet_grpc_core::kaspawalletd::{
     SendResponse, ShowAddressesRequest, ShowAddressesResponse, ShutdownRequest, ShutdownResponse, SignRequest, SignResponse,
     fee_policy::FeePolicy, kaspawalletd_server::Kaspawalletd,
 };
-use kaspa_wallet_grpc_core::protoserialization::{PartiallySignedTransaction, TransactionMessage};
+use kaspa_wallet_grpc_core::pst::decode_partially_signed_transaction;
 use service::Service;
 use tonic::{Code, Request, Response, Status};
 
@@ -61,7 +60,7 @@ impl Kaspawalletd for Service {
         let transactions =
             self.unsigned_txs(to_address, amount, use_existing_change_address, is_send_all, fee_rate, max_fee, from_addresses).await?;
         let unsigned_transactions =
-            transactions.into_iter().map(|tx| PartiallySignedTransaction::from_unsigned(tx).encode_to_vec()).collect();
+            self.unsigned_partially_signed_transactions(transactions)?.into_iter().map(|pst| pst.encode_to_vec()).collect();
         Ok(Response::new(CreateUnsignedTransactionsResponse { unsigned_transactions }))
     }
 
@@ -172,16 +171,16 @@ impl Kaspawalletd for Service {
         let SignRequest { unsigned_transactions, password } = request.into_inner();
 
         let unsigned_transactions = unsigned_transactions
+            .iter()
+            .map(|tx| decode_partially_signed_transaction(tx.as_slice()))
+            .collect::<Result<Vec<_>, Status>>()?;
+
+        let signed_transactions = self
+            .sign_partially_signed_transactions(unsigned_transactions, password)
+            .await?
             .into_iter()
-            .map(|tx| extract_tx(tx.as_slice(), self.use_ecdsa()))
-            // todo convert directly to consensus::transaction
-            .map(|r| r.and_then(|rtx| Transaction::try_from(rtx).map_err(|err| Status::internal(err.to_string()))))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let signed_transactions = self.sign_transactions(unsigned_transactions, password).await?;
-
-        let signed_transactions =
-            signed_transactions.into_iter().map(|rpc_tx| TransactionMessage::from(rpc_tx).encode_to_vec()).collect();
+            .map(|pst| pst.encode_to_vec())
+            .collect();
         Ok(Response::new(SignResponse { signed_transactions }))
     }
 

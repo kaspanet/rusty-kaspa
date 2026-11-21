@@ -2,11 +2,11 @@ use fee_policy::FeePolicy;
 use futures_util::{FutureExt, TryStreamExt, select};
 use kaspa_addresses::Prefix;
 use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
-use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry};
-use kaspa_rpc_core::RpcTransaction;
+use kaspa_wallet_core::account::Account;
+use kaspa_wallet_core::account::variants::bip32::{BIP32_ACCOUNT_KIND, Payload};
 use kaspa_wallet_core::api::NewAddressKind;
 use kaspa_wallet_core::prelude::{PaymentDestination, PaymentOutput, PaymentOutputs};
-use kaspa_wallet_core::tx::{Fees, Generator, GeneratorSettings, Signer, SignerT};
+use kaspa_wallet_core::tx::{Fees, Generator, GeneratorSettings, PendingTransaction};
 use kaspa_wallet_core::utxo::UtxoEntryReference;
 use kaspa_wallet_core::{
     api::WalletApi,
@@ -16,6 +16,8 @@ use kaspa_wallet_core::{
 };
 use kaspa_wallet_grpc_core::kaspawalletd;
 use kaspa_wallet_grpc_core::kaspawalletd::fee_policy;
+use kaspa_wallet_grpc_core::protoserialization::PartiallySignedTransaction;
+use kaspa_wallet_grpc_core::pst;
 use log::{error, info};
 use std::cmp::Reverse;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -162,7 +164,7 @@ impl Service {
         fee_rate: f64,
         max_fee: u64,
         from_addresses: Vec<Address>,
-    ) -> Result<Vec<RpcTransaction>, Status> {
+    ) -> Result<Vec<PendingTransaction>, Status> {
         let current_network = self.wallet().network_id().map_err(|err| Status::internal(err.to_string()))?;
         if to.prefix != Prefix::from(current_network) {
             return Err(Status::invalid_argument(format!(
@@ -233,7 +235,7 @@ impl Service {
         let mut stream = generator.stream();
         let mut txs = vec![];
         while let Some(transaction) = stream.try_next().await.map_err(|err| Status::internal(err.to_string()))? {
-            txs.push(transaction.rpc_transaction());
+            txs.push(transaction);
         }
         if generator.summary().aggregate_fees > max_fee {
             return Err(Status::failed_precondition(format!(
@@ -245,51 +247,86 @@ impl Service {
         Ok(txs)
     }
 
-    pub async fn sign_transactions(
+    fn single_signature_bip32_account(&self) -> Result<(Arc<dyn Account>, Payload), Status> {
+        let account = self.wallet.account().map_err(|err| Status::failed_precondition(err.to_string()))?;
+        if account.account_kind() != BIP32_ACCOUNT_KIND || account.minimum_signatures() != 1 {
+            return Err(Status::unimplemented("only bip32 single-signature accounts are supported"));
+        }
+        let payload = Payload::try_load(&account.to_storage().map_err(|err| Status::internal(err.to_string()))?)
+            .map_err(|err| Status::internal(err.to_string()))?;
+        if payload.xpub_keys.len() != 1 {
+            return Err(Status::unimplemented("only bip32 single-signature accounts are supported"));
+        }
+        Ok((account, payload))
+    }
+
+    pub fn unsigned_partially_signed_transactions(
         &self,
-        unsigned_transactions: Vec<Transaction>,
+        transactions: Vec<PendingTransaction>,
+    ) -> Result<Vec<PartiallySignedTransaction>, Status> {
+        let (account, payload) = self.single_signature_bip32_account()?;
+        let account_xpub =
+            payload.xpub_keys.first().ok_or_else(|| Status::unimplemented("only bip32 single-signature accounts are supported"))?;
+        let network_type = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?.network_type();
+        let derivation = account.as_derivation_capable().map_err(|err| Status::failed_precondition(err.to_string()))?.derivation();
+
+        transactions
+            .into_iter()
+            .map(|transaction| {
+                let rpc_transaction = transaction.rpc_transaction();
+                let utxo_entries = transaction.utxo_entries();
+                let inputs = rpc_transaction
+                    .inputs
+                    .iter()
+                    .map(|input| {
+                        let entry = utxo_entries
+                            .values()
+                            .find(|entry| {
+                                entry.utxo.outpoint.transaction_id() == input.previous_outpoint.transaction_id
+                                    && entry.utxo.outpoint.index() == input.previous_outpoint.index
+                            })
+                            .ok_or_else(|| Status::internal("missing utxo entry for transaction input"))?;
+                        let address = entry.utxo.address.as_ref().ok_or_else(|| Status::internal("missing utxo entry address"))?;
+                        let (receive, change) =
+                            derivation.addresses_indexes(&[address]).map_err(|err| Status::internal(err.to_string()))?;
+                        let derivation_path = match (receive.first(), change.first()) {
+                            (Some((_, index)), _) => pst::derivation_path(false, *index),
+                            (None, Some((_, index))) => pst::derivation_path(true, *index),
+                            (None, None) => return Err(Status::internal(format!("address {address} does not belong to the account"))),
+                        };
+                        Ok(pst::InputSource {
+                            amount: entry.utxo.amount,
+                            script_public_key: entry.utxo.script_public_key.clone(),
+                            derivation_path,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Status>>()?;
+                pst::unsigned_partially_signed_transaction(rpc_transaction, inputs, account_xpub, network_type)
+            })
+            .collect()
+    }
+
+    pub async fn sign_partially_signed_transactions(
+        &self,
+        transactions: Vec<PartiallySignedTransaction>,
         password: String,
-    ) -> Result<Vec<RpcTransaction>, Status> {
+    ) -> Result<Vec<PartiallySignedTransaction>, Status> {
         if self.use_ecdsa() {
             return Err(Status::unimplemented("Ecdsa signing is not supported yet"));
         }
 
-        let account = self.wallet().account().map_err(|e| Status::internal(format!("Account error: {}", e)))?;
-
-        let utxos = account.clone().get_utxos(None, None).await.map_err(|err| Status::internal(err.to_string()))?;
-        let utxo_context = account.utxo_context();
-
-        let signable_txs: Vec<SignableTransaction> = unsigned_transactions
-            .into_iter()
-            .map(|tx| {
-                let entries = tx
-                    .inputs
-                    .iter()
-                    .map(|input| {
-                        utxos
-                            .iter()
-                            .find(|utxo| TransactionOutpoint::from(&utxo.outpoint) == input.previous_outpoint)
-                            .map(UtxoEntry::from)
-                            .ok_or(Status::invalid_argument(format!("Wallet does not have mature utxo for input {input:?}")))
-                    })
-                    .collect::<Result<_, Status>>()?;
-                Ok(SignableTransaction::with_entries(tx, entries))
-            })
-            .collect::<Result<_, Status>>()?;
-
+        let (account, payload) = self.single_signature_bip32_account()?;
+        if payload.ecdsa {
+            return Err(Status::unimplemented("Ecdsa signing is not supported yet"));
+        }
+        let network_type = self.wallet.network_id().map_err(|err| Status::internal(err.to_string()))?.network_type();
         let prv_key_data = account.prv_key_data(password.into()).await.map_err(|err| Status::internal(err.to_string()))?;
-        let addresses: Vec<_> = utxo_context.addresses().iter().map(|addr| addr.as_ref().clone()).collect();
+        let master = prv_key_data.get_xprv(None).map_err(|err| Status::internal(err.to_string()))?;
+        let account_xprv = pst::account_extended_private_key(master, payload.account_index)?;
 
-        let signer = Signer::new(account.clone(), prv_key_data, None);
-        let signed_txs = signable_txs
+        transactions
             .into_iter()
-            .map(|tx| {
-                let signed = signer.try_sign(tx, addresses.as_slice()).map_err(|err| Status::internal(err.to_string()))?;
-                Ok(signed.tx)
-            })
-            .collect::<Result<Vec<_>, Status>>()?;
-
-        let signed_txs = signed_txs.into_iter().map(|tx| RpcTransaction::from(&tx)).collect();
-        Ok(signed_txs)
+            .map(|transaction| pst::sign_partially_signed_transaction(transaction, &account_xprv, network_type))
+            .collect()
     }
 }

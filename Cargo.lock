@@ -4434,11 +4434,14 @@ name = "kaspa-wallet-grpc-core"
 version = "2.1.0"
 dependencies = [
  "kaspa-bip32",
+ "kaspa-consensus-core",
  "kaspa-rpc-core",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-wallet-core",
+ "kaspa-wallet-keys",
  "prost",
+ "tokio",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
