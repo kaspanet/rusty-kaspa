@@ -1136,8 +1136,8 @@ mod tests {
                 assert_eq!(mine_overflow_shl.1, default_overflow_shl.1);
             }
             {
-                let mine_overflow_shr = mine.overflowing_shl(shift);
-                let default_overflow_shr = default.overflowing_shl(shift);
+                let mine_overflow_shr = mine.overflowing_shr(shift);
+                let default_overflow_shr = default.overflowing_shr(shift);
                 assert_equal(mine_overflow_shr.0, default_overflow_shr.0, check_fmt);
                 assert_eq!(mine_overflow_shr.1, default_overflow_shr.1);
             }

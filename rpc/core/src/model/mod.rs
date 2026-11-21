@@ -1,6 +1,7 @@
 //! This module contains RPC-specific data structures
 //! used in RPC methods.
 
+pub mod accepting_block;
 pub mod address;
 pub mod block;
 pub mod blue_work;
@@ -20,6 +21,7 @@ pub mod tx;
 pub mod utxo_cursor;
 pub mod verbosity;
 
+pub use accepting_block::*;
 pub use address::*;
 pub use block::*;
 pub use blue_work::*;

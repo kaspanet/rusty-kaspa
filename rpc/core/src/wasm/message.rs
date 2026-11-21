@@ -1346,6 +1346,72 @@ try_from! ( args: GetUtxosByAddressesV2Response, IGetUtxosByAddressesV2Response,
     Ok(response)
 });
 
+declare! {
+    IGetUtxosByCovenantIdsRequest,
+    r#"
+    /**
+     * Requests UTXOs matching current covenant IDs, traversed in ascending ID order.
+     * Requires a node started with `--utxoindex --covenant-index`.
+     *
+     * @category Node RPC
+     */
+    export interface IGetUtxosByCovenantIdsRequest {
+        covenantIds : HexString[];
+        /** Omitted or empty includes every script public key. */
+        scriptPublicKeys? : (ScriptPublicKey | IScriptPublicKey | HexString)[];
+        /** Inclusive lower DAA-score bound. */
+        fromDaaScore? : bigint;
+        /** Inclusive upper DAA-score bound. */
+        toDaaScore? : bigint;
+        /** Echo the previous response's cursor with the same filters. */
+        cursor? : IRpcGetUtxosByCovenantIdsCursor;
+        /** Weighted database-operation budget, defaults to 1000, above 5000 requires `--unsaferpc`. */
+        budget? : bigint;
+    }
+    "#,
+}
+
+try_from! ( args: IGetUtxosByCovenantIdsRequest, GetUtxosByCovenantIdsRequest, {
+    let object = Object::from(JsValue::from(args));
+    let script_public_keys = if let Some(value) = object.try_get_value("scriptPublicKeys")? {
+        value.dyn_into::<Array>()
+            .map_err(|_| Error::InvalidGetUtxosByCovenantIdsRequest("scriptPublicKeys must be an array".to_string()))?
+            .iter()
+            .map(RpcScriptPublicKey::try_owned_from)
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    } else {
+        vec![]
+    };
+    let normalized = Object::assign(&Object::new(), &object);
+    normalized.set("scriptPublicKeys", &to_value(&script_public_keys)?)?;
+    Ok(from_value(normalized.into())?)
+});
+
+declare! {
+    IGetUtxosByCovenantIdsResponse,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetUtxosByCovenantIdsResponse {
+        entries : UtxoEntryReference[];
+        /** Continue while present, even when entries is empty. Absent means the query is complete. */
+        nextCursor? : IRpcGetUtxosByCovenantIdsCursor;
+    }
+    "#,
+}
+
+try_from! ( args: GetUtxosByCovenantIdsResponse, IGetUtxosByCovenantIdsResponse, {
+    let GetUtxosByCovenantIdsResponse { entries, next_cursor } = args;
+    let entries = js_sys::Array::from_iter(entries.into_iter().map(UtxoEntryReference::from).map(JsValue::from));
+    let response = IGetUtxosByCovenantIdsResponse::default();
+    response.set("entries", entries.as_ref())?;
+    if let Some(cursor) = next_cursor {
+        response.set("nextCursor", &to_value(&cursor)?)?;
+    }
+    Ok(response)
+});
+
 // ---
 
 declare! {
@@ -1918,6 +1984,94 @@ try_from!( args: GetFeeEstimateExperimentalResponse, IGetFeeEstimateExperimental
     }
 
     Ok(response)
+});
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ACCEPTING_BLOCK: &'static str = r#"
+    /**
+     * An accepting block hash or the exact accepting DAA score in the node's current virtual
+     * selected-parent chain. Reorgs can invalidate a previously observed accepting score.
+     * @category Node RPC
+     */
+    export type AcceptingBlock = { hash: HexString } | { daaScore: bigint };
+
+    /** Full transaction returned by getTransactionsByAcceptingBlock. @category Node RPC */
+    export interface IPopulatedRpcTransaction extends Omit<ITransaction, "inputs" | "outputs" | "verboseData"> {
+        inputs: (Omit<ITransactionInput, "verboseData"> & {
+            verboseData: {
+                utxoEntry: Omit<IUtxoEntry, "outpoint" | "address" | "covenantId" | "scriptPublicKey"> & {
+                    scriptPublicKey: HexString;
+                    covenantId?: HexString | null;
+                    verboseData?: null;
+                };
+            };
+        })[];
+        outputs: (Omit<ITransactionOutput, "verboseData"> & {
+            covenant?: ICovenantBinding | null;
+            verboseData?: null;
+        })[];
+        verboseData: {
+            transactionId: HexString;
+            hash: HexString;
+            computeMass?: bigint | null;
+            blockHash?: null;
+            blockTime?: null;
+        };
+    }
+"#;
+
+declare! {
+    IGetTransactionsByAcceptingBlockRequest,
+    r#"
+    /**
+     * Retrieves full transactions and populated input UTXOs using their accepting block.
+     *
+     * For a UTXO received through UTXO-change notifications or a UTXO/covenant index query,
+     * use its outpoint's transaction ID and its entry's blockDaaScore. The transaction must
+     * still be within the node's retained history.
+     *
+     * The DAA score must belong to the accepting block in the current virtual selected-parent
+     * chain at query time. Small reorgs can change that block and invalidate the observed score.
+     * Consider waiting 1-2 seconds after observing a new UTXO, or refresh its data and retry a
+     * failed lookup with the current score if the UTXO is still present. The delay reduces
+     * reorg races and does not guarantee finality.
+     *
+     * @example
+     * const { transactions } = await rpc.getTransactionsByAcceptingBlock({
+     *     acceptingBlock: { daaScore: utxo.blockDaaScore },
+     *     transactionIds: [utxo.outpoint.transactionId],
+     * });
+     *
+     * @category Node RPC
+     */
+    export interface IGetTransactionsByAcceptingBlockRequest {
+        acceptingBlock: AcceptingBlock;
+        /**
+         * Between 1 and 8192 unique transaction IDs. Results follow this order.
+         * Typical mergesets contain far fewer transactions; split larger batches across calls
+         * using the same accepting-block selector.
+         */
+        transactionIds: HexString[];
+    }
+    "#,
+}
+
+try_from!(args: IGetTransactionsByAcceptingBlockRequest, GetTransactionsByAcceptingBlockRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetTransactionsByAcceptingBlockResponse,
+    r#"
+    /** @category Node RPC */
+    export interface IGetTransactionsByAcceptingBlockResponse {
+        transactions: IPopulatedRpcTransaction[];
+    }
+    "#,
+}
+
+try_from!(args: GetTransactionsByAcceptingBlockResponse, IGetTransactionsByAcceptingBlockResponse, {
+    Ok(to_value(&args)?.into())
 });
 
 declare! {

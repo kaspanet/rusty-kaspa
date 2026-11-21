@@ -15,12 +15,21 @@ use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
 
+/// Maximum transaction IDs per get_transactions_by_accepting_block request.
+/// Typical mergesets contain far fewer transactions; larger batches can be split across calls.
+pub const MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS: usize = 8_192;
+
 // constants pertaining to the get_utxos_by_addresses_v2 RPC method
 pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE: usize = 5_000;
 // same as [`MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE`], setting this higher has little practical effect,
 // if we assume each address has a least one utxo
 pub const MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT: usize = 5_000;
 pub const DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT: usize = 1_000;
+
+// constants pertaining to the get_utxos_by_covenant_ids RPC method
+pub const MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_DB_OPS: usize = 5_000;
+pub const MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT: usize = 5_000;
+pub const DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS: usize = 1_000;
 
 /// Client RPC Api
 ///
@@ -399,6 +408,33 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetUtxosByAddressesV2Request,
     ) -> RpcResult<GetUtxosByAddressesV2Response>;
 
+    /// Requests UTXOs for multiple covenant ids, optionally filtered by an inclusive
+    /// DAA-score range and a script public key list. Ids are traversed in ascending covenant
+    /// id order regardless of request order; a cursor resumes at its covenant id, skipping
+    /// ids that sort before it.
+    ///
+    /// This call is only available when this node was started with `--utxoindex --covenant-index`.
+    async fn get_utxos_by_covenant_ids(
+        &self,
+        covenant_ids: Vec<RpcHash>,
+        script_public_keys: Vec<RpcScriptPublicKey>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+        budget: Option<usize>,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse> {
+        self.get_utxos_by_covenant_ids_call(
+            None,
+            GetUtxosByCovenantIdsRequest::new(covenant_ids, script_public_keys, from_daa_score, to_daa_score, cursor, budget),
+        )
+        .await
+    }
+    async fn get_utxos_by_covenant_ids_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetUtxosByCovenantIdsRequest,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse>;
+
     /// Requests the blue score of the current selected parent of the virtual block.
     async fn get_sink_blue_score(&self) -> RpcResult<u64> {
         Ok(self.get_sink_blue_score_call(None, GetSinkBlueScoreRequest {}).await?.blue_score)
@@ -481,6 +517,34 @@ pub trait RpcApi: Sync + Send + AnySync {
         connection: Option<&DynRpcConnection>,
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
+
+    /// Returns full transactions and their input UTXOs in the requested order.
+    /// The request must contain 1-8192 unique transaction IDs accepted by the specified block.
+    /// Larger batches can be split into multiple calls using the same accepting-block selector.
+    ///
+    /// A DAA-score selector resolves against the node's current virtual selected-parent chain;
+    /// reorgs can invalidate previously observed accepting scores. When querying a newly observed
+    /// UTXO, consider waiting 1-2 seconds or refreshing its UTXO data before retrying a failed
+    /// lookup. See [`GetTransactionsByAcceptingBlockRequest`] for the recommended usage pattern.
+    async fn get_transactions_by_accepting_block(
+        &self,
+        accepting_block: RpcAcceptingBlock,
+        transaction_ids: Vec<RpcTransactionId>,
+    ) -> RpcResult<Vec<RpcOptionalTransaction>> {
+        Ok(self
+            .get_transactions_by_accepting_block_call(
+                None,
+                GetTransactionsByAcceptingBlockRequest::new(accepting_block, transaction_ids),
+            )
+            .await?
+            .transactions)
+    }
+
+    async fn get_transactions_by_accepting_block_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByAcceptingBlockRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlockResponse>;
 
     async fn get_utxo_return_address(&self, txid: RpcHash, accepting_block_daa_score: u64) -> RpcResult<RpcAddress> {
         Ok(self

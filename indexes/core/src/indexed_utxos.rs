@@ -1,4 +1,7 @@
-use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+use kaspa_consensus_core::{
+    BlockHashMap,
+    tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry},
+};
 use kaspa_hashes::Hash;
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::de::{Error as DeError, SeqAccess, Visitor};
@@ -63,6 +66,36 @@ impl Display for UtxoPageCursor {
     }
 }
 
+/// Cursor over the covenant index.
+#[derive(Clone, Debug)]
+pub struct CovenantUtxoPageCursor {
+    pub covenant_id: Hash,
+    pub daa_score: u64,
+    pub script_public_key: ScriptPublicKey,
+    pub transaction_outpoint: TransactionOutpoint,
+}
+
+impl CovenantUtxoPageCursor {
+    pub fn new(
+        covenant_id: Hash,
+        daa_score: u64,
+        script_public_key: ScriptPublicKey,
+        transaction_outpoint: TransactionOutpoint,
+    ) -> Self {
+        Self { covenant_id, daa_score, script_public_key, transaction_outpoint }
+    }
+}
+
+impl Display for CovenantUtxoPageCursor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "CovenantUtxoPageCursor {{ covenant_id: {}, daa_score: {}, script_public_key: {:?}, transaction_outpoint: {} }}",
+            self.covenant_id, self.daa_score, self.script_public_key, self.transaction_outpoint
+        )
+    }
+}
+
 /// A page of ordered UTXOs with an optional cursor for the next group.
 #[derive(Clone, Debug)]
 pub struct OrderedUtxoEntriesPage {
@@ -84,8 +117,54 @@ impl OrderedUtxoEntriesPage {
     }
 }
 
+/// Covenant UTXO rows in ascending (covenant id, daa score, script public key, outpoint)
+/// order, each holding its covenant id, script public key, key suffix record, and the
+/// compact entry resolved from the address store.
+pub type CovenantUtxoEntries = Vec<(Hash, ScriptPublicKey, UtxoEntryKeySuffixRecord, CompactUtxoEntry)>;
+
+/// Shared handle to [`CovenantUtxoEntries`].
+pub type OrderedCovenantUtxoEntries = Arc<CovenantUtxoEntries>;
+
+/// A page of covenant-ordered UTXOs with an optional cursor for the next page.
+#[derive(Clone, Debug)]
+pub struct OrderedCovenantUtxoEntriesPage {
+    entries: OrderedCovenantUtxoEntries,
+    next_cursor: Option<CovenantUtxoPageCursor>,
+}
+
+impl OrderedCovenantUtxoEntriesPage {
+    pub fn new(entries: OrderedCovenantUtxoEntries, next_cursor: Option<CovenantUtxoPageCursor>) -> Self {
+        Self { entries, next_cursor }
+    }
+
+    pub fn entries(&self) -> &OrderedCovenantUtxoEntries {
+        &self.entries
+    }
+
+    pub fn next_cursor(&self) -> Option<&CovenantUtxoPageCursor> {
+        self.next_cursor.as_ref()
+    }
+}
+
 /// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxoEntry`].
 pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
+
+/// A collection of covenant index writes keyed by [`Hash`] (the covenant id) with no payload.
+pub type UtxoSetByCovenantId = BlockHashMap<Vec<(ScriptPublicKey, UtxoEntryKeySuffixRecord)>>;
+
+/// Covenant index writes derived from a utxo diff: per covenant id, the (script public key,
+/// key suffix record) triples to remove and to add, with no payload.
+#[derive(Debug, Clone, Default)]
+pub struct CovenantUtxoChanges {
+    pub added: UtxoSetByCovenantId,
+    pub removed: UtxoSetByCovenantId,
+}
+
+impl CovenantUtxoChanges {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
 
 /// A map of balance by script public key
 pub type BalanceByScriptPublicKey = HashMap<ScriptPublicKey, u64>;

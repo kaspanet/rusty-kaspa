@@ -792,7 +792,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let external_block_store = DbBlockTransactionsStore::new(external_storage, CachePolicy::Count(config.perf.block_data_cache_size));
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
-    let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
+    let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db, false).unwrap();
     let index_service = Arc::new(IndexService::new(
         &notify_service.notifier(),
         subscription_context.clone(),

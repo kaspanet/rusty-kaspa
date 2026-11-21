@@ -1590,6 +1590,123 @@ impl Deserializer for GetUtxosByAddressesV2Response {
     }
 }
 
+/// Represents a UTXO entry of a covenant id returned by the `GetUtxosByCovenantIds` RPC.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcUtxosByCovenantIdsEntry {
+    pub address: Option<RpcAddress>,
+    pub outpoint: RpcTransactionOutpoint,
+    pub utxo_entry: RpcUtxoEntry,
+}
+
+impl Serializer for RpcUtxosByCovenantIdsEntry {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?; // version
+        store!(Option<RpcAddress>, &self.address, writer)?;
+        serialize!(RpcTransactionOutpoint, &self.outpoint, writer)?;
+        serialize!(RpcUtxoEntry, &self.utxo_entry, writer)
+    }
+}
+
+impl Deserializer for RpcUtxosByCovenantIdsEntry {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u8 = load!(u8, reader)?;
+        let address = load!(Option<RpcAddress>, reader)?;
+        let outpoint = deserialize!(RpcTransactionOutpoint, reader)?;
+        let utxo_entry = deserialize!(RpcUtxoEntry, reader)?;
+        Ok(Self { address, outpoint, utxo_entry })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByCovenantIdsRequest {
+    /// Covenant ids to query UTXOs for.
+    pub covenant_ids: Vec<RpcHash>,
+    /// Script public keys to include; an empty list includes every script public key.
+    pub script_public_keys: Vec<RpcScriptPublicKey>,
+    /// Inclusive DAA-score range start; None defaults to 0.
+    pub from_daa_score: Option<u64>,
+    /// Inclusive DAA-score range end; None defaults to u64::MAX.
+    pub to_daa_score: Option<u64>,
+    /// Cursor start position; None starts from the beginning.
+    pub cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+    /// Budget of weighted db operations spent for the page; a seek costs 10 units, an iterator advance costs 1. None defaults to 1k units. Entries per page never exceed the budget. >5k units requires `--unsaferpc` flag on a default node.
+    pub budget: Option<usize>,
+}
+
+impl GetUtxosByCovenantIdsRequest {
+    pub fn new(
+        covenant_ids: Vec<RpcHash>,
+        script_public_keys: Vec<RpcScriptPublicKey>,
+        from_daa_score: Option<u64>,
+        to_daa_score: Option<u64>,
+        cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+        budget: Option<usize>,
+    ) -> Self {
+        Self { covenant_ids, script_public_keys, from_daa_score, to_daa_score, cursor, budget }
+    }
+}
+
+impl Serializer for GetUtxosByCovenantIdsRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHash>, &self.covenant_ids, writer)?;
+        store!(Vec<RpcScriptPublicKey>, &self.script_public_keys, writer)?;
+        store!(Option<u64>, &self.from_daa_score, writer)?;
+        store!(Option<u64>, &self.to_daa_score, writer)?;
+        store!(Option<RpcGetUtxosByCovenantIdsCursor>, &self.cursor, writer)?;
+        store!(Option<usize>, &self.budget, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByCovenantIdsRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let covenant_ids = load!(Vec<RpcHash>, reader)?;
+        let script_public_keys = load!(Vec<RpcScriptPublicKey>, reader)?;
+        let from_daa_score = load!(Option<u64>, reader)?;
+        let to_daa_score = load!(Option<u64>, reader)?;
+        let cursor = load!(Option<RpcGetUtxosByCovenantIdsCursor>, reader)?;
+        let budget = load!(Option<usize>, reader)?;
+        Ok(Self { covenant_ids, script_public_keys, from_daa_score, to_daa_score, cursor, budget })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxosByCovenantIdsResponse {
+    /// UTXO entries for the requested covenant ids and DAA-score range, in ascending covenant id order.
+    pub entries: Vec<RpcUtxosByCovenantIdsEntry>,
+    /// Cursor for the next page; None means there is no next page.
+    pub next_cursor: Option<RpcGetUtxosByCovenantIdsCursor>,
+}
+
+impl GetUtxosByCovenantIdsResponse {
+    pub fn new(entries: Vec<RpcUtxosByCovenantIdsEntry>, next_cursor: Option<RpcGetUtxosByCovenantIdsCursor>) -> Self {
+        Self { entries, next_cursor }
+    }
+}
+
+impl Serializer for GetUtxosByCovenantIdsResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcUtxosByCovenantIdsEntry>, &self.entries, writer)?;
+        serialize!(Option<RpcGetUtxosByCovenantIdsCursor>, &self.next_cursor, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetUtxosByCovenantIdsResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcUtxosByCovenantIdsEntry>, reader)?;
+        let next_cursor = deserialize!(Option<RpcGetUtxosByCovenantIdsCursor>, reader)?;
+        Ok(Self { entries, next_cursor })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BanRequest {
@@ -2870,6 +2987,75 @@ impl Deserializer for GetBlockRewardInfoResponse {
         let merging_chain_block_hash = load!(Option<RpcHash>, reader)?;
         let reward_amount = load!(Option<u64>, reader)?;
         Ok(Self { header, block_color, confirmation_count, merging_chain_block_hash, reward_amount })
+    }
+}
+
+/// Requests fully populated transactions accepted by the specified block.
+/// The request must contain 1-8192 unique transaction IDs. Results follow the requested order.
+/// Typical mergesets contain far fewer transactions; larger batches can be split into multiple
+/// calls using the same accepting-block selector.
+///
+/// A DAA-score selector must identify the accepting block in the node's current virtual selected-parent
+/// chain at query time. A reorg can change the accepting block and its DAA score, causing a lookup
+/// using a previously observed score to fail.
+///
+/// To retrieve a UTXO's creating transaction, obtain the UTXO from a UTXO-change notification or a
+/// UTXO/covenant index query, then use its outpoint's transaction ID and its entry's `block_daa_score`.
+/// The transaction must still be within the node's retained history. For newly observed UTXOs,
+/// consider waiting 1-2 seconds for the accepting block to stabilize, or handle lookup failures by
+/// refreshing the UTXO data and retrying with its current score if it is still present. This delay
+/// reduces small-reorg races; it does not guarantee finality.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionsByAcceptingBlockRequest {
+    pub accepting_block: RpcAcceptingBlock,
+    pub transaction_ids: Vec<RpcTransactionId>,
+}
+
+impl GetTransactionsByAcceptingBlockRequest {
+    pub fn new(accepting_block: RpcAcceptingBlock, transaction_ids: Vec<RpcTransactionId>) -> Self {
+        Self { accepting_block, transaction_ids }
+    }
+}
+
+impl Serializer for GetTransactionsByAcceptingBlockRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcAcceptingBlock, &self.accepting_block, writer)?;
+        store!(Vec<RpcTransactionId>, &self.transaction_ids, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionsByAcceptingBlockRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let accepting_block = deserialize!(RpcAcceptingBlock, reader)?;
+        let transaction_ids = load!(Vec<RpcTransactionId>, reader)?;
+        Ok(Self { accepting_block, transaction_ids })
+    }
+}
+
+/// Full transactions with populated input UTXOs. Containing-block metadata is not supplied.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetTransactionsByAcceptingBlockResponse {
+    pub transactions: Vec<RpcOptionalTransaction>,
+}
+
+impl Serializer for GetTransactionsByAcceptingBlockResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcOptionalTransaction>, &self.transactions, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetTransactionsByAcceptingBlockResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transactions = deserialize!(Vec<RpcOptionalTransaction>, reader)?;
+        Ok(Self { transactions })
     }
 }
 

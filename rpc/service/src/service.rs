@@ -57,8 +57,9 @@ use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_perf_monitor::{Monitor as PerfMonitor, counters::CountersSnapshot};
 use kaspa_rpc_core::api::rpc::{
-    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT,
-    MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE,
+    DEFAULT_GET_UTXOS_BY_ADDRESSES_V2_LIMIT, DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS, MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS,
+    MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_ADDRESS_COUNT, MAX_SAFE_GET_UTXOS_BY_ADDRESSES_V2_PAGE_SIZE,
+    MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_DB_OPS, MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT,
 };
 use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
@@ -915,6 +916,86 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetUtxosByAddressesV2Response::new(entries, next_cursor.map(|c| (c, self.config.prefix()).try_into()).transpose()?))
     }
 
+    async fn get_utxos_by_covenant_ids_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxosByCovenantIdsRequest,
+    ) -> RpcResult<GetUtxosByCovenantIdsResponse> {
+        if !self.config.utxoindex {
+            return Err(RpcError::NoUtxoIndex);
+        }
+        if !self.config.covenant_index {
+            return Err(RpcError::NoCovenantIndex);
+        }
+
+        // An empty covenant id set is an invalid request, preventing accidental unbounded queries.
+        if request.covenant_ids.is_empty() {
+            return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(UtxoIndexError::QueryingEmptyCovenantIdSet.to_string()));
+        }
+
+        let budget = request.budget.unwrap_or(DEFAULT_GET_UTXOS_BY_COVENANT_IDS_DB_OPS);
+
+        if !self.config.unsafe_rpc
+            && (request.covenant_ids.len() > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT
+                || request.script_public_keys.len() > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_FILTER_COUNT)
+        {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+        if !self.config.unsafe_rpc && (budget > MAX_SAFE_GET_UTXOS_BY_COVENANT_IDS_DB_OPS) {
+            return Err(RpcError::UnavailableInSafeMode);
+        }
+
+        if budget == 0 {
+            return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest("budget must be greater than zero".to_string()));
+        }
+
+        // A request carries either a full cursor (echoed from a previous response's nextCursor)
+        // or none at all; partial cursors are rejected at the conversion boundary.
+        let from_daa_score = request.from_daa_score.unwrap_or(0);
+        let to_daa_score = request.to_daa_score.unwrap_or(u64::MAX);
+        let cursor = request
+            .cursor
+            .map(|cursor| {
+                if !request.covenant_ids.contains(&cursor.start_covenant_id) {
+                    return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(
+                        "cursor start covenant id must be one of the requested covenant ids".to_string(),
+                    ));
+                }
+                if cursor.start_daa_score < from_daa_score || cursor.start_daa_score > to_daa_score {
+                    return Err(RpcError::InvalidGetUtxosByCovenantIdsRequest(format!(
+                        "cursor.daa_score {} must be within from_daa_score and to_daa_score",
+                        cursor.start_daa_score
+                    )));
+                }
+                Ok(cursor.into())
+            })
+            .transpose()?;
+
+        let session = self.consensus_manager.consensus().unguarded_session();
+        // do not retrieve utxos while in unstable ibd state.
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let page = self
+            .utxoindex
+            .clone()
+            .unwrap()
+            .get_utxos_by_covenant_ids_page(
+                request.covenant_ids.clone(),
+                from_daa_score..=to_daa_score,
+                request.script_public_keys.clone(),
+                cursor,
+                Some(budget),
+            )
+            .await
+            .map_err(|e| RpcError::InvalidGetUtxosByCovenantIdsRequest(e.to_string()))?;
+
+        let entries = self.index_converter.get_ordered_utxos_by_covenant_ids_entries(page.entries());
+
+        Ok(GetUtxosByCovenantIdsResponse::new(entries, page.next_cursor().map(RpcGetUtxosByCovenantIdsCursor::from)))
+    }
+
     async fn get_balance_by_address_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -1100,6 +1181,39 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             let estimate = self.get_fee_estimate_call(connection, GetFeeEstimateRequest {}).await?.estimate;
             Ok(GetFeeEstimateExperimentalResponse { estimate, verbose: None })
         }
+    }
+
+    async fn get_transactions_by_accepting_block_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetTransactionsByAcceptingBlockRequest,
+    ) -> RpcResult<GetTransactionsByAcceptingBlockResponse> {
+        if request.transaction_ids.len() > MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS {
+            return Err(RpcError::General(format!(
+                "GetTransactionsByAcceptingBlock accepts at most {} transaction IDs (got {})",
+                MAX_GET_TRANSACTIONS_BY_ACCEPTING_BLOCK_TX_IDS,
+                request.transaction_ids.len(),
+            )));
+        }
+
+        let session = self.consensus_manager.consensus().session().await;
+        if session.async_is_consensus_in_transitional_ibd_state().await {
+            return Err(RpcError::ConsensusInTransitionalIbdState);
+        }
+
+        let tx_ids = Some(request.transaction_ids);
+        let result = match request.accepting_block {
+            RpcAcceptingBlock::Hash(hash) => {
+                session.async_get_transactions_by_accepting_block(hash, tx_ids, TransactionType::SignableTransaction).await?
+            }
+            RpcAcceptingBlock::DaaScore(score) => {
+                session.async_get_transactions_by_accepting_daa_score(score, tx_ids, TransactionType::SignableTransaction).await?
+            }
+        };
+        let TransactionQueryResult::SignableTransaction(transactions) = result else {
+            return Err(RpcError::General("expected populated transactions from consensus".to_string()));
+        };
+        Ok(GetTransactionsByAcceptingBlockResponse { transactions: transactions.iter().map(Into::into).collect() })
     }
 
     async fn get_utxo_return_address_call(

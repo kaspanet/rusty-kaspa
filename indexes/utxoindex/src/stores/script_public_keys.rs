@@ -3,12 +3,12 @@ use crate::core::model::{
     UtxoPageCursor, UtxoSetByScriptPublicKey,
 };
 use crate::errors::{UtxoIndexError, UtxoIndexResult};
-use zerocopy::big_endian::U64 as BigEndianU64;
+use zerocopy::{
+    FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned, big_endian::U64 as BigEndianU64, little_endian::U32 as LittleEndianU32,
+};
 
 use itertools::Itertools;
-use kaspa_consensus_core::tx::{
-    ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionIndexType, TransactionOutpoint,
-};
+use kaspa_consensus_core::tx::{ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, TransactionOutpoint};
 use kaspa_core::debug;
 use kaspa_database::prelude::{CachePolicy, CachedDbAccess, DB, DirectDbWriter, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
@@ -25,8 +25,18 @@ pub const VERSION_TYPE_SIZE: usize = std::mem::size_of::<ScriptPublicKeyVersion>
 
 /// [`ScriptPublicKeyBucket`].
 /// Consists of 2 bytes of little endian [VersionType] bytes, followed by the script length (8) and by a variable size of [ScriptVec].
-#[derive(Eq, Hash, PartialEq, Debug, Clone)]
-struct ScriptPublicKeyBucket(Vec<u8>);
+#[derive(Eq, Hash, PartialEq, PartialOrd, Ord, Debug, Clone)]
+pub struct ScriptPublicKeyBucket(Vec<u8>);
+
+impl ScriptPublicKeyBucket {
+    pub fn empty() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn from_vec(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+}
 
 impl From<&ScriptPublicKey> for ScriptPublicKeyBucket {
     fn from(script_public_key: &ScriptPublicKey) -> Self {
@@ -65,41 +75,44 @@ impl AsRef<[u8]> for ScriptPublicKeyBucket {
 // Keys:
 
 // TransactionOutpoint:
-/// Size of the [TransactionOutpointKey] in bytes.
-pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_of::<TransactionIndexType>();
-
 /// [TransactionOutpoint] key which references the [CompactUtxoEntry] within a [ScriptPublicKeyBucket]
 /// Consists of 32 bytes of [TransactionId], followed by 4 bytes of little endian [TransactionIndexType]
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
-struct TransactionOutpointKey([u8; TRANSACTION_OUTPOINT_KEY_SIZE]);
+#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Immutable, FromBytes, IntoBytes, KnownLayout, Unaligned)]
+#[repr(C)]
+pub struct TransactionOutpointKey {
+    transaction_id: Hash,
+    output_index: LittleEndianU32,
+}
+
+/// Size of the [TransactionOutpointKey] in bytes.
+pub const TRANSACTION_OUTPOINT_KEY_SIZE: usize = size_of::<TransactionOutpointKey>();
+
+impl TransactionOutpointKey {
+    pub fn from_bytes(bytes: [u8; TRANSACTION_OUTPOINT_KEY_SIZE]) -> Self {
+        Self::read_from_bytes(&bytes).expect("expected transaction outpoint key size")
+    }
+}
 
 impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
-        let transaction_id = Hash::from_slice(&key.0[..kaspa_hashes::HASH_SIZE]);
-        let index = TransactionIndexType::from_le_bytes(
-            <[u8; size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..]).expect("expected index size"),
-        );
-        Self::new(transaction_id, index)
+        Self::new(key.transaction_id, key.output_index.get())
     }
 }
 
 impl From<&TransactionOutpoint> for TransactionOutpointKey {
     fn from(outpoint: &TransactionOutpoint) -> Self {
-        let mut bytes = [0; TRANSACTION_OUTPOINT_KEY_SIZE];
-        bytes[..kaspa_hashes::HASH_SIZE].copy_from_slice(&outpoint.transaction_id.as_bytes());
-        bytes[kaspa_hashes::HASH_SIZE..].copy_from_slice(&outpoint.index.to_le_bytes());
-        Self(bytes)
+        Self { transaction_id: outpoint.transaction_id, output_index: LittleEndianU32::new(outpoint.index) }
     }
 }
 
 impl AsRef<[u8]> for TransactionOutpointKey {
     fn as_ref(&self) -> &[u8] {
-        &self.0
+        self.as_bytes()
     }
 }
 
 pub const DAA_SCORE_KEY_SIZE: usize = size_of::<u64>();
-type DaaScoreKey = BigEndianU64;
+pub type DaaScoreKey = BigEndianU64;
 
 /// Full [CompactUtxoEntry] access key.
 /// Consists of variable amount of bytes of [ScriptPublicKeyBucket], followed by [DaaScoreKey], and [TransactionOutpointKey].
@@ -138,7 +151,7 @@ impl UtxoEntryDbKey {
                 .try_into()
                 .unwrap(),
         );
-        let transaction_outpoint = TransactionOutpoint::from(TransactionOutpointKey(
+        let transaction_outpoint = TransactionOutpoint::from(TransactionOutpointKey::from_bytes(
             self.0[(self.0.len() - TRANSACTION_OUTPOINT_KEY_SIZE)..].try_into().unwrap(),
         ));
         (script_public_key, UtxoEntryKeySuffixRecord::new(daa_score, transaction_outpoint))
@@ -190,7 +203,35 @@ pub struct DbUtxoSetByScriptPublicKeyStore {
 
 impl DbUtxoSetByScriptPublicKeyStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndex.into()) }
+        Self {
+            db: Arc::clone(&db),
+            access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoIndexScriptPublicKey.into()),
+        }
+    }
+
+    /// Streams every row as (script public key, key suffix record, compact entry) in key order.
+    pub fn iterate_utxo_entries(
+        &self,
+    ) -> impl Iterator<Item = StoreResult<(ScriptPublicKey, UtxoEntryKeySuffixRecord, CompactUtxoEntry)>> + '_ {
+        self.access.iterator().map(|res| {
+            let (key, value) = res.unwrap();
+            let (script_public_key, utxo_key_suffix_record) = UtxoEntryDbKey(Arc::new(key.to_vec())).extract_data();
+            Ok((script_public_key, utxo_key_suffix_record, value))
+        })
+    }
+
+    /// Reads a single utxo entry by its full access key.
+    pub fn get_compact_utxo_entry(
+        &self,
+        script_public_key: &ScriptPublicKey,
+        daa_score: u64,
+        outpoint: &TransactionOutpoint,
+    ) -> StoreResult<CompactUtxoEntry> {
+        self.access.read(UtxoEntryDbKey::new(
+            ScriptPublicKeyBucket::from(script_public_key),
+            DaaScoreKey::from(daa_score),
+            TransactionOutpointKey::from(outpoint),
+        ))
     }
 }
 
@@ -214,7 +255,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
                                     .try_into()
                                     .unwrap(),
                             ),
-                            TransactionOutpoint::from(TransactionOutpointKey(
+                            TransactionOutpoint::from(TransactionOutpointKey::from_bytes(
                                 key[(key.len() - TRANSACTION_OUTPOINT_KEY_SIZE)..].try_into().unwrap(),
                             )),
                         ),

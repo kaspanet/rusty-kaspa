@@ -1044,6 +1044,12 @@ build_wrpc_wasm_bindgen_interface!(
         /// with optional inclusive DAA-score range bounds.
         /// Returned information: A list of UTXOs.
         GetUtxosByAddressesV2,
+        /// Retrieves UTXOs matching current covenant IDs with optional inclusive
+        /// DAA-score bounds and script public key filters.
+        /// Requires `--utxoindex --covenant-index` on the node.
+        /// Returned information: UTXOs and a continuation cursor, which can be
+        /// present even when the page contains no entries.
+        GetUtxosByCovenantIds,
         /// Retrieves the virtual chain corresponding to a specified block hash.
         /// Returned information: Virtual chain information.
         GetVirtualChainFromBlock,
@@ -1068,6 +1074,13 @@ build_wrpc_wasm_bindgen_interface!(
         /// Retrieves the virtual chain corresponding to a specified block hash.
         /// Returned information: Virtual chain information. (Version 2)
         /// May be used to get fully populated transactions
-        GetVirtualChainFromBlockV2
+        GetVirtualChainFromBlockV2,
+        /// Returns fully populated transactions accepted by a block identified by hash or DAA score.
+        /// Accepts 1-8192 unique transaction IDs; split larger batches across calls using the same selector.
+        /// Use a UTXO's outpoint transaction ID and entry blockDaaScore while its transaction is retained.
+        /// The score must identify the accepting block in the current virtual selected-parent chain.
+        /// For newly observed UTXOs, consider waiting 1-2 seconds or refreshing their data before
+        /// retrying lookup failures caused by small reorgs. The delay does not guarantee finality.
+        GetTransactionsByAcceptingBlock
     ]
 );

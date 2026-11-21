@@ -48,8 +48,8 @@ pub enum UtxoInquirerError {
 pub enum UtxoInquirerFindTxsFromAcceptanceDataError {
     #[error("Tx ids filter is not allowed to be empty when not None.")]
     TxIdsFilterIsEmptyError,
-    #[error("More than one tx id filter element is not supported yet.")]
-    TxIdsFilterNeedsLessOrEqualThanOneElementError,
+    #[error("Tx ids filter contains duplicate transaction id {0}.")]
+    DuplicateTransactionId(TransactionId),
 }
 
 pub type UtxoInquirerResult<T> = core::result::Result<T, UtxoInquirerError>;

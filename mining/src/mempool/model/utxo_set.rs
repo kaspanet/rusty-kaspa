@@ -1,74 +1,31 @@
 use std::collections::HashSet;
 
-use crate::{
-    mempool::{
-        errors::RuleResult,
-        model::{map::OutpointIndex, tx::DoubleSpend},
-    },
-    model::TransactionIdSet,
+use crate::mempool::{
+    errors::RuleResult,
+    model::{map::OutpointIndex, tx::DoubleSpend},
 };
-use kaspa_consensus_core::{
-    constants::UNACCEPTED_DAA_SCORE,
-    tx::{MutableTransaction, TransactionId, TransactionOutpoint, UtxoEntry},
-    utxo::utxo_collection::UtxoCollection,
-};
+use kaspa_consensus_core::tx::{MutableTransaction, TransactionId, TransactionOutpoint};
 
-pub(crate) struct MempoolUtxoSet {
-    pool_unspent_outputs: UtxoCollection,
+pub(crate) struct MempoolOutpointSpenders {
     outpoint_owner_id: OutpointIndex,
 }
 
-impl MempoolUtxoSet {
+impl MempoolOutpointSpenders {
     pub(crate) fn new() -> Self {
-        Self { pool_unspent_outputs: UtxoCollection::default(), outpoint_owner_id: OutpointIndex::default() }
+        Self { outpoint_owner_id: OutpointIndex::default() }
     }
 
     pub(crate) fn add_transaction(&mut self, transaction: &MutableTransaction) {
         let transaction_id = transaction.id();
-        let mut outpoint = TransactionOutpoint::new(transaction_id, 0);
 
-        for (i, input) in transaction.tx.inputs.iter().enumerate() {
-            outpoint.index = i as u32;
-
-            // Delete the output this input spends, in case it was created by mempool.
-            // If the outpoint doesn't exist in self.pool_unspent_outputs - this means
-            // it was created in the DAG (a.k.a. in consensus).
-            self.pool_unspent_outputs.remove(&outpoint);
-
+        for input in transaction.tx.inputs.iter() {
             self.outpoint_owner_id.insert(input.previous_outpoint, transaction_id);
-        }
-
-        for (i, output) in transaction.tx.outputs.iter().enumerate() {
-            let outpoint = TransactionOutpoint::new(transaction_id, i as u32);
-            let entry = UtxoEntry::new(
-                output.value,
-                output.script_public_key.clone(),
-                UNACCEPTED_DAA_SCORE,
-                false,
-                output.covenant.map(|x| x.covenant_id),
-            );
-            self.pool_unspent_outputs.insert(outpoint, entry);
         }
     }
 
-    pub(crate) fn remove_transaction(&mut self, transaction: &MutableTransaction, parent_ids_in_pool: &TransactionIdSet) {
-        let transaction_id = transaction.id();
-        // We cannot assume here that the transaction is fully populated.
-        // Notably, this is not the case when revalidate_transaction fails and leads the execution path here.
-        for (i, input) in transaction.tx.inputs.iter().enumerate() {
-            if let Some(ref entry) = transaction.entries[i] {
-                // If the transaction creating the output spent by this input is in the mempool - restore it's UTXO
-                if parent_ids_in_pool.contains(&input.previous_outpoint.transaction_id) {
-                    self.pool_unspent_outputs.insert(input.previous_outpoint, entry.clone());
-                }
-            }
+    pub(crate) fn remove_transaction(&mut self, transaction: &MutableTransaction) {
+        for input in transaction.tx.inputs.iter() {
             self.outpoint_owner_id.remove(&input.previous_outpoint);
-        }
-
-        let mut outpoint = TransactionOutpoint::new(transaction_id, 0);
-        for i in 0..transaction.tx.outputs.len() {
-            outpoint.index = i as u32;
-            self.pool_unspent_outputs.remove(&outpoint);
         }
     }
 

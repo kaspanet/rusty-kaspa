@@ -146,6 +146,10 @@ pub enum RpcApiOps {
     GetSeqCommitLaneProof = 153,
     /// Get a page of UTXOs for multiple addresses with optional DAA-score range filtering Options.
     GetUtxosByAddressesV2 = 154,
+    /// Get a page of UTXOs for multiple covenant ids with optional DAA-score range and script public key list.
+    GetUtxosByCovenantIds = 155,
+    /// Get fully populated transactions by accepting block hash or DAA score.
+    GetTransactionsByAcceptingBlock = 156,
 }
 
 impl RpcApiOps {

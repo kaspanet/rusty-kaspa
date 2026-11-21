@@ -44,6 +44,9 @@ pub struct Config {
     /// Enable the UTXO index
     pub utxoindex: bool,
 
+    /// Enable the covenant UTXO index (requires the UTXO index)
+    pub covenant_index: bool,
+
     /// Enable RPC commands which affect the state of the node
     pub unsafe_rpc: bool,
 
@@ -91,6 +94,7 @@ impl Config {
             is_archival: false,
             enable_sanity_checks: false,
             utxoindex: false,
+            covenant_index: false,
             unsafe_rpc: false,
             enable_unsynced_mining: false,
             enable_mainnet_mining: false,

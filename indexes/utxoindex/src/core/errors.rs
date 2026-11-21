@@ -1,4 +1,4 @@
-use kaspa_index_core::indexed_utxos::UtxoPageCursor;
+use kaspa_index_core::indexed_utxos::{CovenantUtxoPageCursor, UtxoPageCursor};
 use std::io;
 use thiserror::Error;
 
@@ -17,8 +17,14 @@ pub enum UtxoIndexError {
     #[error("[{IDENT}]: {0} is an invalid cursor for the given script public keys")]
     InvalidCursor(UtxoPageCursor),
 
+    #[error("[{IDENT}]: {0} is an invalid cursor for the given covenant ids")]
+    InvalidCovenantCursor(CovenantUtxoPageCursor),
+
     #[error("[{IDENT}]: The given script public keys set is empty")]
     QueryingEmptyAddressSet,
+
+    #[error("[{IDENT}]: The given covenant id set is empty")]
+    QueryingEmptyCovenantIdSet,
 }
 
 /// Results originating from the [`UtxoIndex`](crate::UtxoIndex).

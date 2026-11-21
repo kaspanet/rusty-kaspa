@@ -70,6 +70,8 @@ message KaspadRequest {
     GetBlockRewardInfoRequestMessage getBlockRewardInfoRequest = 1116;
     GetSeqCommitLaneProofRequestMessage getSeqCommitLaneProofRequest = 1118;
     GetUtxosByAddressesV2RequestMessage getUtxosByAddressesV2Request = 1120;
+    GetUtxosByCovenantIdsRequestMessage getUtxosByCovenantIdsRequest = 1122;
+    GetTransactionsByAcceptingBlockRequestMessage getTransactionsByAcceptingBlockRequest = 1124;
   }
 }
 
@@ -140,6 +142,8 @@ message KaspadResponse {
     GetBlockRewardInfoResponseMessage getBlockRewardInfoResponse = 1117;
     GetSeqCommitLaneProofResponseMessage getSeqCommitLaneProofResponse = 1119;
     GetUtxosByAddressesV2ResponseMessage getUtxosByAddressesV2Response = 1121;
+    GetUtxosByCovenantIdsResponseMessage getUtxosByCovenantIdsResponse = 1123;
+    GetTransactionsByAcceptingBlockResponseMessage getTransactionsByAcceptingBlockResponse = 1125;
   }
 }
 
