@@ -13,8 +13,6 @@ repository.workspace = true
 default = []
 
 [dependencies]
-async-std.workspace = true
-async-trait.workspace = true
 kaspa-core.workspace = true
 kaspa-wallet-core.workspace = true
 kaspa-wallet-grpc-core.workspace = true
@@ -23,11 +21,7 @@ kaspa-consensus-core.workspace = true
 log.workspace = true
 tonic.workspace = true
 tokio.workspace = true
-workflow-core.workspace = true
-workflow-log.workspace = true
-workflow-terminal.workspace = true
 clap.workspace = true
-futures-util.workspace = true
 
 [lints]
 workspace = true

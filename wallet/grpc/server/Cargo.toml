@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-wallet-grpc-server"
+description = "Kaspa wallet daemon gRPC server"
 rust-version.workspace = true
 version.workspace = true
 authors.workspace = true
