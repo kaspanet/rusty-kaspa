@@ -2,7 +2,7 @@ use fee_policy::FeePolicy;
 use futures_util::{FutureExt, TryStreamExt, select};
 use kaspa_addresses::Prefix;
 use kaspa_consensus_core::constants::SOMPI_PER_KASPA;
-use kaspa_consensus_core::tx::{SignableTransaction, Transaction, UtxoEntry};
+use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionOutpoint, UtxoEntry};
 use kaspa_rpc_core::RpcTransaction;
 use kaspa_wallet_core::api::NewAddressKind;
 use kaspa_wallet_core::prelude::{PaymentDestination, PaymentOutput, PaymentOutputs};
@@ -259,7 +259,6 @@ impl Service {
         let utxos = account.clone().get_utxos(None, None).await.map_err(|err| Status::internal(err.to_string()))?;
         let utxo_context = account.utxo_context();
 
-        // Transaction -> SignableTransaction
         let signable_txs: Vec<SignableTransaction> = unsigned_transactions
             .into_iter()
             .map(|tx| {
@@ -269,7 +268,7 @@ impl Service {
                     .map(|input| {
                         utxos
                             .iter()
-                            .find(|utxo| utxo.outpoint == input.previous_outpoint)
+                            .find(|utxo| TransactionOutpoint::from(&utxo.outpoint) == input.previous_outpoint)
                             .map(UtxoEntry::from)
                             .ok_or(Status::invalid_argument(format!("Wallet does not have mature utxo for input {input:?}")))
                     })
@@ -278,7 +277,6 @@ impl Service {
             })
             .collect::<Result<_, Status>>()?;
 
-        // Get private key data for signing
         let prv_key_data = account.prv_key_data(password.into()).await.map_err(|err| Status::internal(err.to_string()))?;
         let addresses: Vec<_> = utxo_context.addresses().iter().map(|addr| addr.as_ref().clone()).collect();
 
@@ -291,7 +289,6 @@ impl Service {
             })
             .collect::<Result<Vec<_>, Status>>()?;
 
-        // Convert to RpcTransaction
         let signed_txs = signed_txs.into_iter().map(|tx| RpcTransaction::from(&tx)).collect();
         Ok(signed_txs)
     }

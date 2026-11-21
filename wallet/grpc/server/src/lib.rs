@@ -31,9 +31,9 @@ impl Kaspawalletd for Service {
 
     async fn get_external_spendable_utx_os(
         &self,
-        _request: Request<GetExternalSpendableUtxOsRequest>,
+        request: Request<GetExternalSpendableUtxOsRequest>,
     ) -> Result<Response<GetExternalSpendableUtxOsResponse>, Status> {
-        let address = Address::try_from(_request.get_ref().address.clone())
+        let address = Address::try_from(request.get_ref().address.clone())
             .map_err(|_| Status::new(tonic::Code::InvalidArgument, "Invalid address provided"))?;
         let request = AccountsGetUtxosRequest {
             account_id: self.descriptor()?.account_id,
@@ -128,7 +128,7 @@ impl Kaspawalletd for Service {
         Ok(Response::new(BroadcastResponse { tx_ids }))
     }
 
-    async fn send(&self, _request: Request<SendRequest>) -> Result<Response<SendResponse>, Status> {
+    async fn send(&self, request: Request<SendRequest>) -> Result<Response<SendResponse>, Status> {
         let acc = self.wallet().account().map_err(|err| Status::internal(err.to_string()))?;
         if acc.minimum_signatures() != 1 {
             return Err(Status::unimplemented("Only single signature wallets are supported"));
@@ -139,7 +139,7 @@ impl Kaspawalletd for Service {
 
         // todo call unsigned tx and sign it to be consistent
 
-        let data = _request.get_ref();
+        let data = request.get_ref();
         let fee_rate_estimate = self.wallet().fee_rate_estimate().await.map_err(|err| Status::unavailable(err.to_string()))?;
         let fee_rate = data.fee_policy.and_then(|policy| policy.fee_policy).and_then(|policy| match policy {
             FeePolicy::MaxFeeRate(rate) => Some(fee_rate_estimate.normal.feerate.min(rate)),
@@ -171,28 +171,17 @@ impl Kaspawalletd for Service {
     async fn sign(&self, request: Request<SignRequest>) -> Result<Response<SignResponse>, Status> {
         let SignRequest { unsigned_transactions, password } = request.into_inner();
 
-        // Deserialization
         let unsigned_transactions = unsigned_transactions
             .into_iter()
             .map(|tx| extract_tx(tx.as_slice(), self.use_ecdsa()))
             // todo convert directly to consensus::transaction
-            .map(|r| r
-                .and_then(|rtx| Transaction::try_from(rtx)
-                    .map_err(|err| Status::internal(err.to_string()))))
+            .map(|r| r.and_then(|rtx| Transaction::try_from(rtx).map_err(|err| Status::internal(err.to_string()))))
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Sign and convert to RpcTransaction
         let signed_transactions = self.sign_transactions(unsigned_transactions, password).await?;
 
-        // Serialization - convert RpcTransaction directly to TransactionMessage
-        let signed_transactions = signed_transactions
-            .into_iter()
-            .map(|rpc_tx| {
-                // Convert RpcTransaction directly to TransactionMessage using existing From implementation
-                let msg = TransactionMessage::from(rpc_tx);
-                Ok(msg.encode_to_vec())
-            })
-            .collect::<Result<Vec<Vec<u8>>, Status>>()?;
+        let signed_transactions =
+            signed_transactions.into_iter().map(|rpc_tx| TransactionMessage::from(rpc_tx).encode_to_vec()).collect();
         Ok(Response::new(SignResponse { signed_transactions }))
     }
 

@@ -44,28 +44,12 @@ pub fn cli() -> Command {
     Command::new("kaspawalletd")
         .about(format!("{} (kaspawalletd) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
-        .arg(Arg::new("password").long("password").short('p').value_name("password").help("Wallet password").required(true))
-        .arg(
-            Arg::new("name")
-                .long("name")
-                .short('n')
-                .value_name("name")
-                .value_parser(clap::value_parser!(String))
-                .help("Name of wallet"),
-        )
-        .arg(
-            Arg::new("rpc-server")
-                .long("rpc-server")
-                .short('s')
-                .value_name("rpc-server")
-                .value_parser(clap::value_parser!(String))
-                .help("Private RPC server URL"),
-        )
+        .arg(Arg::new("password").long("password").short('p').help("Wallet password").required(true))
+        .arg(Arg::new("name").long("name").short('n').help("Name of wallet"))
+        .arg(Arg::new("rpc-server").long("rpc-server").short('s').help("Private RPC server URL"))
         .arg(
             Arg::new("network-id")
                 .long("network-id")
-                .value_name("network-id")
-                .value_parser(clap::value_parser!(String))
                 .required_unless_present("rpc-server")
                 .help("Network id to be connected via PNN."),
         )
@@ -73,7 +57,6 @@ pub fn cli() -> Command {
             Arg::new("listen-address")
                 .long("listen-address")
                 .short('l')
-                .value_name("listen-address")
                 .value_parser(clap::value_parser!(SocketAddr))
                 .default_value("127.0.0.1:8082")
                 .help("gRPC listening address with port."),

@@ -7,7 +7,8 @@ use kaspa_rpc_core::{
     RpcTransactionOutput,
 };
 use kaspa_txscript::script_builder::ScriptBuilder;
-use kaspa_wallet_core::api::{ScriptPublicKeyWrapper, TransactionOutpointWrapper, UtxoEntryWrapper};
+use kaspa_utils::hex::ToHex;
+use kaspa_wallet_core::api::{TransactionOutpointWrapper, UtxoEntryWrapper};
 use kaspa_wallet_core::derivation::ExtendedPublicKeySecp256k1;
 use prost::Message;
 use std::num::TryFromIntError;
@@ -66,7 +67,7 @@ fn extract_tx_deserialized(
     for (idx, (signed_input, tx_input)) in partially_signed_tx.partially_signed_inputs.iter().zip(&mut tx.inputs).enumerate() {
         let mut script_builder = ScriptBuilder::new();
         match signed_input.pub_key_signature_pairs.len() {
-            0 => { /* do nothing */ },
+            0 => {}
             1 => {
                 if signed_input.pub_key_signature_pairs[0].signature.is_empty() {
                     return Err(Status::invalid_argument("missing signature"));
@@ -77,16 +78,18 @@ fn extract_tx_deserialized(
                     .drain();
                 tx_input.signature_script = sig_script;
             }
-            pairs_len /*multisig*/ => {
+            pairs_len => {
                 for pair in signed_input.pub_key_signature_pairs.iter() {
                     script_builder.add_data(pair.signature.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
                 }
                 if pairs_len < signed_input.minimum_signatures as usize {
-                    #[allow(clippy::arithmetic_side_effects)] // validated above: pairs_len < minimum_signatures
-                    return Err(Status::invalid_argument(format!("missing {} signatures on input: {idx}", signed_input.minimum_signatures as usize - pairs_len)));
+                    return Err(Status::invalid_argument(format!(
+                        "missing {} signatures on input: {idx}",
+                        (signed_input.minimum_signatures as usize).saturating_sub(pairs_len)
+                    )));
                 }
                 let redeem_script = partially_signed_input_multisig_redeem_script(signed_input, ecdsa, "m")?;
-                    script_builder.add_data(redeem_script.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
+                script_builder.add_data(redeem_script.as_slice()).map_err(|err| Status::invalid_argument(err.to_string()))?;
                 tx_input.signature_script = script_builder.drain();
             }
         }
@@ -149,9 +152,9 @@ impl From<TransactionOutpointWrapper> for Outpoint {
     }
 }
 
-impl From<ScriptPublicKeyWrapper> for ScriptPublicKey {
-    fn from(script_pub_key: ScriptPublicKeyWrapper) -> Self {
-        ScriptPublicKey { script_public_key: script_pub_key.script_public_key, version: script_pub_key.version.into() }
+impl From<RpcScriptPublicKey> for ScriptPublicKey {
+    fn from(script_pub_key: RpcScriptPublicKey) -> Self {
+        ScriptPublicKey { script_public_key: script_pub_key.script().to_hex(), version: script_pub_key.version().into() }
     }
 }
 
@@ -173,10 +176,7 @@ impl From<UtxoEntryWrapper> for UtxosByAddressesEntry {
 impl TryFrom<protoserialization::TransactionMessage> for RpcTransaction {
     type Error = Status;
 
-    fn try_from(
-        // protoserialization::TransactionMessage { version, inputs, outputs, lock_time, subnetwork_id, gas, payload }: protoserialization::TransactionMessage,
-        value: protoserialization::TransactionMessage,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(value: protoserialization::TransactionMessage) -> Result<Self, Self::Error> {
         let version: u16 = value.version.try_into().map_err(|e: TryFromIntError| Status::invalid_argument(e.to_string()))?;
         let inputs: Result<Vec<RpcTransactionInput>, Status> = value
             .inputs
@@ -251,7 +251,7 @@ impl TryFrom<protoserialization::Outpoint> for RpcTransactionOutpoint {
     fn try_from(protoserialization::Outpoint { transaction_id, index }: protoserialization::Outpoint) -> Result<Self, Self::Error> {
         Ok(RpcTransactionOutpoint {
             transaction_id: RpcTransactionId::try_from_slice(
-                transaction_id.ok_or(Status::invalid_argument("Outppoint is missing"))?.bytes.as_slice(),
+                transaction_id.ok_or(Status::invalid_argument("missing outpoint transaction id"))?.bytes.as_slice(),
             )
             .map_err(|err| Status::invalid_argument(err.to_string()))?,
             index,
@@ -319,5 +319,48 @@ impl From<RpcSubnetworkId> for protoserialization::SubnetworkId {
     fn from(value: RpcSubnetworkId) -> Self {
         let bts: &[u8] = value.as_ref();
         Self { bytes: bts.to_vec() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_rpc_core::RpcScriptVec;
+    use kaspa_wallet_core::prelude::Address;
+
+    #[test]
+    fn utxo_entry_wrapper_to_utxos_by_addresses_entry() {
+        let mut script = vec![0x20];
+        script.extend_from_slice(&[
+            0x5f, 0xff, 0x3c, 0x4d, 0xa1, 0x8f, 0x45, 0xad, 0xcd, 0xd4, 0x99, 0xe4, 0x46, 0x11, 0xe9, 0xff, 0xf1, 0x48, 0xba, 0x69,
+            0xdb, 0x3c, 0x4e, 0xa2, 0xdd, 0xd9, 0x55, 0xfc, 0x46, 0xa5, 0x95, 0x22,
+        ]);
+        script.push(0xac);
+        assert_eq!(script.len(), 34);
+
+        let address_str = "kaspa:qp0l70zd5x85ttwd6jv7g3s3a8llzj96d8dncn4zmhv4tlzx5k2jyqh70xmfj";
+        let tx_id_str = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+        let wrapper = UtxoEntryWrapper {
+            address: Some(Address::try_from(address_str).unwrap()),
+            outpoint: TransactionOutpointWrapper { transaction_id: RpcTransactionId::from_str(tx_id_str).unwrap(), index: 7 },
+            amount: 123_456_789,
+            script_public_key: RpcScriptPublicKey::new(0, RpcScriptVec::from(script)),
+            block_daa_score: 987_654,
+            is_coinbase: true,
+            covenant_id: None,
+        };
+
+        let entry = UtxosByAddressesEntry::from(wrapper);
+        assert_eq!(entry.address, address_str);
+        let outpoint = entry.outpoint.unwrap();
+        assert_eq!(outpoint.transaction_id, tx_id_str);
+        assert_eq!(outpoint.index, 7);
+        let utxo_entry = entry.utxo_entry.unwrap();
+        assert_eq!(utxo_entry.amount, 123_456_789);
+        assert_eq!(utxo_entry.block_daa_score, 987_654);
+        assert!(utxo_entry.is_coinbase);
+        let spk = utxo_entry.script_public_key.unwrap();
+        assert_eq!(spk.version, 0);
+        assert_eq!(spk.script_public_key, "205fff3c4da18f45adcdd499e44611e9fff148ba69db3c4ea2ddd955fc46a59522ac");
     }
 }

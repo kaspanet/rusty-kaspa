@@ -6,6 +6,7 @@ fn main() -> Result<()> {
     let proto_dir = "./proto";
 
     println!("cargo:rerun-if-changed={}", proto_kaspawalletd);
+    println!("cargo:rerun-if-changed={}", proto_protoserialization);
 
     tonic_prost_build::configure().build_server(true).build_client(true).compile_protos(&[proto_kaspawalletd], &[proto_dir])?;
     tonic_prost_build::configure().compile_protos(&[proto_protoserialization], &[proto_dir])?;
