@@ -30,8 +30,8 @@ const RPC_URL = 'ws://127.0.0.1:17610';
 const PRIVATE_KEY = 'b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f';
 
 // --- ZK fixtures (same program/proof as groth16_builder.js) ---
-const IMAGE_ID = '75641a540ee2ad9ee5902bcdcdb8b55c0bef4a28287309b858f97b1356c6c2e0';
-const JOURNAL_HASH = '5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456';
+const IMAGE_ID = '1202d1e01d53a986c4a3250bc48fb78e7ca1533bc52836b6d4c969b5d5f798b2';
+const JOURNAL_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 // borsh-encoded `Groth16Receipt<ReceiptClaim>`. Read from file to keep this
 // example small (it is the same receipt hard-coded in groth16_builder.js).
 const GROTH16_RECEIPT = fs.readFileSync(path.join(__dirname, 'data', 'receipts', 'groth.rcpt.hex'), 'utf8').trim();

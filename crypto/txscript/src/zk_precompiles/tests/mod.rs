@@ -18,8 +18,8 @@ mod fast_zk_tests {
         hashing::sighash::SigHashReusedValuesUnsync,
         tx::{PopulatedTransaction, ScriptPublicKey},
     };
+    use kaspa_r0_recursion_legacy::CircuitImpl;
     use kaspa_txscript_errors::TxScriptError;
-    use risc0_circuit_recursion::CircuitImpl;
     use risc0_zkp::adapter::CircuitInfo;
 
     fn r0_script_with_seal(seal: &[u8]) -> Vec<u8> {

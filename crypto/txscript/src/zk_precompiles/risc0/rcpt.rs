@@ -14,8 +14,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use alloc::{collections::VecDeque, vec::Vec};
+use kaspa_r0_recursion_legacy::{CIRCUIT, CircuitImpl, control_id::ALLOWED_CONTROL_ROOT};
 use risc0_binfmt::read_sha_halfs;
-use risc0_circuit_recursion::{CIRCUIT, CircuitImpl, control_id::ALLOWED_CONTROL_ROOT};
 use risc0_core::field::baby_bear::BabyBearElem;
 use risc0_zkp::core::hash::{HashSuite, blake2b::Blake2bCpuHashSuite, poseidon2::Poseidon2HashSuite, sha::Sha256HashSuite};
 use risc0_zkp::{adapter::CircuitInfo, core::digest::Digest, verify::VerificationError};
@@ -159,8 +159,8 @@ impl SuccinctReceipt {
 
 #[cfg(test)]
 mod tests {
+    use kaspa_r0_recursion_legacy::{CircuitImpl, control_id::ALLOWED_CONTROL_ROOT};
     use risc0_binfmt::tagged_struct;
-    use risc0_circuit_recursion::{CircuitImpl, control_id::ALLOWED_CONTROL_ROOT};
     use risc0_zkp::adapter::{CircuitInfo, PROOF_SYSTEM_INFO};
     use risc0_zkp::core::{
         digest::digest,

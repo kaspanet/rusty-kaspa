@@ -45,9 +45,9 @@ fn execute_p2sh(sig_script: Vec<u8>, redeem_script: &[u8]) -> Result<(), TxScrip
 
 fn load_groth_fixture() -> ([u8; 32], [u8; 32], Groth16Receipt<ReceiptClaim>) {
     let journal_hash: [u8; 32] =
-        hex::decode("5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456").unwrap().try_into().unwrap();
+        hex::decode("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap().try_into().unwrap();
     let image_id: [u8; 32] =
-        hex::decode("75641a540ee2ad9ee5902bcdcdb8b55c0bef4a28287309b858f97b1356c6c2e0").unwrap().try_into().unwrap();
+        hex::decode("1202d1e01d53a986c4a3250bc48fb78e7ca1533bc52836b6d4c969b5d5f798b2").unwrap().try_into().unwrap();
     let receipt: Groth16Receipt<ReceiptClaim> =
         borsh::from_slice(&hex::decode(include_str!("data/zk_builder_tests/groth.rcpt.hex")).unwrap()).unwrap();
     (journal_hash, image_id, receipt)
@@ -64,6 +64,7 @@ fn load_succinct_fixture() -> (Digest, Digest, SuccinctReceipt<ReceiptClaim>) {
 #[test]
 fn r0_script_builder_groth16_verifies() {
     let (journal_hash, image_id, receipt) = load_groth_fixture();
+    receipt.verify_integrity().unwrap();
     let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_groth16(image_id)
         .unwrap()
