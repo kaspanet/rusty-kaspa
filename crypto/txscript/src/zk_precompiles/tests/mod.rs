@@ -303,6 +303,7 @@ mod fast_zk_tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_r0_succinct_fast() {
         let script = build_stark_script(false);
         let cache = Cache::new(0);

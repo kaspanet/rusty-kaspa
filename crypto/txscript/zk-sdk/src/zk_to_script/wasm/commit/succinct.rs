@@ -11,7 +11,10 @@ impl ZkScriptBuilder {
     /// given image id and control id. `hashFnId` currently only accepts
     /// "poseidon2" (also the default when omitted); other hash functions are not
     /// yet supported. Transitions an unbounded builder into the succinct-bounded state.
+    /// @deprecated Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.
     #[wasm_bindgen(js_name = "commitToSuccinct")]
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.")]
+    #[allow(deprecated)]
     pub fn commit_to_succinct(&mut self, image_id: BinaryT, control_id: BinaryT, hash_fn_id: Option<String>) -> Result<()> {
         let image_id = into_array_32(image_id.try_as_vec_u8()?, "imageId")?;
         let control_id = into_array_32(control_id.try_as_vec_u8()?, "controlId")?;

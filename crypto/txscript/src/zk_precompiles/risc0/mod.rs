@@ -1,3 +1,4 @@
+#[allow(deprecated)]
 use crate::{
     data_stack::Stack,
     runtime_resource_meter::RuntimeResourceMeter,
@@ -17,6 +18,7 @@ pub mod merkle;
 pub mod rcpt;
 pub mod receipt_claim;
 
+#[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Do not use for new deployments.")]
 pub struct R0SuccinctPrecompile;
 pub use error::R0Error;
 
@@ -24,6 +26,7 @@ pub use error::R0Error;
 const POSEIDON2_CONTROL_MERKLE_DEPTH: usize = 8;
 
 /// Returns the control Merkle tree depth for the supported RISC0 hash function.
+#[allow(deprecated)]
 fn control_merkle_depth_for(hashfn: HashFnId) -> usize {
     match hashfn {
         HashFnId::Poseidon2 => POSEIDON2_CONTROL_MERKLE_DEPTH,
@@ -47,6 +50,7 @@ fn parse_seal(bytes: impl AsRef<[u8]>) -> Result<Vec<u32>, R0Error> {
     }
 }
 
+#[allow(deprecated)]
 fn parse_hashfn(bytes: impl AsRef<[u8]>) -> Result<HashFnId, R0Error> {
     let bytes = bytes.as_ref();
     if bytes.len() != 1 {
@@ -76,6 +80,7 @@ fn parse_digest_list(bytes: impl AsRef<[u8]>) -> Result<Vec<Digest>, R0Error> {
     }
 }
 
+#[allow(deprecated)]
 impl ZkPrecompile for R0SuccinctPrecompile {
     type Error = R0Error;
     /// Verifies the integrity of a RISC0 succinct proof receipt.

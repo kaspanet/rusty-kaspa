@@ -28,8 +28,11 @@ pub mod zk_deps {
     pub use ark_relations;
     pub use ark_serialize;
     pub use ark_snark;
-    pub use kaspa_r0_recursion_legacy as risc0_circuit_recursion;
     pub use risc0_binfmt;
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Do not use for new deployments.")]
+    pub mod risc0_circuit_recursion {
+        pub use ::kaspa_r0_recursion_legacy::*;
+    }
     pub use risc0_core;
     pub use risc0_zkp;
 }

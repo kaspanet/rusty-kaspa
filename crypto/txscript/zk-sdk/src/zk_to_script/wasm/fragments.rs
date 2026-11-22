@@ -1,4 +1,5 @@
 use crate::zk_to_script::wasm::{ZkScriptBuilder, decode_hash_fn_id, into_array_32};
+#[allow(deprecated)]
 use crate::zk_to_script::{
     append_r0_groth16_verifier, append_r0_groth16_verifier_dynamic_image_id, append_r0_groth16_verifier_with_fixed_journal,
     append_r0_succinct_verifier, append_r0_succinct_verifier_with_fixed_journal, prepare_r0_groth16_proof,
@@ -90,7 +91,10 @@ impl ZkScriptBuilder {
     /// id and hash function. `hashFnId` currently only accepts "poseidon2"
     /// (also the default when omitted); other hash functions are not yet
     /// supported. Expects `[..., claim, control_index, control_digests, seal, journal]`.
+    /// @deprecated Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.
     #[wasm_bindgen(js_name = "appendR0SuccinctVerifier")]
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.")]
+    #[allow(deprecated)]
     pub fn append_r0_succinct_verifier(&mut self, image_id: BinaryT, control_id: BinaryT, hash_fn_id: Option<String>) -> Result<()> {
         let image_id = into_array_32(image_id.try_as_vec_u8()?, "imageId")?;
         let control_id = into_array_32(control_id.try_as_vec_u8()?, "controlId")?;
@@ -103,7 +107,10 @@ impl ZkScriptBuilder {
     /// Appends a fixed-journal r0 succinct verifier fragment, binding
     /// verification to `journal` baked into the script. Expects only
     /// `[..., claim, control_index, control_digests, seal]`.
+    /// @deprecated Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.
     #[wasm_bindgen(js_name = "appendR0SuccinctVerifierWithFixedJournal")]
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.")]
+    #[allow(deprecated)]
     pub fn append_r0_succinct_verifier_with_fixed_journal(
         &mut self,
         image_id: BinaryT,

@@ -25,12 +25,14 @@ use crate::zk_precompiles::risc0::merkle::MerkleProof;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Do not use for new deployments.")]
 pub enum HashFnId {
     Blake2b = 0,
     Poseidon2 = 1,
     Sha256 = 2,
 }
 
+#[allow(deprecated)]
 impl TryFrom<u8> for HashFnId {
     type Error = R0Error;
 
@@ -44,6 +46,7 @@ impl TryFrom<u8> for HashFnId {
     }
 }
 
+#[allow(deprecated)]
 impl From<HashFnId> for u8 {
     fn from(value: HashFnId) -> Self {
         value as u8
@@ -61,6 +64,8 @@ impl From<HashFnId> for u8 {
 /// simplify it, as we are certain to only receive digests for the claim and verifier parameters.
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq))]
+#[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Do not use for new deployments.")]
+#[allow(deprecated)]
 pub struct SuccinctReceipt {
     /// The cryptographic seal of this receipt. This seal is a STARK proving an execution of the
     /// recursion circuit.
@@ -82,6 +87,7 @@ pub struct SuccinctReceipt {
     control_inclusion_proof: MerkleProof,
 }
 
+#[allow(deprecated)]
 impl SuccinctReceipt {
     pub fn new(seal: Vec<u32>, control_id: Digest, claim: Digest, hashfn: HashFnId, control_inclusion_proof: MerkleProof) -> Self {
         Self { seal, control_id, claim, hashfn, control_inclusion_proof }
@@ -92,6 +98,7 @@ impl SuccinctReceipt {
     }
 }
 
+#[allow(deprecated)]
 impl SuccinctReceipt {
     /// Verify the integrity of this receipt, ensuring the claim is attested
     /// to by the seal.

@@ -1,4 +1,5 @@
 use crate::result::Result;
+#[allow(deprecated)]
 use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 use kaspa_txscript::{EngineFlags, script_builder::ScriptBuilder};
 use risc0_binfmt::Digestible;
@@ -10,6 +11,7 @@ mod fragments;
 pub mod wasm;
 
 pub use builder::FinalizedR0Script;
+#[allow(deprecated)]
 pub use fragments::{
     SuccinctWitnessBytes, append_r0_groth16_verifier, append_r0_groth16_verifier_dynamic_image_id,
     append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier, append_r0_succinct_verifier_with_fixed_journal,
@@ -119,6 +121,8 @@ impl<ScriptType> ZkScriptBuilder<ScriptType> {
         Ok(self)
     }
 
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.")]
+    #[allow(deprecated)]
     pub fn append_r0_succinct_verifier(
         &mut self,
         image_id: [u8; 32],
@@ -129,6 +133,8 @@ impl<ScriptType> ZkScriptBuilder<ScriptType> {
         Ok(self)
     }
 
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.")]
+    #[allow(deprecated)]
     pub fn append_r0_succinct_verifier_with_fixed_journal(
         &mut self,
         image_id: [u8; 32],

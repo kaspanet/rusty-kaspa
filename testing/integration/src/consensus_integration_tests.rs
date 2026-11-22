@@ -2169,6 +2169,7 @@ fn build_p2pk_block(
     (consensus, wait_handles, transactions, block.to_immutable())
 }
 
+#[allow(deprecated)]
 fn init_stark_fixture() -> (TestConsensus, Vec<std::thread::JoinHandle<()>>, Hash, Vec<Transaction>) {
     let redeem_script = ScriptBuilder::new().add_op(OpZkPrecompile).unwrap().drain();
     let stark_spk = pay_to_script_hash_script(&redeem_script);

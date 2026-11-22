@@ -1,16 +1,20 @@
 use std::marker::PhantomData;
 
 use crate::result::Result;
+#[allow(deprecated)]
 use crate::zk_to_script::{
     BoundedR0SuccinctFixedJournalScript, BoundedR0SuccinctScript, UnboundedR0Script, ZkScriptBuilder, append_r0_succinct_verifier,
     append_r0_succinct_verifier_with_fixed_journal,
 };
+#[allow(deprecated)]
 use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 
 impl ZkScriptBuilder<UnboundedR0Script> {
     /// Commits to the succinct proof system; the locking script will expect a
     /// successful verification of a succinct proof from the specified image id,
     /// control id and hash function.
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.")]
+    #[allow(deprecated)]
     pub fn commit_to_succinct(
         mut self,
         image_id: [u8; 32],
@@ -23,6 +27,8 @@ impl ZkScriptBuilder<UnboundedR0Script> {
 
     /// Commits to the succinct proof system *and* a fixed `journal` baked into
     /// the script
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Use only to spend existing UTXOs.")]
+    #[allow(deprecated)]
     pub fn commit_to_succinct_with_fixed_journal(
         mut self,
         image_id: [u8; 32],

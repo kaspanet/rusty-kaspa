@@ -2,9 +2,11 @@ use kaspa_txscript_errors::TxScriptError;
 use risc0_zkp::verify::VerificationError;
 use thiserror::Error;
 
+#[allow(deprecated)]
 use crate::zk_precompiles::risc0::rcpt::HashFnId;
 
 #[derive(Debug, Error)]
+#[allow(deprecated)]
 pub enum R0Error {
     #[error("Std io error: {0}")]
     Io(#[from] std::io::Error),

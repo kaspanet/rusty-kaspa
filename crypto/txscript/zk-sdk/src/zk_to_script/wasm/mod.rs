@@ -12,6 +12,7 @@ use kaspa_txscript::error::Error;
 use kaspa_txscript::result::Result;
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::wasm::builder::ScriptBuilderOptions;
+#[allow(deprecated)]
 use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 use kaspa_wasm_core::types::HexString;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -59,6 +60,7 @@ pub(super) fn into_array_32(bytes: Vec<u8>, name: &'static str) -> Result<[u8; 3
     bytes.as_slice().try_into().map_err(|_| Error::custom(format!("{name} must be 32 bytes")))
 }
 
+#[allow(deprecated)]
 fn parse_hash_fn_id(value: &str) -> Result<HashFnId> {
     match value {
         "poseidon2" => Ok(HashFnId::Poseidon2),
@@ -69,6 +71,7 @@ fn parse_hash_fn_id(value: &str) -> Result<HashFnId> {
     }
 }
 
+#[allow(deprecated)]
 pub(super) fn decode_hash_fn_id(hash_fn_id: Option<String>) -> Result<Option<HashFnId>> {
     hash_fn_id.as_deref().map(parse_hash_fn_id).transpose()
 }

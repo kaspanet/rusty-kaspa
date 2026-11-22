@@ -3,6 +3,7 @@ mod points;
 pub mod result;
 pub mod zk_to_script;
 
+#[allow(deprecated)]
 pub use zk_to_script::{
     BoundedR0Groth16FixedJournalScript, BoundedR0Groth16Script, BoundedR0SuccinctFixedJournalScript, BoundedR0SuccinctScript,
     FinalizedR0Script, SuccinctWitnessBytes, UnboundedR0Script, ZkScriptBuilder, append_r0_groth16_verifier,

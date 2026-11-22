@@ -1,5 +1,6 @@
 // Test code is exempt from the arithmetic-side-effects lint.
 #![allow(clippy::arithmetic_side_effects)]
+#![allow(deprecated)]
 
 use ark_bn254::{Bn254, G1Affine};
 use ark_groth16::Proof;

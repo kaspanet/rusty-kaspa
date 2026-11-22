@@ -7,4 +7,5 @@ pub use groth16::{
     push_r0_groth16_proof,
 };
 pub use prepare::{SuccinctWitnessBytes, prepare_r0_groth16_proof, prepare_r0_succinct_witness};
+#[allow(deprecated)]
 pub use succinct::{append_r0_succinct_verifier, append_r0_succinct_verifier_with_fixed_journal, push_r0_succinct_witness};
