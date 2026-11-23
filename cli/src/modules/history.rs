@@ -64,6 +64,52 @@ impl History {
                 let last = if argv.is_empty() { None } else { argv[0].parse::<usize>().ok() };
                 (last, true)
             }
+            "export" => {
+                let filename = if argv.is_empty() { format!("kaspa-tx-{}.csv", account.name_or_id()) } else { argv.remove(0) };
+
+                let store = ctx.wallet().store().as_transaction_record_store()?;
+                let mut records = match store.transaction_data_iter(&binding, &network_id).await {
+                    Ok(r) => r,
+                    Err(err) => {
+                        if matches!(err, WalletError::NoRecordsFound) {
+                            tprintln!(ctx);
+                            tprintln!(ctx, "No transactions found for this account.");
+                            tprintln!(ctx);
+                        } else {
+                            terrorln!(ctx, "{err}");
+                        }
+                        return Ok(());
+                    }
+                };
+
+                let mut csv = String::from(kaspa_wallet_core::storage::TransactionRecord::csv_header());
+                csv.push('\n');
+
+                let mut count = 0u64;
+                while let Some(record) = records.try_next().await? {
+                    csv.push_str(&record.to_csv_row());
+                    csv.push('\n');
+                    count += 1;
+                }
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    if let Err(e) = std::fs::write(&filename, &csv) {
+                        terrorln!(ctx, "Failed to write '{}': {}", filename, e);
+                        return Ok(());
+                    }
+                    tprintln!(ctx);
+                    tprintln!(ctx, "{} transactions exported to {}", count, filename);
+                    tprintln!(ctx);
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    tprintln!(ctx, "CSV export to file is not supported in this environment.");
+                    tprintln!(ctx, "Use the WASM SDK toCsvRow() API to access CSV data.");
+                }
+
+                return Ok(());
+            }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'");
                 self.display_help(ctx, argv).await?;
@@ -145,6 +191,7 @@ impl History {
                 ("list [<last N transactions>]", "List transactions"),
                 ("details [<last N transactions>]", "List transactions with UTXO details"),
                 ("lookup <transaction id>", "Lookup transaction in the history"),
+                ("export [<filename>]", "Export all transactions to a CSV file"),
             ],
             None,
         )?;
