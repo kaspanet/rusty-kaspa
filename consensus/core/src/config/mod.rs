@@ -65,6 +65,9 @@ pub struct Config {
     /// If undefined, sets it to 0.0.0.0
     pub p2p_listen_address: ContextualNetAddress,
 
+    /// QUIC UDP port for libp2p sessions and relay service.
+    pub relay_port: u16,
+
     pub externalip: Option<NetAddress>,
 
     pub block_template_cache_lifetime: Option<u64>,
@@ -87,6 +90,7 @@ impl Config {
     }
 
     pub fn with_perf(params: Params, perf: PerfParams) -> Self {
+        let relay_port = params.net.default_relay_port();
         Self {
             params,
             perf,
@@ -102,6 +106,7 @@ impl Config {
             user_agent_rules: Default::default(),
             externalip: None,
             p2p_listen_address: ContextualNetAddress::unspecified(),
+            relay_port,
             block_template_cache_lifetime: None,
 
             #[cfg(feature = "devnet-prealloc")]

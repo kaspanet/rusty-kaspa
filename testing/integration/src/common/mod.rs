@@ -10,6 +10,7 @@ pub mod client_notify;
 pub mod daemon;
 pub mod fee;
 pub mod json;
+pub mod libp2p;
 pub mod listener;
 pub mod utils;
 

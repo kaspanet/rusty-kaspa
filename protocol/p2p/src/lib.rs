@@ -6,6 +6,10 @@ pub mod pb {
 pub mod common;
 pub mod convert;
 pub mod echo;
+pub mod libp2p_transport;
+
+#[cfg(test)]
+mod libp2p_tests;
 
 mod core;
 mod handshake;

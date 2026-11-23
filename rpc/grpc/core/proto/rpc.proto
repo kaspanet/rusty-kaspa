@@ -297,6 +297,9 @@ message GetConnectedPeerInfoMessage {
 
   // Whether this peer is the IBD peer (if IBD is running)
   bool isIbdPeer = 11;
+
+  // Authenticated Ed25519 public identity; absent for TCP connections.
+  optional bytes libp2pId = 12;
 }
 
 // AddPeerRequestMessage adds a peer to kaspad's outgoing connection list.

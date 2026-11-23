@@ -38,7 +38,7 @@ use kaspa_p2p_lib::{
 };
 use kaspa_p2p_mining::rule_engine::MiningRuleEngine;
 use kaspa_utils::iter::IterExtensions;
-use kaspa_utils::networking::PeerId;
+use kaspa_utils::networking::{NetAddress, PeerId};
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -752,10 +752,15 @@ impl FlowContext {
 #[async_trait]
 impl ConnectionInitializer for FlowContext {
     async fn initialize_connection(&self, router: Arc<Router>) -> Result<(), ProtocolError> {
-        // We only ban inbound connections here, since if we got to this stage with a banned outbound peer, it means
-        // the user has explicitly allowed it.
-        if !router.is_outbound() && self.address_manager.lock().is_banned(router.net_address().ip().into()) {
+        // Explicit TCP requests can override an IP ban. libp2p sessions always
+        // check the authenticated direct socket, since advertised routes may be stale.
+        let enforce_ip_ban = !router.is_outbound() || router.libp2p_id().is_some();
+        if enforce_ip_ban && self.address_manager.lock().is_banned(router.net_address().ip().into()) {
             return Err(ProtocolError::Other("peer is banned"));
+        }
+
+        if !router.is_outbound() && self.connection_manager().is_some_and(|manager| !manager.has_inbound_capacity()) {
+            return Err(ProtocolError::Other("inbound connection limit reached"));
         }
 
         // Build the handshake object and subscribe to handshake messages
@@ -766,7 +771,7 @@ impl ConnectionInitializer for FlowContext {
 
         let network_name = self.config.network_name();
 
-        let local_address = self.address_manager.lock().best_local_address();
+        let local_address = self.address_manager.lock().local_advertisement();
 
         // Build the local version message
         // Subnets are not currently supported
@@ -780,6 +785,12 @@ impl ConnectionInitializer for FlowContext {
         let time_offset = (unix_now() as i64).saturating_sub(peer_version_message.timestamp);
 
         let peer_version: Version = peer_version_message.try_into()?;
+        if let Some(authenticated) = router.libp2p_id()
+            && let Some(advertised) = peer_version.address.as_ref().and_then(|address| address.endpoint_id())
+            && advertised != authenticated
+        {
+            return Err(ProtocolError::Other("advertised address identity differs from authenticated endpoint"));
+        }
         router.set_identity(peer_version.id);
         // Avoid duplicate connections
         if self.hub.has_peer(router.key()) {
@@ -827,6 +838,7 @@ impl ConnectionInitializer for FlowContext {
 
         // Build and register the peer properties
         let peer_properties = Arc::new(PeerProperties {
+            address: peer_version.address.clone(),
             user_agent: peer_version.user_agent,
             advertised_protocol_version: peer_version.protocol_version,
             protocol_version: applied_protocol_version,
@@ -846,15 +858,18 @@ impl ConnectionInitializer for FlowContext {
             flow.launch();
         }
 
-        if router.is_outbound() || peer_version.address.is_some() {
+        // Only ordinary outbound TCP sockets become TCP address-book entries;
+        // libp2p sockets do not identify the peer's legacy Kaspa TCP listener.
+        let outbound_tcp = router.is_outbound() && router.libp2p_id().is_none();
+        if outbound_tcp || peer_version.address.is_some() {
             let mut address_manager = self.address_manager.lock();
 
-            if router.is_outbound() {
-                address_manager.add_address(router.net_address().into());
+            if outbound_tcp {
+                address_manager.add_address(NetAddress::from(router.net_address()).into());
             }
 
-            if let Some(peer_ip_address) = peer_version.address {
-                address_manager.add_address(peer_ip_address);
+            if let Some(peer_address) = peer_version.address {
+                address_manager.add_address(peer_address);
             }
         }
 

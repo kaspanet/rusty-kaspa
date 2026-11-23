@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+bincode.workspace = true
 borsh.workspace = true
 igd-next.workspace = true
 itertools.workspace = true
@@ -27,6 +28,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
+ed25519-dalek.workspace = true
 rv.workspace = true
 
 [lints]
