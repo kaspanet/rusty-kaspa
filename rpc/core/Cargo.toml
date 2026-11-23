@@ -29,6 +29,8 @@ kaspa-mining-errors.workspace = true
 kaspa-notify.workspace = true
 kaspa-txscript.workspace = true
 kaspa-rpc-macros.workspace = true
+kaspa-seq-commit.workspace = true
+kaspa-smt.workspace = true
 
 async-channel.workspace = true
 async-trait.workspace = true
@@ -54,6 +56,7 @@ workflow-wasm.workspace = true
 kaspa-utils = { workspace = true, features = ["peer-id"] }
 
 [dev-dependencies]
+kaspa-smt = { workspace = true, features = ["test-utils"] }
 serde_json.workspace = true
 wasm-bindgen-test.workspace = true
 
