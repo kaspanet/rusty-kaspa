@@ -1,0 +1,27 @@
+[package]
+name = "kaspa-wallet-daemon"
+description = "Kaspa wallet daemon"
+rust-version.workspace = true
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+kaspa-core.workspace = true
+kaspa-wallet-core.workspace = true
+kaspa-wallet-grpc-core.workspace = true
+kaspa-wallet-grpc-server.workspace = true
+kaspa-consensus-core.workspace = true
+log.workspace = true
+tonic.workspace = true
+tokio = { workspace = true, features = ["signal", "time"] }
+clap.workspace = true
+
+[lints]
+workspace = true

@@ -540,6 +540,23 @@ fn test_generator_sweep_two_utxos_with_priority_fees_rejection() -> Result<()> {
 }
 
 #[test]
+fn test_generator_receiver_pays_fees_exceeding_input_rejection() -> Result<()> {
+    let generator = generator(
+        test_network_id(),
+        &[0.000001],
+        &[],
+        Some(100.0),
+        Fees::receiver(Sompi(0)),
+        [(output_address, Sompi(100))].as_slice(),
+    )?;
+    match generator.iter().next() {
+        Some(Err(Error::InsufficientFunds { origin: "final", .. })) => {}
+        _ => panic!("receiver pays transaction with fees exceeding the input must fail with insufficient funds"),
+    }
+    Ok(())
+}
+
+#[test]
 fn test_generator_large_payload_min_relay_fee() -> Result<()> {
     let network_id = test_network_id();
     let harness = make_generator_with_payload(

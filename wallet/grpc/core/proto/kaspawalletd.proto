@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+option go_package = "github.com/kaspanet/kaspad/cmd/kaspawallet/daemon/pb";
+package kaspawalletd;
+
+service kaspawalletd {
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {}
+  rpc GetExternalSpendableUTXOs(GetExternalSpendableUTXOsRequest)
+      returns (GetExternalSpendableUTXOsResponse) {}
+  rpc CreateUnsignedTransactions(CreateUnsignedTransactionsRequest)
+      returns (CreateUnsignedTransactionsResponse) {}
+  rpc ShowAddresses(ShowAddressesRequest) returns (ShowAddressesResponse) {}
+  rpc NewAddress(NewAddressRequest) returns (NewAddressResponse) {}
+  rpc Shutdown(ShutdownRequest) returns (ShutdownResponse) {}
+  rpc Broadcast(BroadcastRequest) returns (BroadcastResponse) {}
+  // BroadcastReplacement assumes that all transactions depend on the first one
+  rpc BroadcastReplacement(BroadcastRequest) returns (BroadcastResponse) {}
+  // Since SendRequest contains a password - this command should only be used on
+  // a trusted or secure connection
+  rpc Send(SendRequest) returns (SendResponse) {}
+  // Since SignRequest contains a password - this command should only be used on
+  // a trusted or secure connection
+  rpc Sign(SignRequest) returns (SignResponse) {}
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse) {}
+  rpc BumpFee(BumpFeeRequest) returns (BumpFeeResponse) {}
+}
+
+message GetBalanceRequest {}
+
+message GetBalanceResponse {
+  uint64 available = 1;
+  uint64 pending = 2;
+  repeated AddressBalances addressBalances = 3;
+}
+
+message AddressBalances {
+  string address = 1;
+  uint64 available = 2;
+  uint64 pending = 3;
+}
+
+message FeePolicy {
+  oneof feePolicy {
+    double maxFeeRate = 6;
+    double exactFeeRate = 7;
+    uint64 maxFee = 8;
+  }
+}
+
+message CreateUnsignedTransactionsRequest {
+  string address = 1;
+  uint64 amount = 2;
+  repeated string from = 3;
+  bool useExistingChangeAddress = 4;
+  bool isSendAll = 5;
+  FeePolicy feePolicy = 6;
+}
+
+message CreateUnsignedTransactionsResponse {
+  repeated bytes unsignedTransactions = 1;
+}
+
+message ShowAddressesRequest {}
+
+message ShowAddressesResponse { repeated string address = 1; }
+
+message NewAddressRequest {}
+
+message NewAddressResponse { string address = 1; }
+
+message BroadcastRequest {
+  bool isDomain = 1;
+  repeated bytes transactions = 2;
+}
+
+message BroadcastResponse { repeated string txIds = 1; }
+
+message ShutdownRequest {}
+
+message ShutdownResponse {}
+
+message Outpoint {
+  string transactionId = 1;
+  uint32 index = 2;
+}
+
+message UtxosByAddressesEntry {
+  string address = 1;
+  Outpoint outpoint = 2;
+  UtxoEntry utxoEntry = 3;
+}
+
+message ScriptPublicKey {
+  uint32 version = 1;
+  string scriptPublicKey = 2;
+}
+
+message UtxoEntry {
+  uint64 amount = 1;
+  ScriptPublicKey scriptPublicKey = 2;
+  uint64 blockDaaScore = 3;
+  bool isCoinbase = 4;
+}
+
+message GetExternalSpendableUTXOsRequest { string address = 1; }
+
+message GetExternalSpendableUTXOsResponse {
+  repeated UtxosByAddressesEntry Entries = 1;
+}
+// Since SendRequest contains a password - this command should only be used on a
+// trusted or secure connection
+message SendRequest {
+  string toAddress = 1;
+  uint64 amount = 2;
+  string password = 3;
+  repeated string from = 4;
+  bool useExistingChangeAddress = 5;
+  bool isSendAll = 6;
+  FeePolicy feePolicy = 7;
+}
+
+message SendResponse {
+  repeated string txIds = 1;
+  repeated bytes signedTransactions = 2;
+}
+
+// Since SignRequest contains a password - this command should only be used on a
+// trusted or secure connection
+message SignRequest {
+  repeated bytes unsignedTransactions = 1;
+  string password = 2;
+}
+
+message SignResponse { repeated bytes signedTransactions = 1; }
+
+message GetVersionRequest {}
+
+message GetVersionResponse { string version = 1; }
+
+message BumpFeeRequest {
+  string password = 1;
+  repeated string from = 2;
+  bool useExistingChangeAddress = 3;
+  FeePolicy feePolicy = 4;
+  string txId = 5;
+}
+
+message BumpFeeResponse {
+  repeated bytes transactions = 1;
+  repeated string txIds = 2;
+}
