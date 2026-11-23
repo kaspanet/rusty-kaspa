@@ -5,6 +5,7 @@ set -e
 # Parse command line arguments for --tag and --repo
 ARCHES="linux/amd64 linux/arm64"
 ARTIFACT="kaspad"
+DOCKER_REPO_PREFIX="${DOCKER_REPO_PREFIX:-kaspanet}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --tag)
@@ -22,12 +23,17 @@ while [ $# -gt 0 ]; do
       shift
       ARTIFACT="$1"
       ;;
+    --repo)
+      shift
+      DOCKER_REPO_PREFIX="$1"
+      ;;
     --help|-h)
       echo "Usage: $0 --tag <tag> --artifact <artifact> [--arches <arches>] [--push]"
       echo ""
       echo "  --tag <tag>         Docker image tag (required)"
       echo "  --artifact <name>   Build target/artifact (default: \"$ARTIFACT\")"
       echo "  --arches <arches>   Space-separated list of architectures (default: \"$ARCHES\")"
+      echo "  --repo <prefix>     Docker repo/namespace prefix (default: \"$DOCKER_REPO_PREFIX\")"
       echo "  --push              Push the built images"
       echo "  --help, -h          Show this help message"
       exit 0
@@ -53,14 +59,14 @@ multi_arch_build() {
   echo "===================================================="
   echo " Running build for $1"
   echo "===================================================="
-  dockerRepo="${DOCKER_REPO_PREFIX}-$1"
+  dockerRepo="${DOCKER_REPO_PREFIX}/$1"
   dockerRepoArgs=
 
   if [ "$PUSH" = "push" ]; then
     dockerRepoArgs="$dockerRepoArgs --push"
   fi
 
-  dockerRepoArgs="$dockerRepoArgs --tag $TAG"
+  dockerRepoArgs="$dockerRepoArgs --tag ${dockerRepo}:$TAG"
   dockerRepoArgs="$dockerRepoArgs -f docker/Dockerfile.$1"
 
   $docker buildx build --platform=$(echo $ARCHES | sed 's/ /,/g') $dockerRepoArgs \
