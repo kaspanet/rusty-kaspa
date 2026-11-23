@@ -61,11 +61,15 @@ declare! {
      */
     export interface IVerifiedSeqCommitLane {
         /**
-         * Whether the lane has an entry in the active-lanes tree at the block.
+         * Whether the lane has an entry in the block's active-lanes tree, i.e. it was updated
+         * within the finality window. It does not mean the block accepted transactions of the
+         * lane: the tip only advances in blocks that do.
          */
         active: boolean;
         /**
-         * The lane's verified entry, when `active`.
+         * The lane's verified entry, when `active`. `blueScore` is the blue score of the block
+         * that last advanced the lane's tip (the queried block's own blue score only if that
+         * block accepted transactions of the lane).
          */
         lane?: IRpcLaneEntry;
     }
@@ -82,8 +86,13 @@ declare! {
      */
     export interface ISeqCommitLaneTipArgs {
         /**
-         * The lane's previous tip, or the selected parent's `acceptedIdMerkleRoot` when the lane
-         * has no active entry from the block's point of view (new or expired lane).
+         * The lane's previous tip if its entry is still live from this block's point of view,
+         * otherwise the selected parent's `acceptedIdMerkleRoot` (new or expired lane).
+         *
+         * Taking the entry from the selected parent's verified proof, it is live when
+         * `lane.blueScore >= blueScore - finalityDepth` (this block's blue score, and the
+         * network's finality depth in blocks). An entry the parent still shows can already be
+         * expired here, in which case the parent's `acceptedIdMerkleRoot` must be used.
          */
         parentRef: HexString;
         laneKey: HexString;
@@ -113,7 +122,9 @@ declare! {
         version: number;
         /**
          * The transaction's position among all transactions accepted by the chain block
-         * (across every lane), counted from 0.
+         * (across every lane), counted from 0: its index in the block's
+         * `acceptedTransactions` as returned by `RpcClient.getVirtualChainFromBlockV2()`
+         * (`chainBlockAcceptedTransactions`), which lists them in acceptance order.
          */
         mergeIndex: number;
     }
@@ -168,9 +179,9 @@ struct LaneTransaction {
 /// Verifies a KIP-21 lane proof returned by `RpcClient.getSeqCommitLaneProof()` against the
 /// `acceptedIdMerkleRoot` (`seq_commit`) of the block's header.
 ///
-/// Returns `{ active: true, lane }` when the proof shows the lane active at that block, and
-/// `{ active: false }` when it proves the lane has no entry there. Throws if the proof does not
-/// match the header.
+/// Returns `{ active: true, lane }` when the proof shows the lane in the block's active-lanes tree
+/// (updated within the finality window, not necessarily by this block), and `{ active: false }`
+/// when it proves the lane has no entry there. Throws if the proof does not match the header.
 ///
 /// @category Node RPC
 #[wasm_bindgen(js_name = verifySeqCommitLaneProof)]

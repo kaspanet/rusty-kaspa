@@ -81,6 +81,18 @@ fn rejects_proofs_that_do_not_match_the_header() {
 }
 
 #[wasm_bindgen_test]
+fn checks_the_parent_commitment_when_given() {
+    let (proof, key, seq_commit) = proof_and_commit(2);
+    let with_parent = |parent: Hash| {
+        let args = JsValue::from(verify_args(&proof, key, seq_commit));
+        Reflect::set(&args, &"parentSeqCommit".into(), &JsValue::from_str(&parent.to_string())).unwrap();
+        js_verify_seq_commit_lane_proof(IVerifySeqCommitLaneProofArgs::from(args))
+    };
+    assert!(with_parent(Hash::from_bytes([0xd1; 32])).is_ok());
+    assert!(with_parent(Hash::from_bytes([0xee; 32])).is_err());
+}
+
+#[wasm_bindgen_test]
 fn lane_key_matches_consensus() {
     let golden = Hash::from_bytes([
         0x57, 0xc7, 0xe5, 0x2c, 0x76, 0x02, 0xb3, 0x66, 0xb3, 0xf6, 0x62, 0xad, 0xdc, 0x36, 0x12, 0x96, 0x77, 0xd4, 0x84, 0x4b, 0x84,

@@ -13,9 +13,11 @@ impl GetSeqCommitLaneProofResponse {
     /// Verifies this witness for `lane_key` against `seq_commit`, the `accepted_id_merkle_root`
     /// of the header of the block the proof was requested for.
     ///
-    /// Returns the lane's entry when the proof shows the lane active at that block, or `None`
-    /// when it proves the lane has no entry there. If `parent_seq_commit` is given (the selected
-    /// parent header's `accepted_id_merkle_root`), the witness must also name it as its parent.
+    /// Returns the lane's entry when the proof shows the lane in the block's active-lanes tree
+    /// (updated within the finality window; `blue_score` is that of the block that last advanced
+    /// its tip), or `None` when it proves the lane has no entry there. If `parent_seq_commit` is
+    /// given (the selected parent header's `accepted_id_merkle_root`), the witness must also name it
+    /// as its parent.
     ///
     /// The caller is responsible for trusting `seq_commit`, e.g. by validating the header.
     pub fn verify(
