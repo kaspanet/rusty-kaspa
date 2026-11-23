@@ -1,8 +1,7 @@
 use crate::result::Result;
-use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 use kaspa_txscript::{EngineFlags, script_builder::ScriptBuilder};
 use risc0_binfmt::Digestible;
-use risc0_zkvm::{Groth16Receipt, SuccinctReceipt};
+use risc0_zkvm::Groth16Receipt;
 use std::marker::PhantomData;
 mod builder;
 mod fragments;
@@ -11,9 +10,8 @@ pub mod wasm;
 
 pub use builder::FinalizedR0Script;
 pub use fragments::{
-    SuccinctWitnessBytes, append_r0_groth16_verifier, append_r0_groth16_verifier_dynamic_image_id,
-    append_r0_groth16_verifier_with_fixed_journal, append_r0_succinct_verifier, append_r0_succinct_verifier_with_fixed_journal,
-    prepare_r0_groth16_proof, prepare_r0_succinct_witness, push_r0_groth16_proof, push_r0_succinct_witness,
+    append_r0_groth16_verifier, append_r0_groth16_verifier_dynamic_image_id, append_r0_groth16_verifier_with_fixed_journal,
+    prepare_r0_groth16_proof, push_r0_groth16_proof,
 };
 
 /// This represents R0 zk script builder
@@ -27,20 +25,10 @@ pub struct UnboundedR0Script;
 /// a groth16 proof in order to advance and finalize the script.
 pub struct BoundedR0Groth16Script;
 
-/// An r0 script builder that committed to the
-/// succinct proof system, at this stage it can only accept
-/// a succinct proof in order to advance and finalize the script.
-pub struct BoundedR0SuccinctScript;
-
 /// An r0 script builder that committed to the groth16 proof system *and* a
 /// fixed journal hash baked into the script. It only needs the proof witness to
 /// finalize, the journal is already constrained.
 pub struct BoundedR0Groth16FixedJournalScript;
-
-/// An r0 script builder that committed to the succinct proof system *and* a
-/// fixed journal baked into the script. It only needs the receipt witness items
-/// to finalize, the journal is already constrained.
-pub struct BoundedR0SuccinctFixedJournalScript;
 
 #[derive(Default)]
 /// A wrapper around the native ScriptBuilder to abstract away the
@@ -111,32 +99,6 @@ impl<ScriptType> ZkScriptBuilder<ScriptType> {
 
     pub fn append_r0_groth16_verifier_with_fixed_journal(&mut self, image_id: [u8; 32], journal_hash: [u8; 32]) -> Result<&mut Self> {
         fragments::append_r0_groth16_verifier_with_fixed_journal(&mut self.builder, image_id, journal_hash)?;
-        Ok(self)
-    }
-
-    pub fn push_r0_succinct_witness<Claim: Digestible + Clone>(&mut self, receipt: SuccinctReceipt<Claim>) -> Result<&mut Self> {
-        fragments::push_r0_succinct_witness(&mut self.builder, receipt)?;
-        Ok(self)
-    }
-
-    pub fn append_r0_succinct_verifier(
-        &mut self,
-        image_id: [u8; 32],
-        control_id: [u8; 32],
-        hash_fn_id: Option<HashFnId>,
-    ) -> Result<&mut Self> {
-        fragments::append_r0_succinct_verifier(&mut self.builder, image_id, control_id, hash_fn_id)?;
-        Ok(self)
-    }
-
-    pub fn append_r0_succinct_verifier_with_fixed_journal(
-        &mut self,
-        image_id: [u8; 32],
-        control_id: [u8; 32],
-        hash_fn_id: Option<HashFnId>,
-        journal: [u8; 32],
-    ) -> Result<&mut Self> {
-        fragments::append_r0_succinct_verifier_with_fixed_journal(&mut self.builder, image_id, control_id, hash_fn_id, journal)?;
         Ok(self)
     }
 }

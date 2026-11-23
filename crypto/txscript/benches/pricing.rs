@@ -857,6 +857,7 @@ fn build_stark_p2sh_signature_script(redeem_script: Vec<u8>) -> Vec<u8> {
     new_p2sh_signature_script(redeem_script, signature_prefix.drain())
 }
 
+#[allow(deprecated)]
 fn build_stark_p2sh_redeem_script() -> Vec<u8> {
     let (control_id, _, _, hashfn, _, _, _, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
@@ -1006,6 +1007,7 @@ fn append_seal_prefix(builder: &mut ScriptBuilder, chunk_len: usize) {
         .unwrap();
 }
 
+#[allow(deprecated)]
 fn build_stark_trailing_seal_p2sh_redeem_script(target_seal_len: usize) -> Vec<u8> {
     let (control_id, seal, _, hashfn, _, _, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;
@@ -1040,6 +1042,7 @@ fn build_stark_trailing_seal_p2sh_redeem_script(target_seal_len: usize) -> Vec<u
     builder.drain()
 }
 
+#[allow(deprecated)]
 fn build_stark_long_control_proof_p2sh_redeem_script() -> Vec<u8> {
     let (control_id, seal, _, hashfn, _, _, journal, image_id) = load_stark_fields();
     let stark_tag = ZkTag::R0Succinct as u8;

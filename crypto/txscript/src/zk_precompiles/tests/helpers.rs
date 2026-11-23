@@ -119,6 +119,7 @@ impl R0Fields {
         Self { claim, control_index, control_digests, seal, journal, image_id, control_id, hashfn }
     }
 
+    #[allow(deprecated)]
     pub fn script(&self) -> Vec<u8> {
         build_zk_script(&[
             &self.claim,
@@ -134,6 +135,7 @@ impl R0Fields {
         .unwrap()
     }
 
+    #[allow(deprecated)]
     pub fn p2sh_redeem_script(&self) -> Vec<u8> {
         let mut builder = ScriptBuilder::with_flags(zk_test_flags());
         builder

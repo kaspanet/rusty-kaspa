@@ -2,17 +2,14 @@ mod commit;
 mod fragments;
 mod proof;
 
-pub use fragments::{R0SuccinctWitnessParts, prepare_r0_groth16_proof_wasm, prepare_r0_succinct_witness_wasm};
+pub use fragments::prepare_r0_groth16_proof_wasm;
 
-use crate::zk_to_script::{
-    BoundedR0Groth16Script, BoundedR0SuccinctScript, UnboundedR0Script, ZkScriptBuilder as NativeZkScriptBuilder,
-};
+use crate::zk_to_script::{BoundedR0Groth16Script, UnboundedR0Script, ZkScriptBuilder as NativeZkScriptBuilder};
 use kaspa_txscript::EngineFlags;
 use kaspa_txscript::error::Error;
 use kaspa_txscript::result::Result;
 use kaspa_txscript::script_builder::ScriptBuilder;
 use kaspa_txscript::wasm::builder::ScriptBuilderOptions;
-use kaspa_txscript::zk_precompiles::risc0::rcpt::HashFnId;
 use kaspa_wasm_core::types::HexString;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -22,7 +19,6 @@ use wasm_bindgen::prelude::wasm_bindgen;
 pub(super) enum InnerState {
     Unbounded(NativeZkScriptBuilder<UnboundedR0Script>),
     BoundedGroth16(NativeZkScriptBuilder<BoundedR0Groth16Script>),
-    BoundedSuccinct(NativeZkScriptBuilder<BoundedR0SuccinctScript>),
     Taken,
 }
 
@@ -31,7 +27,6 @@ impl InnerState {
         match self {
             InnerState::Unbounded(b) => b.script(),
             InnerState::BoundedGroth16(b) => b.script(),
-            InnerState::BoundedSuccinct(b) => b.script(),
             InnerState::Taken => &[],
         }
     }
@@ -40,7 +35,6 @@ impl InnerState {
         match std::mem::replace(self, InnerState::Taken) {
             InnerState::Unbounded(b) => b.drain(),
             InnerState::BoundedGroth16(b) => b.drain(),
-            InnerState::BoundedSuccinct(b) => b.drain(),
             InnerState::Taken => Vec::new(),
         }
     }
@@ -49,7 +43,6 @@ impl InnerState {
         match self {
             InnerState::Unbounded(b) => Ok(b.builder_mut()),
             InnerState::BoundedGroth16(b) => Ok(b.builder_mut()),
-            InnerState::BoundedSuccinct(b) => Ok(b.builder_mut()),
             InnerState::Taken => Err(Error::custom("builder has been consumed")),
         }
     }
@@ -59,28 +52,14 @@ pub(super) fn into_array_32(bytes: Vec<u8>, name: &'static str) -> Result<[u8; 3
     bytes.as_slice().try_into().map_err(|_| Error::custom(format!("{name} must be 32 bytes")))
 }
 
-fn parse_hash_fn_id(value: &str) -> Result<HashFnId> {
-    match value {
-        "poseidon2" => Ok(HashFnId::Poseidon2),
-        // Other hashfns disabled until R0 support.
-        // "blake2b" => Ok(HashFnId::Blake2b),
-        // "sha-256" => Ok(HashFnId::Sha256),
-        _ => Err(Error::custom(format!("invalid hash function id: {value}"))),
-    }
-}
-
-pub(super) fn decode_hash_fn_id(hash_fn_id: Option<String>) -> Result<Option<HashFnId>> {
-    hash_fn_id.as_deref().map(parse_hash_fn_id).transpose()
-}
-
 /// ZkScriptBuilder provides a staged builder for RISC0 zk-to-script locking
 /// scripts. It enforces its state machine at runtime, since WASM cannot
 /// express the native compile-time type-state transitions.
 ///
 /// Flow:
 ///   1. `newR0()` — unbounded.
-///   2. `commitToGroth16(imageId)` *or* `commitToSuccinct(imageId, controlId, hashFnId?)` — bounded.
-///   3. `finalizeWithGroth16Proof(receipt, journalHash)` *or* `finalizeWithSuccinctProof(receipt, journal)` — finalized hex bytes.
+///   2. `commitToGroth16(imageId)` — bounded.
+///   3. `finalizeWithGroth16Proof(receipt, journalHash)` — finalized hex bytes.
 ///
 /// Calling a method in the wrong state returns an error.
 #[wasm_bindgen(inspectable)]

@@ -7,11 +7,13 @@ use crate::zk_precompiles::error::ZkIntegrityError;
 /// The supported ZK proof tags
 pub enum ZkTag {
     Groth16 = 0x20,
+    #[deprecated(note = "Vulnerable to RISC Zero GHSA-g6qg-9j8p-7j87. Do not use for new deployments.")]
     R0Succinct = 0x21,
 }
 
 impl TryFrom<u8> for ZkTag {
     type Error = ZkIntegrityError;
+    #[allow(deprecated)]
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0x20 => Ok(ZkTag::Groth16),
@@ -26,6 +28,7 @@ impl ZkTag {
     /// Prices are based on benchmarks and estimations of verification complexity.
     ///
     /// Values are priced in script units.
+    #[allow(deprecated)]
     pub fn cost(&self) -> ScriptUnits {
         match self {
             ZkTag::Groth16 => Gram(1000 * 140),
@@ -40,6 +43,7 @@ impl ZkTag {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use kaspa_consensus_core::{
         config::params::MAINNET_PARAMS,

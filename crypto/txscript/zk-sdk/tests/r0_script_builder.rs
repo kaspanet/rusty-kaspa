@@ -13,7 +13,7 @@ use kaspa_hashes::Hash;
 use kaspa_txscript::{EngineCtx, EngineFlags, SigCacheKey, TxScriptEngine, caches::Cache, hex, pay_to_script_hash_script};
 use kaspa_txscript_errors::TxScriptError;
 use kaspa_txscript_zk_sdk::{ZkScriptBuilder, prepare_r0_groth16_proof};
-use risc0_zkvm::{Digest, Groth16Receipt, ReceiptClaim, SuccinctReceipt};
+use risc0_zkvm::{Groth16Receipt, ReceiptClaim};
 
 fn zk_test_flags() -> EngineFlags {
     Default::default()
@@ -45,25 +45,18 @@ fn execute_p2sh(sig_script: Vec<u8>, redeem_script: &[u8]) -> Result<(), TxScrip
 
 fn load_groth_fixture() -> ([u8; 32], [u8; 32], Groth16Receipt<ReceiptClaim>) {
     let journal_hash: [u8; 32] =
-        hex::decode("5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456").unwrap().try_into().unwrap();
+        hex::decode("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap().try_into().unwrap();
     let image_id: [u8; 32] =
-        hex::decode("75641a540ee2ad9ee5902bcdcdb8b55c0bef4a28287309b858f97b1356c6c2e0").unwrap().try_into().unwrap();
+        hex::decode("1202d1e01d53a986c4a3250bc48fb78e7ca1533bc52836b6d4c969b5d5f798b2").unwrap().try_into().unwrap();
     let receipt: Groth16Receipt<ReceiptClaim> =
         borsh::from_slice(&hex::decode(include_str!("data/zk_builder_tests/groth.rcpt.hex")).unwrap()).unwrap();
     (journal_hash, image_id, receipt)
 }
 
-fn load_succinct_fixture() -> (Digest, Digest, SuccinctReceipt<ReceiptClaim>) {
-    let image_id: Digest = hex::decode(include_str!("data/zk_builder_tests/succinct.image.hex")).unwrap().try_into().unwrap();
-    let journal: Digest = hex::decode(include_str!("data/zk_builder_tests/succinct.journal.hex")).unwrap().try_into().unwrap();
-    let receipt: SuccinctReceipt<ReceiptClaim> =
-        borsh::from_slice(&hex::decode(include_str!("data/zk_builder_tests/succinct.rcpt.hex")).unwrap()).unwrap();
-    (image_id, journal, receipt)
-}
-
 #[test]
 fn r0_script_builder_groth16_verifies() {
     let (journal_hash, image_id, receipt) = load_groth_fixture();
+    receipt.verify_integrity().unwrap();
     let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_groth16(image_id)
         .unwrap()
@@ -97,35 +90,10 @@ fn r0_script_builder_groth16_binds_journal_hash() {
 }
 
 #[test]
-fn r0_script_builder_succinct_verifies() {
-    let (image_id, journal, receipt) = load_succinct_fixture();
-    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
-        .commit_to_succinct(image_id.as_bytes().try_into().unwrap(), receipt.control_id.as_bytes().try_into().unwrap(), None)
-        .unwrap()
-        .finalize_with_proof(receipt, journal)
-        .unwrap();
-    execute_p2sh(finalized.sig_script, &finalized.redeem_script).unwrap();
-}
-
-#[test]
 fn r0_script_builder_groth16_fixed_journal_verifies() {
     let (journal_hash, image_id, receipt) = load_groth_fixture();
     let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
         .commit_to_groth16_with_fixed_journal(image_id, journal_hash)
-        .unwrap()
-        .finalize_with_proof(receipt)
-        .unwrap();
-    execute_p2sh(finalized.sig_script, &finalized.redeem_script).unwrap();
-}
-
-#[test]
-fn r0_script_builder_succinct_fixed_journal_verifies() {
-    let (image_id, journal, receipt) = load_succinct_fixture();
-    let image_id_bytes: [u8; 32] = image_id.as_bytes().try_into().unwrap();
-    let control_id: [u8; 32] = receipt.control_id.as_bytes().try_into().unwrap();
-    let journal_bytes: [u8; 32] = journal.as_bytes().try_into().unwrap();
-    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
-        .commit_to_succinct_with_fixed_journal(image_id_bytes, control_id, None, journal_bytes)
         .unwrap()
         .finalize_with_proof(receipt)
         .unwrap();
@@ -158,19 +126,6 @@ fn r0_script_builder_groth16_rejects_tampered_proof() {
     let sig_script = sig_builder.drain();
 
     assert!(matches!(execute_p2sh(sig_script, &redeem_script), Err(TxScriptError::ZkIntegrity(_))));
-}
-
-#[test]
-fn r0_script_builder_succinct_rejects_tampered_proof() {
-    let (image_id, journal, mut receipt) = load_succinct_fixture();
-    receipt.seal[0] ^= 1; // flip a single bit in the STARK seal
-
-    let finalized = ZkScriptBuilder::new_r0_with_flags(zk_test_flags())
-        .commit_to_succinct(image_id.as_bytes().try_into().unwrap(), receipt.control_id.as_bytes().try_into().unwrap(), None)
-        .unwrap()
-        .finalize_with_proof(receipt, journal)
-        .unwrap();
-    assert!(matches!(execute_p2sh(finalized.sig_script, &finalized.redeem_script), Err(TxScriptError::ZkIntegrity(_))));
 }
 
 #[test]
@@ -236,56 +191,6 @@ fn fragments_groth16_fixed_journal_wrong_journal_rejected() {
     let sig_script = sig_builder.drain();
 
     assert!(matches!(execute_p2sh(sig_script, &redeem_script), Err(TxScriptError::ZkIntegrity(_))));
-}
-
-#[test]
-fn fragments_succinct_roundtrip_matches_facade() {
-    let flags = zk_test_flags();
-    let (image_id, journal, receipt) = load_succinct_fixture();
-    let control_id: [u8; 32] = receipt.control_id.as_bytes().try_into().unwrap();
-    let image_id_bytes: [u8; 32] = image_id.as_bytes().try_into().unwrap();
-
-    let mut redeem_builder = ZkScriptBuilder::new_r0_with_flags(flags);
-    redeem_builder.append_r0_succinct_verifier(image_id_bytes, control_id, None).unwrap();
-    let redeem_script = redeem_builder.drain();
-
-    // Signature script: receipt witness items, then journal on top, then redeem.
-    let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
-    sig_builder.push_r0_succinct_witness(receipt).unwrap();
-    sig_builder.add_data(journal.as_bytes()).unwrap();
-    sig_builder.add_data(&redeem_script).unwrap();
-    let sig_script = sig_builder.drain();
-
-    let (_, _, facade_receipt) = load_succinct_fixture();
-    let facade = ZkScriptBuilder::new_r0_with_flags(flags)
-        .commit_to_succinct(image_id_bytes, control_id, None)
-        .unwrap()
-        .finalize_with_proof(facade_receipt, journal)
-        .unwrap();
-    assert_eq!(redeem_script, facade.redeem_script, "fragment redeem must match commit_to_succinct bytes");
-    assert_eq!(sig_script, facade.sig_script, "fragment sig must match finalize_with_proof bytes");
-
-    execute_p2sh(sig_script, &redeem_script).unwrap();
-}
-
-#[test]
-fn fragments_succinct_fixed_journal_covenant() {
-    let flags = zk_test_flags();
-    let (image_id, journal, receipt) = load_succinct_fixture();
-    let control_id: [u8; 32] = receipt.control_id.as_bytes().try_into().unwrap();
-    let image_id_bytes: [u8; 32] = image_id.as_bytes().try_into().unwrap();
-    let journal_bytes: [u8; 32] = journal.as_bytes().try_into().unwrap();
-
-    let mut redeem_builder = ZkScriptBuilder::new_r0_with_flags(flags);
-    redeem_builder.append_r0_succinct_verifier_with_fixed_journal(image_id_bytes, control_id, None, journal_bytes).unwrap();
-    let redeem_script = redeem_builder.drain();
-
-    let mut sig_builder = ZkScriptBuilder::new_r0_with_flags(flags);
-    sig_builder.push_r0_succinct_witness(receipt).unwrap();
-    sig_builder.add_data(&redeem_script).unwrap();
-    let sig_script = sig_builder.drain();
-
-    execute_p2sh(sig_script, &redeem_script).unwrap();
 }
 
 #[test]

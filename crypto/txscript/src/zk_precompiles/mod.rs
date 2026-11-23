@@ -4,10 +4,12 @@ pub mod groth16;
 pub mod risc0;
 pub mod tags;
 pub mod tests;
+#[allow(deprecated)]
+use crate::zk_precompiles::risc0::R0SuccinctPrecompile;
 use crate::{
     data_stack::Stack,
     runtime_resource_meter::RuntimeResourceMeter,
-    zk_precompiles::{error::ZkIntegrityError, groth16::Groth16Precompile, risc0::R0SuccinctPrecompile, tags::ZkTag},
+    zk_precompiles::{error::ZkIntegrityError, groth16::Groth16Precompile, tags::ZkTag},
 };
 use kaspa_consensus_core::mass::ScriptUnits;
 use kaspa_txscript_errors::TxScriptError;
@@ -30,6 +32,7 @@ pub(crate) fn parse_tag(dstack: &mut Stack) -> Result<ZkTag, TxScriptError> {
  * Verifies a ZK proof from the data stack.
  * The first byte on the stack indicates the ZK tag (proof type).
  */
+#[allow(deprecated)]
 pub(crate) fn verify_zk(tag: ZkTag, dstack: &mut Stack, meter: &mut RuntimeResourceMeter) -> Result<(), TxScriptError> {
     // Match the tag and verify the proof accordingly
     match tag {

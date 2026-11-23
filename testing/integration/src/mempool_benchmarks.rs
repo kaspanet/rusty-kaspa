@@ -512,6 +512,7 @@ async fn bench_bbt_latency_stark() {
         extract_script_pub_key_address(&stark_spk, NetworkType::Simnet.into()).expect("stark redeem script address");
 
     let (control_id, seal, claim, hashfn, control_index, control_digests, journal, image_id) = load_stark_fields();
+    #[allow(deprecated)]
     let stark_tag = ZkTag::R0Succinct as u8;
     let stark_signature_prefix = ScriptBuilder::with_flags(Default::default())
         .add_data(&claim)
@@ -574,7 +575,9 @@ async fn bench_bbt_latency_stark() {
         unrestricted_vm.used_script_units()
     };
 
-    assert!(required_script_units.0 < (ZkTag::R0Succinct.cost().0 as f64 * 1.1) as u64); // 1.1 is a margin for push data costs
+    #[allow(deprecated)]
+    let max_stark_cost = (ZkTag::R0Succinct.cost().0 as f64 * 1.1) as u64; // 1.1 is a margin for push data costs
+    assert!(required_script_units.0 < max_stark_cost);
 
     let input_compute_budget =
         ComputeBudget::checked_covering_script_units(required_script_units).expect("expected compute budget to fit");

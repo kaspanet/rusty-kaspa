@@ -29,7 +29,6 @@ pub mod zk_deps {
     pub use ark_serialize;
     pub use ark_snark;
     pub use risc0_binfmt;
-    pub use risc0_circuit_recursion;
     pub use risc0_core;
     pub use risc0_zkp;
 }
