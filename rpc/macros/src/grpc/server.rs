@@ -68,12 +68,25 @@ impl ToTokens for RpcTable {
                     targets.push(quote! {
                         #payload_ops::#handler => {
                             let method: Method<#server_ctx_type, #connection_ctx_type, #kaspad_request_type, #kaspad_response_type> =
-                            Method::new(|server_ctx: #server_ctx_type, _: #connection_ctx_type, request: #kaspad_request_type| {
+                            Method::new(|server_ctx: #server_ctx_type, connection: #connection_ctx_type, request: #kaspad_request_type| {
                                 Box::pin(async move {
+                                    if let Some(ref auth) = server_ctx.auth_config {
+                                        if auth.requires_auth_for_any() {
+                                            use kaspa_rpc_core::api::connection::RpcConnection;
+                                            if !connection.is_authenticated() {
+                                                let mut auth_response: #kaspad_response_type = #response_message_type::from(kaspa_rpc_core::RpcError::AuthenticationRequired).into();
+                                                auth_response.id = request.id;
+                                                return Ok(auth_response);
+                                            }
+                                        }
+                                    }
                                     let mut response: #kaspad_response_type = match request.payload {
                                         Some(Payload::#request_type(ref request)) => match request.try_into() {
-                                            // TODO: RPC-CONNECTION
-                                            Ok(request) => server_ctx.core_service.#fn_call(None,request).await.into(),
+                                            Ok(request) => {
+                                                let dyn_conn: kaspa_rpc_core::api::connection::DynRpcConnection = std::sync::Arc::new(connection.clone());
+                                                let conn_ref = Some(&dyn_conn);
+                                                server_ctx.core_service.#fn_call(conn_ref, request).await.into()
+                                            }
                                             Err(err) => #response_message_type::from(err).into(),
                                         },
                                         _ => {
@@ -94,6 +107,16 @@ impl ToTokens for RpcTable {
                             let method: Method<#server_ctx_type, #connection_ctx_type, #kaspad_request_type, #kaspad_response_type> =
                             Method::new(|server_ctx: #server_ctx_type, connection: #connection_ctx_type, request: #kaspad_request_type| {
                                 Box::pin(async move {
+                                    if let Some(ref auth) = server_ctx.auth_config {
+                                        if auth.requires_auth_for_any() {
+                                            use kaspa_rpc_core::api::connection::RpcConnection;
+                                            if !connection.is_authenticated() {
+                                                let mut auth_response: #kaspad_response_type = #response_message_type::from(kaspa_rpc_core::RpcError::AuthenticationRequired).into();
+                                                auth_response.id = request.id;
+                                                return Ok(auth_response);
+                                            }
+                                        }
+                                    }
                                     let mut response: #kaspad_response_type = match request.payload {
                                         Some(Payload::#request_type(ref request)) => {
                                             match kaspa_rpc_core::#fallback_request_type::try_from(request) {

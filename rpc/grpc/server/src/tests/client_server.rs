@@ -199,6 +199,7 @@ fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
         core_service.subscription_context(),
         3,
         Default::default(),
+        None,
     )
 }
 
