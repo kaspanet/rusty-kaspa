@@ -238,6 +238,39 @@ impl Account {
                 let fee_rate = None;
                 self.derivation_scan(&ctx, start, count, window, sweep, fee_rate).await?;
             }
+            "remove" => {
+                let account = ctx.select_account().await?;
+
+                // Show account info
+                tprintln!(ctx, "Removing account: {}", account.name_with_id());
+                let balance = match account.balance() {
+                    Some(balance) => balance,
+                    None => {
+                        tprintln!(ctx, "");
+                        tprintln!(ctx, "Account balance is not available (account not active).");
+                        tprintln!(ctx, "Please activate the account first before removing.");
+                        return Ok(());
+                    }
+                };
+                if balance.mature > 0 || balance.pending > 0 {
+                    tprintln!(ctx, "");
+                    tprintln!(ctx, "This account has a non-zero balance.");
+                    tprintln!(ctx, "Please transfer funds to another account before removing.");
+                    return Ok(());
+                }
+
+                // Confirm
+                let confirm = ctx.term().ask(false, "Are you sure you want to remove this account? (y/N): ").await?;
+                if confirm.trim().to_lowercase() != "y" {
+                    tprintln!(ctx, "Aborted.");
+                    return Ok(());
+                }
+
+                let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
+                let _ = ctx.notifier().show(Notification::Processing).await;
+                wallet.accounts_remove(*account.id(), wallet_secret).await?;
+                tprintln!(ctx, "Account removed successfully.");
+            }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
                 return self.display_help(ctx, argv).await;
@@ -262,7 +295,7 @@ impl Account {
                     "sweep [<derivations>] or sweep [<start>] [<derivations>]",
                     "Sweep extended address derivation chain (legacy accounts)",
                 ),
-                // ("purge", "Purge an account from the wallet"),
+                ("remove", "Remove the selected account from the wallet"),
             ],
             None,
         )?;
