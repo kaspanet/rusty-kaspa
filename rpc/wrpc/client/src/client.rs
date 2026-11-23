@@ -642,7 +642,6 @@ impl RpcApi for KaspaRpcClient {
             GetDaaScoreTimestampEstimate,
             GetFeeEstimate,
             GetFeeEstimateExperimental,
-            GetHeaders,
             GetInfo,
             GetMempoolEntries,
             GetMempoolEntriesByAddresses,

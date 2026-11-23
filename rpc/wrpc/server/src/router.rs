@@ -54,7 +54,6 @@ impl Router {
                 GetDaaScoreTimestampEstimate,
                 GetFeeEstimate,
                 GetFeeEstimateExperimental,
-                GetHeaders,
                 GetInfo,
                 GetMempoolEntries,
                 GetMempoolEntriesByAddresses,
