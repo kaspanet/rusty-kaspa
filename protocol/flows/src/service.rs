@@ -80,6 +80,12 @@ impl AsyncService for P2pService {
             self.flow_context.address_manager.clone(),
         );
 
+        // Register as sink for external IP changes
+        self.flow_context
+            .address_manager
+            .lock()
+            .register_external_ip_change_sink(connection_manager.clone());
+
         self.flow_context.set_connection_manager(connection_manager.clone());
         self.flow_context.start_async_services();
 
