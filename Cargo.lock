@@ -3898,7 +3898,8 @@ dependencies = [
 [[package]]
 name = "kaspa-r0-recursion-legacy"
 version = "0.1.0"
-source = "git+https://github.com/kaspanet/kaspa-r0-recursion-legacy?rev=2c6819a2808f413854d9474725169afe4af19f24#2c6819a2808f413854d9474725169afe4af19f24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa1fa6392e7ffaab0ad7eca3a266ab200563a39317dff53bee791b92a011c9e1"
 dependencies = [
  "risc0-core",
  "risc0-zkp",

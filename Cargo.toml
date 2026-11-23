@@ -310,9 +310,10 @@ ark-relations = "=0.6.0"
 ark-serialize = "=0.6.0"
 ark-snark = "=0.6.0"
 risc0-binfmt = "=3.0.6"
-# Use the reviewed Git revision for workspace builds until the crate is published.
-# The explicit package field gives Rust imports the Kaspa crate name.
-kaspa-r0-recursion-legacy = { package = "kaspa-r0-recursion-legacy", version = "=0.1.0", git = "https://github.com/kaspanet/kaspa-r0-recursion-legacy", rev = "2c6819a2808f413854d9474725169afe4af19f24" }
+# Preserve native STARK consensus rules with a verifier-only port of the yanked
+# RISC Zero 4.0.4 recursion circuit affected by GHSA-g6qg-9j8p-7j87. The ZK SDK
+# uses patched RISC Zero dependencies for Groth16.
+kaspa-r0-recursion-legacy = { package = "kaspa-r0-recursion-legacy", version = "=0.1.0" }
 risc0-core = "=3.0.2"
 risc0-zkp = "=3.0.6"
 risc0-groth16 = "=3.0.6"
