@@ -302,10 +302,19 @@ impl<
         agreeing_subgroups: &HashMap<Hash, Arc<Vec<Hash>>>,
         all_tips: &[Hash],
     ) -> (KType, Vec<GroupMetadata>) {
-        let mut group_map = agreeing_subgroups.clone();
-        // Evaluates every side in `map` at width k, narrowing `map` to the qualifying
-        // sides. Returns their metadata, or None when no side qualifies.
-        let evaluate_at = |map: &mut HashMap<Hash, Arc<Vec<Hash>>>, k: KType| -> Option<Vec<GroupMetadata>> {
+        let mut groups: Vec<GroupMetadata> = agreeing_subgroups
+            .iter()
+            .map(|(&nca, subgroup)| GroupMetadata {
+                nca,
+                subgroup: subgroup.clone(),
+                k: KType::MAX,
+                selected_parent: SortableBlock::new(nca, 0.into()),
+            })
+            .collect();
+
+        // Evaluates every side in `groups` at width k, retaining only qualifying sides
+        // and updating their rank/selected parent in place.
+        let evaluate_at = |groups: &mut Vec<GroupMetadata>, k: KType| -> bool {
             let reachability_service = self.reachability_service.clone();
             let relations_store = self.relations_store.read();
             let relations_service =
@@ -324,38 +333,46 @@ impl<
             // committed coloring rule and may only have SP that agrees with it (if committed coloring).
             conflict_zone_manager.fill_zone_data(all_tips);
 
-            let mut survivors = HashMap::with_capacity(map.len());
-            let mut best_groups = Vec::with_capacity(map.len());
-            for (curr_nca, subgroup) in map.iter() {
-                if let Some(selected_parent) =
-                    self.select_parent_from_k_colouring(conflict_genesis, subgroup.as_ref(), all_tips, k, &conflict_zone_manager)
-                {
-                    survivors.insert(*curr_nca, subgroup.clone());
-                    best_groups.push(GroupMetadata { nca: *curr_nca, subgroup: subgroup.clone(), k, selected_parent });
-                }
+            let mut any_qualified = false;
+            for g in groups.iter_mut() {
+                let Some(selected_parent) =
+                    self.select_parent_from_k_colouring(conflict_genesis, g.subgroup.as_ref(), all_tips, k, &conflict_zone_manager)
+                else {
+                    continue;
+                };
+                g.k = k;
+                g.selected_parent = selected_parent;
+                any_qualified = true;
             }
-            if best_groups.is_empty() {
-                None
-            } else {
-                *map = survivors;
-                Some(best_groups)
+            // If any group qualified at k, keep only those winners; otherwise keep groups unchanged.
+            if any_qualified {
+                groups.retain(|g| g.k == k);
             }
+            any_qualified
         };
 
-        let Some(result) = RankSearcher::search(|k| evaluate_at(&mut group_map, k)) else { return (0, vec![]) };
-        // The k-search leaves `group_map` holding exactly the rank-m survivors; the
+        let Some(result) = RankSearcher::search(|k| if evaluate_at(&mut groups, k) { Some(()) } else { None }) else {
+            return (0, vec![]);
+        };
+
+        // The k-search leaves `groups` holding exactly the rank-m survivors; the
         // m+1-only sides were dropped, so re-seed from the original grouping and
-        // evaluate just those at m+1 to complete the comparison domain
-        let mut best_groups = result.result;
-        let mut wide_map: HashMap<_, _> = agreeing_subgroups
+        // evaluate just those at m+1 to complete the comparison domain.
+        let mut best_groups = groups;
+        let mut wide_groups: Vec<GroupMetadata> = agreeing_subgroups
             .iter()
-            .filter(|&(nca, _)| !group_map.contains_key(nca))
-            .map(|(nca, subgroup)| (*nca, subgroup.clone()))
+            .filter(|(nca, _)| best_groups.iter().all(|g| g.nca != **nca))
+            .map(|(&nca, subgroup)| GroupMetadata {
+                nca,
+                subgroup: subgroup.clone(),
+                k: KType::MAX,
+                selected_parent: SortableBlock::new(nca, 0.into()),
+            })
             .collect();
-        if let Some(wider) = evaluate_at(&mut wide_map, result.k.saturating_add(1)) {
-            best_groups.extend(wider);
+        if evaluate_at(&mut wide_groups, result.rank.saturating_add(1)) {
+            best_groups.extend(wide_groups);
         }
-        (result.k, best_groups)
+        (result.rank, best_groups)
     }
 
     /// Applies a coloring to the conflict zone, and determines if the

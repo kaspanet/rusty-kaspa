@@ -2,9 +2,9 @@ use kaspa_consensus_core::KType;
 use kaspa_core::debug;
 
 #[derive(Clone)]
-pub struct RankSearchResult<T> {
-    pub k: KType,
-    pub result: T,
+pub struct RankResult<T> {
+    pub rank: KType,
+    pub value: T,
 }
 
 pub struct RankSearcher;
@@ -15,7 +15,7 @@ impl RankSearcher {
     ///    1.1 For each unsuccessful step along the way, move the lower bound k up as well
     ///    1.2 Also exits if lkg_k is a max
     /// 2. Binary search between lower bound k and lkg_k
-    pub fn search<T, F>(mut evaluate: F) -> Option<RankSearchResult<T>>
+    pub fn search<T, F>(mut evaluate: F) -> Option<RankResult<T>>
     where
         F: FnMut(KType) -> Option<T>,
     {
@@ -51,7 +51,7 @@ impl RankSearcher {
             }
         }
 
-        result.map(|r| RankSearchResult { k: lkg_k, result: r })
+        result.map(|value| RankResult { rank: lkg_k, value })
     }
 }
 
@@ -71,7 +71,7 @@ mod tests {
             };
             let result = RankSearcher::search(evaluate);
             assert!(result.is_some());
-            assert_eq!(result.unwrap().k, curr_k);
+            assert_eq!(result.unwrap().rank, curr_k);
 
             if evalations.get() > max_evals {
                 max_evals = evalations.get();
