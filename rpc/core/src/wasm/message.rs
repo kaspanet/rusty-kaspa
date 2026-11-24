@@ -2125,6 +2125,9 @@ declare! {
      */
     export interface IRpcLaneEntry {
         tip: HexString;
+        /**
+         * Blue score of the block that last advanced `tip` (not necessarily the queried block).
+         */
         blueScore: bigint;
     }
     "#,

@@ -1182,6 +1182,11 @@ fn verify_lane_proof_locally(header: &Header, lane_key: Hash, response: &GetSeqC
         response.parent_seq_commit,
     )
     .expect("verify_smt_metadata");
-    let returned: Header = response.header.as_ref().expect("header").try_into().unwrap();
-    assert_eq!(kaspa_consensus_core::hashing::header::hash(&returned), header.hash);
+
+    // The same check through the client helper, bound to the block hash via the returned header.
+    let lane = kaspa_rpc_core::model::lane_proof::verify_seq_commit_lane_proof_at_block(response, &lane_key, &header.hash, None)
+        .expect("verify_seq_commit_lane_proof_at_block");
+    assert_eq!(lane, response.lane.as_ref());
+    let other = Hash::from_bytes([0xEE; 32]);
+    assert!(kaspa_rpc_core::model::lane_proof::verify_seq_commit_lane_proof_at_block(response, &lane_key, &other, None).is_err());
 }

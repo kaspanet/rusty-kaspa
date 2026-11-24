@@ -250,6 +250,7 @@ fn get_seq_commit_lane_proof_response_is_a_plain_object() {
         .unwrap();
         let value = JsValue::from(response);
         let smt_proof = Reflect::get(&value, &"smtProof".into()).unwrap();
+        assert!(js_sys::Array::is_array(&smt_proof));
         assert_eq!(js_sys::Array::from(&smt_proof).to_vec(), vec![JsValue::from(0xde), JsValue::from(0xad), JsValue::from(0x01)]);
         assert_eq!(
             Reflect::get(&value, &"parentSeqCommit".into()).unwrap().as_string(),

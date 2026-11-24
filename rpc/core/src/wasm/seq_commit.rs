@@ -2,12 +2,11 @@
 //! WASM bindings for KIP-21 lane proofs, lane keys and lane tips.
 //!
 
-use crate::model::{lane_proof::verify_seq_commit_lane_proof, *};
-use kaspa_consensus_core::{
-    hashing::header::hash as header_hash,
-    header::Header,
-    subnets::{SUBNETWORK_ID_SIZE, SubnetworkId},
+use crate::model::{
+    lane_proof::{verify_seq_commit_lane_proof, verify_seq_commit_lane_proof_at_block},
+    *,
 };
+use kaspa_consensus_core::subnets::{SUBNETWORK_ID_SIZE, SubnetworkId};
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 use kaspa_seq_commit::{
     hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash},
@@ -39,11 +38,13 @@ declare! {
         proof: IGetSeqCommitLaneProofResponse;
         laneKey: HexString;
         /**
-         * If given, `proof.header` must hash to it.
+         * The requested block, from a trusted source; `proof.header` must hash to it
+         * (its `hash` field is not trusted).
          */
-        blockHash?: HexString;
+        blockHash: HexString;
         /**
-         * Overrides `proof.header.acceptedIdMerkleRoot`; required if the node returned no header.
+         * Required if `proof.header` is absent (older nodes): the `acceptedIdMerkleRoot` of
+         * `blockHash`'s header, from a trusted source. Otherwise it must equal the header's.
          */
         seqCommit?: HexString;
         /**
@@ -58,12 +59,12 @@ declare! {
     ISeqCommitLaneTipArgs,
     r#"
     /**
-     * @category Node RPC
+     * @category Consensus
      */
     export interface ISeqCommitLaneTipArgs {
         /**
-         * The lane's previous tip, or the selected parent's `acceptedIdMerkleRoot`
-         * if the lane is new or its entry expired at this block.
+         * The lane's previous tip if live (`lane.blueScore >= blueScore - finalityDepth`),
+         * otherwise the selected parent's `acceptedIdMerkleRoot`.
          */
         parentRef: HexString;
         laneKey: HexString;
@@ -75,18 +76,24 @@ declare! {
          * The selected parent's timestamp.
          */
         timestamp: bigint;
+        /**
+         * This block's DAA score.
+         */
         daaScore: bigint;
+        /**
+         * This block's blue score.
+         */
         blueScore: bigint;
     }
 
     /**
-     * @category Node RPC
+     * @category Consensus
      */
     export interface ISeqCommitLaneTransaction {
         transactionId: HexString;
         version: number;
         /**
-         * Index among all transactions accepted by the block (any lane).
+         * Index in the block's `acceptedTransactions` from `getVirtualChainFromBlockV2()` (all lanes).
          */
         mergeIndex: number;
     }
@@ -104,7 +111,7 @@ extern "C" {
 struct VerifyArgs {
     proof: GetSeqCommitLaneProofResponse,
     lane_key: RpcHash,
-    block_hash: Option<RpcHash>,
+    block_hash: RpcHash,
     seq_commit: Option<RpcHash>,
     parent_seq_commit: Option<RpcHash>,
 }
@@ -135,16 +142,18 @@ struct LaneTransaction {
 #[wasm_bindgen(js_name = verifySeqCommitLaneProof)]
 pub fn js_verify_seq_commit_lane_proof(args: IVerifySeqCommitLaneProofArgs) -> Result<IRpcLaneEntryOrUndefined, JsError> {
     let VerifyArgs { proof, lane_key, block_hash, seq_commit, parent_seq_commit } = from_value(args.into()).map_err(js_error)?;
-    if let Some(block_hash) = block_hash {
-        let header = proof.header.as_ref().ok_or_else(|| JsError::new("proof has no header"))?;
-        if header_hash(&Header::try_from(header).map_err(js_error)?) != block_hash {
-            return Err(JsError::new("proof header does not hash to blockHash"));
+    let lane = match (&proof.header, seq_commit) {
+        (Some(header), Some(seq_commit)) if header.accepted_id_merkle_root != seq_commit => {
+            return Err(JsError::new("seqCommit does not match proof.header"));
         }
-    }
-    let seq_commit = seq_commit
-        .or(proof.header.as_ref().map(|header| header.accepted_id_merkle_root))
-        .ok_or_else(|| JsError::new("seqCommit is required when the proof has no header"))?;
-    let lane = verify_seq_commit_lane_proof(&proof, &lane_key, &seq_commit, parent_seq_commit.as_ref()).map_err(js_error)?;
+        (Some(_), _) => {
+            verify_seq_commit_lane_proof_at_block(&proof, &lane_key, &block_hash, parent_seq_commit.as_ref()).map_err(js_error)?
+        }
+        (None, Some(seq_commit)) => {
+            verify_seq_commit_lane_proof(&proof, &lane_key, &seq_commit, parent_seq_commit.as_ref()).map_err(js_error)?
+        }
+        (None, None) => return Err(JsError::new("seqCommit is required when the proof has no header")),
+    };
     Ok(match lane {
         Some(lane) => to_value(lane).map_err(js_error)?,
         None => JsValue::UNDEFINED,
@@ -154,7 +163,7 @@ pub fn js_verify_seq_commit_lane_proof(args: IVerifySeqCommitLaneProofArgs) -> R
 
 /// Returns the KIP-21 lane key of a subnetwork.
 ///
-/// @category Node RPC
+/// @category Consensus
 #[wasm_bindgen(js_name = seqCommitLaneKey)]
 pub fn js_seq_commit_lane_key(subnetwork_id: &str) -> Result<String, JsError> {
     let subnetwork_id = SubnetworkId::from_str(subnetwork_id).map_err(js_error)?;
@@ -164,7 +173,7 @@ pub fn js_seq_commit_lane_key(subnetwork_id: &str) -> Result<String, JsError> {
 
 /// Computes a lane's next tip over one selected-chain block that accepted transactions of the lane.
 ///
-/// @category Node RPC
+/// @category Consensus
 #[wasm_bindgen(js_name = seqCommitLaneTipNext)]
 pub fn js_seq_commit_lane_tip_next(args: ISeqCommitLaneTipArgs) -> Result<String, JsError> {
     let args: LaneTipArgs = from_value(args.into()).map_err(js_error)?;
