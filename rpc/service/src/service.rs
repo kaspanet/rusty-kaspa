@@ -540,12 +540,14 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetSeqCommitLaneProofResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let proof = session.async_get_seq_commit_lane_proof(request.block_hash, request.lane_key).await?;
+        let header = session.async_get_header(request.block_hash).await?;
         Ok(GetSeqCommitLaneProofResponse {
             smt_proof: proof.smt_proof.to_bytes(),
             lane: proof.lane.map(|l| RpcLaneEntry { tip: l.tip, blue_score: l.blue_score }),
             payload_and_ctx_digest: proof.payload_and_ctx_digest,
             parent_seq_commit: proof.parent_seq_commit,
             inactivity_shortcut: proof.inactivity_shortcut,
+            header: Some(header.as_ref().into()),
         })
     }
 

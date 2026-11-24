@@ -1089,6 +1089,8 @@ async fn seq_commit_lane_proof_test() {
     assert_eq!(grpc_proof.payload_and_ctx_digest, wrpc_proof.payload_and_ctx_digest);
     assert_eq!(grpc_proof.parent_seq_commit, wrpc_proof.parent_seq_commit);
     assert_eq!(grpc_proof.inactivity_shortcut, wrpc_proof.inactivity_shortcut);
+    assert_eq!(grpc_proof.header.as_ref().map(|h| h.hash), Some(block_hash));
+    assert_eq!(wrpc_proof.header.as_ref().map(|h| h.hash), Some(block_hash));
 
     // Negative: unknown block hash. gRPC stringifies RpcError, so the typed
     // ConsensusError::HeaderNotFound becomes RpcError::General with the Display
@@ -1180,4 +1182,6 @@ fn verify_lane_proof_locally(header: &Header, lane_key: Hash, response: &GetSeqC
         response.parent_seq_commit,
     )
     .expect("verify_smt_metadata");
+    let returned: Header = response.header.as_ref().expect("header").try_into().unwrap();
+    assert_eq!(kaspa_consensus_core::hashing::header::hash(&returned), header.hash);
 }

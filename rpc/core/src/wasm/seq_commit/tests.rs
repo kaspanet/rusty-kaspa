@@ -27,6 +27,7 @@ fn proof_and_commit(queried: u8) -> (JsValue, Hash, Hash) {
         payload_and_ctx_digest: Hash::from_bytes([0xd0; 32]),
         parent_seq_commit: Hash::from_bytes([0xd1; 32]),
         inactivity_shortcut: Hash::from_bytes([0xd2; 32]),
+        header: None,
     };
     let activity_root = activity_root_hash(&response.inactivity_shortcut, &tree.root());
     let state_root =

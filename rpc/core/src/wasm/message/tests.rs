@@ -245,6 +245,7 @@ fn get_seq_commit_lane_proof_response_hex_proof_and_optional_lane() {
             payload_and_ctx_digest: RpcHash::from_bytes([4; 32]),
             parent_seq_commit: RpcHash::from_bytes([5; 32]),
             inactivity_shortcut: RpcHash::from_bytes([6; 32]),
+            header: None,
         })
         .unwrap();
         let value = JsValue::from(response);

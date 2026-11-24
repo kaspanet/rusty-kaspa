@@ -193,6 +193,7 @@ pub fn js_verify_seq_commit_lane_proof(args: IVerifySeqCommitLaneProofArgs) -> R
         payload_and_ctx_digest: proof.payload_and_ctx_digest,
         parent_seq_commit: proof.parent_seq_commit,
         inactivity_shortcut: proof.inactivity_shortcut,
+        header: None,
     };
     let lane = response.verify(&lane_key, &seq_commit, parent_seq_commit.as_ref()).map_err(js_error)?;
     Ok(to_value(&Verified { active: lane.is_some(), lane }).map_err(js_error)?.into())

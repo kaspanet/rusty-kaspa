@@ -52,6 +52,7 @@ mod tests {
         types::SeqState,
     };
     use kaspa_smt::tree::SparseMerkleTree;
+    use workflow_serializer::prelude::*;
 
     struct Fixture {
         response: GetSeqCommitLaneProofResponse,
@@ -83,6 +84,7 @@ mod tests {
             payload_and_ctx_digest,
             parent_seq_commit,
             inactivity_shortcut,
+            header: None,
         };
         Fixture { response, key, seq_commit: hasher.finalize() }
     }
@@ -148,5 +150,20 @@ mod tests {
             f.response.verify(&f.key, &f.seq_commit, Some(&Hash::from_bytes([0xee; 32]))),
             Err(SmtVerifyError::ParentSeqCommitMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn lane_proof_response_v1_reads_without_header() {
+        let response = fixture(2).response;
+        let mut v1 = Vec::new();
+        let writer = &mut v1;
+        store!(u16, &1, writer).unwrap();
+        store!(Vec<u8>, &response.smt_proof, writer).unwrap();
+        serialize!(Option<RpcLaneEntry>, &response.lane, writer).unwrap();
+        store!(RpcHash, &response.payload_and_ctx_digest, writer).unwrap();
+        store!(RpcHash, &response.parent_seq_commit, writer).unwrap();
+        store!(RpcHash, &response.inactivity_shortcut, writer).unwrap();
+        let read = <GetSeqCommitLaneProofResponse as Deserializer>::deserialize(&mut v1.as_slice()).unwrap();
+        assert_eq!((read.smt_proof, read.lane, read.header.is_none()), (response.smt_proof, response.lane, true));
     }
 }

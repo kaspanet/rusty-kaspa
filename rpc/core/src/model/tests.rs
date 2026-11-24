@@ -1647,6 +1647,7 @@ mod mockery {
                 payload_and_ctx_digest: mock(),
                 parent_seq_commit: mock(),
                 inactivity_shortcut: mock(),
+                header: mock(),
             }
         }
     }
