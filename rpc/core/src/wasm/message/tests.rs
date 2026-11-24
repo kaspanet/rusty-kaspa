@@ -235,7 +235,7 @@ fn get_seq_commit_lane_proof_request_reads_camel_case_hashes() {
 }
 
 #[wasm_bindgen_test]
-fn get_seq_commit_lane_proof_response_hex_proof_and_optional_lane() {
+fn get_seq_commit_lane_proof_response_is_a_plain_object() {
     let tip = RpcHash::from_bytes([3; 32]);
     for lane in [Some(RpcLaneEntry { tip, blue_score: u64::MAX }), None] {
         let has_lane = lane.is_some();
@@ -249,16 +249,16 @@ fn get_seq_commit_lane_proof_response_hex_proof_and_optional_lane() {
         })
         .unwrap();
         let value = JsValue::from(response);
-        assert_eq!(Reflect::get(&value, &"smtProof".into()).unwrap().as_string().as_deref(), Some("dead01"));
+        let smt_proof = Reflect::get(&value, &"smtProof".into()).unwrap();
+        assert_eq!(js_sys::Array::from(&smt_proof).to_vec(), vec![JsValue::from(0xde), JsValue::from(0xad), JsValue::from(0x01)]);
         assert_eq!(
             Reflect::get(&value, &"parentSeqCommit".into()).unwrap().as_string(),
             Some(RpcHash::from_bytes([5; 32]).to_string())
         );
-        assert!(Reflect::get(&value, &"payloadAndCtxDigest".into()).unwrap().is_string());
-        assert!(Reflect::get(&value, &"inactivityShortcut".into()).unwrap().is_string());
-        assert_eq!(Reflect::has(&value, &"lane".into()).unwrap(), has_lane);
+        assert!(Reflect::get(&value, &"header".into()).unwrap().is_undefined());
+        let lane = Reflect::get(&value, &"lane".into()).unwrap();
+        assert_eq!(lane.is_undefined(), !has_lane);
         if has_lane {
-            let lane = Reflect::get(&value, &"lane".into()).unwrap();
             assert_eq!(Reflect::get(&lane, &"tip".into()).unwrap().as_string(), Some(tip.to_string()));
             assert_eq!(Reflect::get(&lane, &"blueScore".into()).unwrap(), JsValue::from(js_sys::BigInt::from(u64::MAX)));
         }

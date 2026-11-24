@@ -1,17 +1,19 @@
 //!
-//! WASM bindings for KIP-21 sequencing commitments: verifying the witness returned by
-//! `RpcClient.getSeqCommitLaneProof()` and recomputing lane keys and lane tips.
+//! WASM bindings for KIP-21 lane proofs, lane keys and lane tips.
 //!
 
-use crate::model::*;
-use kaspa_consensus_core::subnets::{SUBNETWORK_ID_SIZE, SubnetworkId};
+use crate::model::{lane_proof::verify_seq_commit_lane_proof, *};
+use kaspa_consensus_core::{
+    hashing::header::hash as header_hash,
+    header::Header,
+    subnets::{SUBNETWORK_ID_SIZE, SubnetworkId},
+};
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 use kaspa_seq_commit::{
     hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash},
     types::{LaneTipInput, MergesetContext},
 };
-use kaspa_utils::hex::FromHex;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_wasm_bindgen::from_value;
 use std::{fmt::Display, str::FromStr};
 use wasm_bindgen::prelude::*;
@@ -32,46 +34,22 @@ declare! {
      */
     export interface IVerifySeqCommitLaneProofArgs {
         /**
-         * The response of `RpcClient.getSeqCommitLaneProof()`.
+         * Response of `RpcClient.getSeqCommitLaneProof()`.
          */
         proof: IGetSeqCommitLaneProofResponse;
-        /**
-         * The lane key the proof was requested for.
-         */
         laneKey: HexString;
         /**
-         * The `acceptedIdMerkleRoot` (`seq_commit`) of the header of the block the proof was
-         * requested for. The proof is only as trustworthy as this header.
+         * If given, `proof.header` must hash to it.
          */
-        seqCommit: HexString;
+        blockHash?: HexString;
         /**
-         * Optional: the selected parent header's `acceptedIdMerkleRoot`. When given, the proof
-         * must also name it as its parent commitment.
+         * Overrides `proof.header.acceptedIdMerkleRoot`; required if the node returned no header.
+         */
+        seqCommit?: HexString;
+        /**
+         * If given, the selected parent's `acceptedIdMerkleRoot` must match `proof.parentSeqCommit`.
          */
         parentSeqCommit?: HexString;
-    }
-    "#,
-}
-
-declare! {
-    IVerifiedSeqCommitLane,
-    r#"
-    /**
-     * @category Node RPC
-     */
-    export interface IVerifiedSeqCommitLane {
-        /**
-         * Whether the lane has an entry in the block's active-lanes tree, i.e. it was updated
-         * within the finality window. It does not mean the block accepted transactions of the
-         * lane: the tip only advances in blocks that do.
-         */
-        active: boolean;
-        /**
-         * The lane's verified entry, when `active`. `blueScore` is the blue score of the block
-         * that last advanced the lane's tip (the queried block's own blue score only if that
-         * block accepted transactions of the lane).
-         */
-        lane?: IRpcLaneEntry;
     }
     "#,
 }
@@ -80,37 +58,24 @@ declare! {
     ISeqCommitLaneTipArgs,
     r#"
     /**
-     * Inputs for advancing a lane tip over one chain block, as consensus does.
-     *
      * @category Node RPC
      */
     export interface ISeqCommitLaneTipArgs {
         /**
-         * The lane's previous tip if its entry is still live from this block's point of view,
-         * otherwise the selected parent's `acceptedIdMerkleRoot` (new or expired lane).
-         *
-         * Taking the entry from the selected parent's verified proof, it is live when
-         * `lane.blueScore >= blueScore - finalityDepth` (this block's blue score, and the
-         * network's finality depth in blocks). An entry the parent still shows can already be
-         * expired here, in which case the parent's `acceptedIdMerkleRoot` must be used.
+         * The lane's previous tip, or the selected parent's `acceptedIdMerkleRoot`
+         * if the lane is new or its entry expired at this block.
          */
         parentRef: HexString;
         laneKey: HexString;
         /**
-         * All of the lane's transactions accepted by the chain block, in acceptance order.
+         * The lane's transactions accepted by the block, in acceptance order.
          */
         transactions: ISeqCommitLaneTransaction[];
         /**
-         * The selected parent header's timestamp.
+         * The selected parent's timestamp.
          */
         timestamp: bigint;
-        /**
-         * The chain block's DAA score.
-         */
         daaScore: bigint;
-        /**
-         * The chain block's blue score.
-         */
         blueScore: bigint;
     }
 
@@ -121,40 +86,27 @@ declare! {
         transactionId: HexString;
         version: number;
         /**
-         * The transaction's position among all transactions accepted by the chain block
-         * (across every lane), counted from 0: its index in the block's
-         * `acceptedTransactions` as returned by `RpcClient.getVirtualChainFromBlockV2()`
-         * (`chainBlockAcceptedTransactions`), which lists them in acceptance order.
+         * Index among all transactions accepted by the block (any lane).
          */
         mergeIndex: number;
     }
     "#,
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "IRpcLaneEntry | undefined")]
+    pub type IRpcLaneEntryOrUndefined;
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct VerifyArgs {
-    proof: ProofArgs,
+    proof: GetSeqCommitLaneProofResponse,
     lane_key: RpcHash,
-    seq_commit: RpcHash,
+    block_hash: Option<RpcHash>,
+    seq_commit: Option<RpcHash>,
     parent_seq_commit: Option<RpcHash>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProofArgs {
-    smt_proof: String,
-    lane: Option<RpcLaneEntry>,
-    payload_and_ctx_digest: RpcHash,
-    parent_seq_commit: RpcHash,
-    inactivity_shortcut: RpcHash,
-}
-
-#[derive(Serialize)]
-struct Verified<'a> {
-    active: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    lane: Option<&'a RpcLaneEntry>,
 }
 
 #[derive(Deserialize)]
@@ -176,31 +128,31 @@ struct LaneTransaction {
     merge_index: u32,
 }
 
-/// Verifies a KIP-21 lane proof returned by `RpcClient.getSeqCommitLaneProof()` against the
-/// `acceptedIdMerkleRoot` (`seq_commit`) of the block's header.
-///
-/// Returns `{ active: true, lane }` when the proof shows the lane in the block's active-lanes tree
-/// (updated within the finality window, not necessarily by this block), and `{ active: false }`
-/// when it proves the lane has no entry there. Throws if the proof does not match the header.
+/// Verifies a `getSeqCommitLaneProof()` response. Returns the lane's entry, or `undefined`
+/// if the proof shows the lane has no entry at the block. Throws if the proof is invalid.
 ///
 /// @category Node RPC
 #[wasm_bindgen(js_name = verifySeqCommitLaneProof)]
-pub fn js_verify_seq_commit_lane_proof(args: IVerifySeqCommitLaneProofArgs) -> Result<IVerifiedSeqCommitLane, JsError> {
-    let VerifyArgs { proof, lane_key, seq_commit, parent_seq_commit } = from_value(args.into()).map_err(js_error)?;
-    let response = GetSeqCommitLaneProofResponse {
-        smt_proof: Vec::<u8>::from_hex(&proof.smt_proof).map_err(|_| JsError::new("smtProof must be a hex string"))?,
-        lane: proof.lane,
-        payload_and_ctx_digest: proof.payload_and_ctx_digest,
-        parent_seq_commit: proof.parent_seq_commit,
-        inactivity_shortcut: proof.inactivity_shortcut,
-        header: None,
-    };
-    let lane = response.verify(&lane_key, &seq_commit, parent_seq_commit.as_ref()).map_err(js_error)?;
-    Ok(to_value(&Verified { active: lane.is_some(), lane }).map_err(js_error)?.into())
+pub fn js_verify_seq_commit_lane_proof(args: IVerifySeqCommitLaneProofArgs) -> Result<IRpcLaneEntryOrUndefined, JsError> {
+    let VerifyArgs { proof, lane_key, block_hash, seq_commit, parent_seq_commit } = from_value(args.into()).map_err(js_error)?;
+    if let Some(block_hash) = block_hash {
+        let header = proof.header.as_ref().ok_or_else(|| JsError::new("proof has no header"))?;
+        if header_hash(&Header::try_from(header).map_err(js_error)?) != block_hash {
+            return Err(JsError::new("proof header does not hash to blockHash"));
+        }
+    }
+    let seq_commit = seq_commit
+        .or(proof.header.as_ref().map(|header| header.accepted_id_merkle_root))
+        .ok_or_else(|| JsError::new("seqCommit is required when the proof has no header"))?;
+    let lane = verify_seq_commit_lane_proof(&proof, &lane_key, &seq_commit, parent_seq_commit.as_ref()).map_err(js_error)?;
+    Ok(match lane {
+        Some(lane) => to_value(lane).map_err(js_error)?,
+        None => JsValue::UNDEFINED,
+    }
+    .into())
 }
 
-/// Returns the KIP-21 lane key of a subnetwork: its key in the active-lanes tree, as used by
-/// `RpcClient.getSeqCommitLaneProof()`.
+/// Returns the KIP-21 lane key of a subnetwork.
 ///
 /// @category Node RPC
 #[wasm_bindgen(js_name = seqCommitLaneKey)]
@@ -210,20 +162,17 @@ pub fn js_seq_commit_lane_key(subnetwork_id: &str) -> Result<String, JsError> {
     Ok(lane_key(lane_id).to_string())
 }
 
-/// Advances a KIP-21 lane tip over one chain block from the lane's transactions accepted by that
-/// block, as consensus does. Chaining this over the blocks where a lane was active lets a client
-/// check that a set of transactions is exactly the lane's activity, by comparing the result with a
-/// verified `lane.tip` (see `verifySeqCommitLaneProof()`).
+/// Computes a lane's next tip over one selected-chain block that accepted transactions of the lane.
 ///
 /// @category Node RPC
 #[wasm_bindgen(js_name = seqCommitLaneTipNext)]
 pub fn js_seq_commit_lane_tip_next(args: ISeqCommitLaneTipArgs) -> Result<String, JsError> {
     let args: LaneTipArgs = from_value(args.into()).map_err(js_error)?;
     if args.transactions.is_empty() {
-        return Err(JsError::new("a lane tip only advances in a block that accepts transactions of the lane"));
+        return Err(JsError::new("transactions must not be empty"));
     }
     if args.transactions.windows(2).any(|pair| pair[0].merge_index >= pair[1].merge_index) {
-        return Err(JsError::new("transactions must be in acceptance order (strictly increasing mergeIndex)"));
+        return Err(JsError::new("transactions must be in increasing mergeIndex order"));
     }
     let activity_digest =
         activity_digest_lane(args.transactions.iter().map(|tx| activity_leaf(&tx.transaction_id, tx.version, tx.merge_index)));

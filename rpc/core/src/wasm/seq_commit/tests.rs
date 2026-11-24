@@ -1,6 +1,7 @@
 use super::*;
 use crate::wasm::message::IGetSeqCommitLaneProofResponse;
 use js_sys::{Object, Reflect};
+use kaspa_consensus_core::{BlueWorkType, header::CompressedParents};
 use kaspa_hashes::{Hash, HasherBase, SeqCommitActiveNode, SeqCommitMerkleBranch};
 use kaspa_seq_commit::{
     hashing::{activity_root_hash, seq_state_root, smt_leaf_hash},
@@ -10,8 +11,8 @@ use kaspa_smt::tree::SparseMerkleTree;
 use wasm_bindgen_test::wasm_bindgen_test;
 use workflow_wasm::extensions::ObjectExtension;
 
-/// A lanes tree with three active lanes; returns the JS proof for `queried`, its lane key and the block's `seq_commit`.
-fn proof_and_commit(queried: u8) -> (JsValue, Hash, Hash) {
+/// Three active lanes; the JS response for `queried` (with a header carrying its `seq_commit`) and the lane key.
+fn response_for(queried: u8) -> (JsValue, Hash, Header) {
     let entries: Vec<(Hash, RpcLaneEntry)> = [1u8, 2, 3]
         .iter()
         .map(|&b| (lane_key(&[b; 20]), RpcLaneEntry { tip: Hash::from_bytes([b; 32]), blue_score: 1000 + b as u64 }))
@@ -21,76 +22,99 @@ fn proof_and_commit(queried: u8) -> (JsValue, Hash, Hash) {
         tree.insert(*key, smt_leaf_hash(&SmtLeafInput { lane_tip: &entry.tip, blue_score: entry.blue_score }));
     }
     let key = lane_key(&[queried; 20]);
+    let payload_and_ctx_digest = Hash::from_bytes([0xd0; 32]);
+    let parent_seq_commit = Hash::from_bytes([0xd1; 32]);
+    let inactivity_shortcut = Hash::from_bytes([0xd2; 32]);
+    let activity_root = activity_root_hash(&inactivity_shortcut, &tree.root());
+    let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &payload_and_ctx_digest });
+    let mut hasher = SeqCommitMerkleBranch::new();
+    hasher.update(parent_seq_commit).update(state_root);
+    let header = Header::new_finalized(
+        1,
+        CompressedParents::try_from(vec![vec![Hash::from_bytes([0xa0; 32])]]).unwrap(),
+        Hash::from_bytes([0xa1; 32]),
+        hasher.finalize(),
+        Hash::from_bytes([0xa2; 32]),
+        1_700_000_000_000,
+        0x1e7fffff,
+        7,
+        500,
+        BlueWorkType::from_u64(12345),
+        400,
+        Hash::from_bytes([0xa3; 32]),
+    );
     let response = GetSeqCommitLaneProofResponse {
         smt_proof: tree.prove(&key).unwrap().to_bytes(),
         lane: entries.iter().find(|(k, _)| *k == key).map(|(_, entry)| entry.clone()),
-        payload_and_ctx_digest: Hash::from_bytes([0xd0; 32]),
-        parent_seq_commit: Hash::from_bytes([0xd1; 32]),
-        inactivity_shortcut: Hash::from_bytes([0xd2; 32]),
-        header: None,
+        payload_and_ctx_digest,
+        parent_seq_commit,
+        inactivity_shortcut,
+        header: Some((&header).into()),
     };
-    let activity_root = activity_root_hash(&response.inactivity_shortcut, &tree.root());
-    let state_root =
-        seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &response.payload_and_ctx_digest });
-    let mut hasher = SeqCommitMerkleBranch::new();
-    hasher.update(response.parent_seq_commit).update(state_root);
-    let proof = JsValue::from(IGetSeqCommitLaneProofResponse::try_from(response).unwrap());
-    (proof, key, hasher.finalize())
+    (JsValue::from(IGetSeqCommitLaneProofResponse::try_from(response).unwrap()), key, header)
 }
 
-fn verify_args(proof: &JsValue, key: Hash, seq_commit: Hash) -> IVerifySeqCommitLaneProofArgs {
+fn verify(proof: &JsValue, key: Hash, extra: &[(&str, Hash)]) -> Result<JsValue, JsError> {
     let args = Object::new();
     args.set("proof", proof).unwrap();
     args.set("laneKey", &JsValue::from_str(&key.to_string())).unwrap();
-    args.set("seqCommit", &JsValue::from_str(&seq_commit.to_string())).unwrap();
-    IVerifySeqCommitLaneProofArgs::from(JsValue::from(args))
+    for (name, value) in extra {
+        args.set(name, &JsValue::from_str(&value.to_string())).unwrap();
+    }
+    js_verify_seq_commit_lane_proof(IVerifySeqCommitLaneProofArgs::from(JsValue::from(args))).map(JsValue::from)
 }
 
 #[wasm_bindgen_test]
-fn verifies_active_and_absent_lanes() {
-    let (proof, key, seq_commit) = proof_and_commit(2);
-    let verified = JsValue::from(js_verify_seq_commit_lane_proof(verify_args(&proof, key, seq_commit)).ok().unwrap());
-    assert_eq!(Reflect::get(&verified, &"active".into()).unwrap(), JsValue::TRUE);
-    let lane = Reflect::get(&verified, &"lane".into()).unwrap();
+fn verifies_active_and_absent_lanes_against_the_header() {
+    let (proof, key, header) = response_for(2);
+    let lane = verify(&proof, key, &[("blockHash", header.hash)]).ok().unwrap();
     assert_eq!(Reflect::get(&lane, &"tip".into()).unwrap().as_string(), Some(Hash::from_bytes([2; 32]).to_string()));
     assert_eq!(Reflect::get(&lane, &"blueScore".into()).unwrap(), JsValue::from(js_sys::BigInt::from(1002u64)));
 
-    let (proof, key, seq_commit) = proof_and_commit(9);
-    let verified = JsValue::from(js_verify_seq_commit_lane_proof(verify_args(&proof, key, seq_commit)).ok().unwrap());
-    assert_eq!(Reflect::get(&verified, &"active".into()).unwrap(), JsValue::FALSE);
-    assert!(!Reflect::has(&verified, &"lane".into()).unwrap());
+    let (proof, key, _) = response_for(9);
+    assert!(verify(&proof, key, &[]).ok().unwrap().is_undefined());
 }
 
 #[wasm_bindgen_test]
-fn rejects_proofs_that_do_not_match_the_header() {
-    let (proof, key, seq_commit) = proof_and_commit(2);
-    assert!(js_verify_seq_commit_lane_proof(verify_args(&proof, key, Hash::from_bytes([0xee; 32]))).is_err());
-    assert!(js_verify_seq_commit_lane_proof(verify_args(&proof, lane_key(&[3; 20]), seq_commit)).is_err());
+fn rejects_a_header_from_another_block() {
+    let (proof, key, _) = response_for(2);
+    assert!(verify(&proof, key, &[("blockHash", Hash::from_bytes([0xee; 32]))]).is_err());
+}
+
+#[wasm_bindgen_test]
+fn seq_commit_replaces_a_missing_header() {
+    let (proof, key, header) = response_for(2);
+    Reflect::delete_property(&Object::from(proof.clone()), &"header".into()).unwrap();
+    assert!(verify(&proof, key, &[]).is_err());
+    assert!(verify(&proof, key, &[("blockHash", header.hash)]).is_err());
+    assert!(verify(&proof, key, &[("seqCommit", header.accepted_id_merkle_root)]).is_ok());
+    assert!(verify(&proof, key, &[("seqCommit", Hash::from_bytes([0xee; 32]))]).is_err());
+}
+
+#[wasm_bindgen_test]
+fn rejects_altered_proofs() {
+    let (proof, key, _) = response_for(2);
+    assert!(verify(&proof, lane_key(&[3; 20]), &[]).is_err());
 
     let lane = Reflect::get(&proof, &"lane".into()).unwrap();
     Reflect::set(&lane, &"tip".into(), &JsValue::from_str(&Hash::from_bytes([7; 32]).to_string())).unwrap();
-    assert!(js_verify_seq_commit_lane_proof(verify_args(&proof, key, seq_commit)).is_err());
+    assert!(verify(&proof, key, &[]).is_err());
 
-    // Hiding an active lane does not pass as a non-inclusion proof.
-    let (proof, key, seq_commit) = proof_and_commit(2);
+    // An active lane cannot pass as absent.
+    let (proof, key, _) = response_for(2);
     Reflect::delete_property(&Object::from(proof.clone()), &"lane".into()).unwrap();
-    assert!(js_verify_seq_commit_lane_proof(verify_args(&proof, key, seq_commit)).is_err());
+    assert!(verify(&proof, key, &[]).is_err());
 
-    let (proof, key, seq_commit) = proof_and_commit(2);
-    Reflect::set(&proof, &"smtProof".into(), &JsValue::from_str("zz")).unwrap();
-    assert!(js_verify_seq_commit_lane_proof(verify_args(&proof, key, seq_commit)).is_err());
+    let (proof, key, _) = response_for(2);
+    Reflect::set(&proof, &"smtProof".into(), &js_sys::Array::new()).unwrap();
+    assert!(verify(&proof, key, &[]).is_err());
 }
 
 #[wasm_bindgen_test]
 fn checks_the_parent_commitment_when_given() {
-    let (proof, key, seq_commit) = proof_and_commit(2);
-    let with_parent = |parent: Hash| {
-        let args = JsValue::from(verify_args(&proof, key, seq_commit));
-        Reflect::set(&args, &"parentSeqCommit".into(), &JsValue::from_str(&parent.to_string())).unwrap();
-        js_verify_seq_commit_lane_proof(IVerifySeqCommitLaneProofArgs::from(args))
-    };
-    assert!(with_parent(Hash::from_bytes([0xd1; 32])).is_ok());
-    assert!(with_parent(Hash::from_bytes([0xee; 32])).is_err());
+    let (proof, key, _) = response_for(2);
+    assert!(verify(&proof, key, &[("parentSeqCommit", Hash::from_bytes([0xd1; 32]))]).is_ok());
+    assert!(verify(&proof, key, &[("parentSeqCommit", Hash::from_bytes([0xee; 32]))]).is_err());
 }
 
 #[wasm_bindgen_test]

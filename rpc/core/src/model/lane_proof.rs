@@ -1,4 +1,4 @@
-//! Local verification of [`GetSeqCommitLaneProofResponse`] witnesses (KIP-21).
+//! Local verification of [`GetSeqCommitLaneProofResponse`] (KIP-21).
 
 use crate::{GetSeqCommitLaneProofResponse, RpcHash, RpcLaneEntry};
 use kaspa_hashes::SeqCommitActiveNode;
@@ -9,38 +9,30 @@ use kaspa_seq_commit::{
 };
 use kaspa_smt::proof::OwnedSmtProof;
 
-impl GetSeqCommitLaneProofResponse {
-    /// Verifies this witness for `lane_key` against `seq_commit`, the `accepted_id_merkle_root`
-    /// of the header of the block the proof was requested for.
-    ///
-    /// Returns the lane's entry when the proof shows the lane in the block's active-lanes tree
-    /// (updated within the finality window; `blue_score` is that of the block that last advanced
-    /// its tip), or `None` when it proves the lane has no entry there. If `parent_seq_commit` is
-    /// given (the selected parent header's `accepted_id_merkle_root`), the witness must also name it
-    /// as its parent.
-    ///
-    /// The caller is responsible for trusting `seq_commit`, e.g. by validating the header.
-    pub fn verify(
-        &self,
-        lane_key: &RpcHash,
-        seq_commit: &RpcHash,
-        parent_seq_commit: Option<&RpcHash>,
-    ) -> Result<Option<&RpcLaneEntry>, SmtVerifyError> {
-        let proof = OwnedSmtProof::from_bytes(&self.smt_proof)?;
-        let leaf = self.lane.as_ref().map(|lane| smt_leaf_hash(&SmtLeafInput { lane_tip: &lane.tip, blue_score: lane.blue_score }));
-        let lanes_root = proof.compute_root::<SeqCommitActiveNode>(lane_key, leaf)?;
-        verify_smt_metadata(
-            &SmtMetadata {
-                lanes_root: &lanes_root,
-                payload_and_ctx_digest: &self.payload_and_ctx_digest,
-                parent_seq_commit: &self.parent_seq_commit,
-            },
-            self.inactivity_shortcut,
-            *seq_commit,
-            *parent_seq_commit.unwrap_or(&self.parent_seq_commit),
-        )?;
-        Ok(self.lane.as_ref())
-    }
+/// Verifies `response` for `lane_key` against `seq_commit` (the block's `accepted_id_merkle_root`).
+///
+/// Returns the lane's entry, or `None` for a valid non-inclusion proof. If `parent_seq_commit`
+/// is given, the response must name it as its parent.
+pub fn verify_seq_commit_lane_proof<'a>(
+    response: &'a GetSeqCommitLaneProofResponse,
+    lane_key: &RpcHash,
+    seq_commit: &RpcHash,
+    parent_seq_commit: Option<&RpcHash>,
+) -> Result<Option<&'a RpcLaneEntry>, SmtVerifyError> {
+    let proof = OwnedSmtProof::from_bytes(&response.smt_proof)?;
+    let leaf = response.lane.as_ref().map(|lane| smt_leaf_hash(&SmtLeafInput { lane_tip: &lane.tip, blue_score: lane.blue_score }));
+    let lanes_root = proof.compute_root::<SeqCommitActiveNode>(lane_key, leaf)?;
+    verify_smt_metadata(
+        &SmtMetadata {
+            lanes_root: &lanes_root,
+            payload_and_ctx_digest: &response.payload_and_ctx_digest,
+            parent_seq_commit: &response.parent_seq_commit,
+        },
+        response.inactivity_shortcut,
+        *seq_commit,
+        *parent_seq_commit.unwrap_or(&response.parent_seq_commit),
+    )?;
+    Ok(response.lane.as_ref())
 }
 
 #[cfg(test)]
@@ -60,7 +52,7 @@ mod tests {
         seq_commit: Hash,
     }
 
-    /// A lanes tree with three active lanes, a witness for `queried` and the matching `seq_commit`.
+    /// Three active lanes; the response for `queried` and the matching `seq_commit`.
     fn fixture(queried: u8) -> Fixture {
         let entries: Vec<(Hash, RpcLaneEntry)> = [1u8, 2, 3]
             .iter()
@@ -89,26 +81,30 @@ mod tests {
         Fixture { response, key, seq_commit: hasher.finalize() }
     }
 
+    fn verify(f: &Fixture, response: &GetSeqCommitLaneProofResponse) -> Result<Option<RpcLaneEntry>, SmtVerifyError> {
+        verify_seq_commit_lane_proof(response, &f.key, &f.seq_commit, None).map(|lane| lane.cloned())
+    }
+
     #[test]
     fn active_lane_verifies() {
         let f = fixture(2);
-        let lane = f.response.verify(&f.key, &f.seq_commit, None).unwrap().unwrap();
+        let lane = verify(&f, &f.response).unwrap().unwrap();
         assert_eq!(lane.tip, Hash::from_bytes([2; 32]));
         assert_eq!(lane.blue_score, 1002);
-        assert!(f.response.verify(&f.key, &f.seq_commit, Some(&f.response.parent_seq_commit)).is_ok());
+        assert!(verify_seq_commit_lane_proof(&f.response, &f.key, &f.seq_commit, Some(&f.response.parent_seq_commit)).is_ok());
     }
 
     #[test]
     fn absent_lane_verifies_as_inactive() {
         let f = fixture(9);
         assert!(f.response.lane.is_none());
-        assert_eq!(f.response.verify(&f.key, &f.seq_commit, None).unwrap(), None);
+        assert_eq!(verify(&f, &f.response).unwrap(), None);
     }
 
     #[test]
-    fn altered_witness_is_rejected() {
+    fn altered_response_is_rejected() {
         let f = fixture(2);
-        let reject = |response: &GetSeqCommitLaneProofResponse| assert!(response.verify(&f.key, &f.seq_commit, None).is_err());
+        let reject = |response: &GetSeqCommitLaneProofResponse| assert!(verify(&f, response).is_err());
 
         let mut r = f.response.clone();
         r.lane.as_mut().unwrap().tip = Hash::from_bytes([7; 32]);
@@ -118,7 +114,7 @@ mod tests {
         r.lane.as_mut().unwrap().blue_score += 1;
         reject(&r);
 
-        // Hiding an active lane does not pass as a non-inclusion proof.
+        // An active lane cannot pass as absent.
         let mut r = f.response.clone();
         r.lane = None;
         reject(&r);
@@ -144,10 +140,10 @@ mod tests {
     #[test]
     fn wrong_block_or_lane_is_rejected() {
         let f = fixture(2);
-        assert!(f.response.verify(&f.key, &Hash::from_bytes([0xee; 32]), None).is_err());
-        assert!(f.response.verify(&lane_key(&[3; 20]), &f.seq_commit, None).is_err());
+        assert!(verify_seq_commit_lane_proof(&f.response, &f.key, &Hash::from_bytes([0xee; 32]), None).is_err());
+        assert!(verify_seq_commit_lane_proof(&f.response, &lane_key(&[3; 20]), &f.seq_commit, None).is_err());
         assert!(matches!(
-            f.response.verify(&f.key, &f.seq_commit, Some(&Hash::from_bytes([0xee; 32]))),
+            verify_seq_commit_lane_proof(&f.response, &f.key, &f.seq_commit, Some(&Hash::from_bytes([0xee; 32]))),
             Err(SmtVerifyError::ParentSeqCommitMismatch { .. })
         ));
     }

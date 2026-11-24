@@ -14,7 +14,6 @@ use kaspa_consensus_client::UtxoEntryReference;
 use kaspa_consensus_client::{OptionalHeader, Transaction};
 use kaspa_consensus_core::tx as cctx;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
-use kaspa_utils::hex::ToHex;
 pub use serde_wasm_bindgen::from_value;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::*;
@@ -2081,24 +2080,15 @@ declare! {
     IGetSeqCommitLaneProofRequest,
     r#"
     /**
-     * Requests the witness that proves one KIP-21 lane's state against the
-     * `seq_commit` carried in a chain block's header.
-     *
-     * @example
-     * const proof = await rpc.getSeqCommitLaneProof({ blockHash, laneKey });
-     * if (!proof.lane) {
-     *     // `smtProof` is a non-inclusion proof: the lane is not active at this block
-     * }
-     *
      * @category Node RPC
      */
     export interface IGetSeqCommitLaneProofRequest {
         /**
-         * A chain (selected-parent-chain) block; the proof is against its header's `seq_commit`.
+         * A selected-chain block.
          */
         blockHash: HexString;
         /**
-         * The lane's key in the active-lanes sparse Merkle tree.
+         * See `seqCommitLaneKey()`.
          */
         laneKey: HexString;
     }
@@ -2116,22 +2106,18 @@ declare! {
      * @category Node RPC
      */
     export interface IGetSeqCommitLaneProofResponse {
+        smtProof: number[];
         /**
-         * The sparse Merkle tree proof, as hex. It proves inclusion when `lane`
-         * is present and non-inclusion when it is absent.
-         */
-        smtProof: HexString;
-        /**
-         * The lane's entry in the active-lanes tree at this block, if it has one.
+         * Absent when `smtProof` proves the lane has no entry at this block.
          */
         lane?: IRpcLaneEntry;
         payloadAndCtxDigest: HexString;
         parentSeqCommit: HexString;
-        /**
-         * The anchor block's `accepted_id_merkle_root`, folded into the activity
-         * root when the `seq_commit` is recomputed.
-         */
         inactivityShortcut: HexString;
+        /**
+         * Header of `blockHash`. Absent from nodes that predate this field.
+         */
+        header?: IHeader;
     }
 
     /**
@@ -2145,15 +2131,7 @@ declare! {
 }
 
 try_from!(args: GetSeqCommitLaneProofResponse, IGetSeqCommitLaneProofResponse, {
-    let value = Object::new();
-    value.set("smtProof", &JsValue::from_str(&args.smt_proof.to_hex()))?;
-    if let Some(lane) = &args.lane {
-        value.set("lane", &to_value(lane)?)?;
-    }
-    value.set("payloadAndCtxDigest", &to_value(&args.payload_and_ctx_digest)?)?;
-    value.set("parentSeqCommit", &to_value(&args.parent_seq_commit)?)?;
-    value.set("inactivityShortcut", &to_value(&args.inactivity_shortcut)?)?;
-    Ok(IGetSeqCommitLaneProofResponse { obj: value })
+    Ok(to_value(&args)?.into())
 });
 
 declare! {
