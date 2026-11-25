@@ -77,7 +77,7 @@ impl TopoHeap {
 /// time, e.g. to keep a committed-search traversal within the chain descendants of the root.
 pub struct TopologyIterator<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> {
     heap: TopoHeap,
-    seen: BlockHashSet,
+    pending_blocks: BlockHashSet,
     /// The start blocks. A block is kept if it is a DAG descendant of at least one of them.
     from: Vec<Hash>,
     /// The end blocks (tips). A block is kept if it is a DAG ancestor of at least one of them.
@@ -134,13 +134,13 @@ impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> 
         skip: SkipPredicate<'a>,
     ) -> Self {
         let mut heap = TopoHeap::new(direction);
-        let mut seen = BlockHashSet::default();
+        let mut pending_blocks = BlockHashSet::default();
         // Seed the heap with the start blocks of the traversal.
         match direction {
             // FromTo seeds with every start block; those outside the region are pruned at pop time.
             Direction::FromTo => {
                 for &f in &from {
-                    if seen.insert(f) {
+                    if pending_blocks.insert(f) {
                         let blue_work = headers_store.get_header(f).unwrap().blue_work;
                         heap.push(SortableBlock { hash: f, blue_work });
                     }
@@ -149,14 +149,14 @@ impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> 
             // ToFrom seeds with every end block; those outside `from`'s future are pruned at pop time.
             Direction::ToFrom => {
                 for &t in &to {
-                    if seen.insert(t) {
+                    if pending_blocks.insert(t) {
                         let blue_work = headers_store.get_header(t).unwrap().blue_work;
                         heap.push(SortableBlock { hash: t, blue_work });
                     }
                 }
             }
         }
-        Self { heap, seen, from, to, direction, headers_store, relations_store, reachability_service, skip }
+        Self { heap, pending_blocks, from, to, direction, headers_store, relations_store, reachability_service, skip }
     }
 
     /// Pushes `h` onto the direction's heap, keyed by its header blue_work.
@@ -176,6 +176,9 @@ impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> 
     fn next(&mut self) -> Option<Hash> {
         loop {
             let SortableBlock { hash: curr, .. } = self.pop_block()?;
+            // The set tracks only blocks in the heap. By topological order, every neighbor
+            // that could enqueue curr has already been processed, so we can forget it here.
+            self.pending_blocks.remove(&curr);
             let keep = match self.direction {
                 Direction::FromTo => self.reachability_service.is_dag_ancestor_of_any(curr, &mut self.to.iter().copied()),
                 Direction::ToFrom => self.from.iter().any(|&f| curr == f || self.reachability_service.is_dag_ancestor_of(f, curr)),
@@ -194,14 +197,14 @@ impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> 
                         {
                             continue;
                         }
-                        if self.seen.insert(c) {
+                        if self.pending_blocks.insert(c) {
                             self.push_block(c);
                         }
                     }
                 }
                 Direction::ToFrom => {
                     for &p in self.relations_store.get_parents(curr).unwrap().iter() {
-                        if p != ORIGIN && self.seen.insert(p) {
+                        if p != ORIGIN && self.pending_blocks.insert(p) {
                             self.push_block(p);
                         }
                     }
