@@ -67,7 +67,7 @@ pub mod test_fixtures {
     use std::{collections::HashMap, sync::Arc};
 
     use kaspa_consensus_core::{
-        BlockHashMap, HashKTypeMap, HashMapCustomHasher, KType,
+        BlockHashMap, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType,
         blockhash::{BlockHashes, ORIGIN},
         header::Header,
     };
@@ -118,6 +118,14 @@ pub mod test_fixtures {
             BlockHashes::new(reds),
             HashKTypeMap::new(BlockHashMap::new()),
         )
+    }
+
+    /// Inserts a header with uniform test bits and the given blue work into the store.
+    pub fn insert_header(headers: &MemoryHeaderStore, hash: Hash, parents: Vec<Hash>, blue_work: BlueWorkType) {
+        let mut header = Header::from_precomputed_hash(hash, parents);
+        header.bits = 0x207fffff;
+        header.blue_work = blue_work;
+        headers.insert(Arc::new(header));
     }
 
     /// JSON shape of the UMC fixture zone in umc_fixture.json

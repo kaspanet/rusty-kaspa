@@ -17,7 +17,9 @@ use crate::{
 /// only once its chain block is pulled, never ahead. The heap holds at most 2k+1
 /// blocks at width k: expanding one record pushes at most k+1 mergeset blues, and at
 /// most k blues of later chain records are still buffered, being concurrent with the
-/// popped chain block.
+/// popped chain block. The stream's length equals the colouring's `blue_score`: each
+/// chain record's score is its parent's score plus its mergeset-blues count, which
+/// counts exactly the blocks streamed.
 pub struct ReferenceIterator<'a, R: ColoringReader, H: HeaderStoreReader> {
     root: Hash,
     chain: Hash,
@@ -30,7 +32,13 @@ impl<'a, R: ColoringReader, H: HeaderStoreReader> ReferenceIterator<'a, R, H> {
     /// Iterates the blue set of `coloring` future-to-past. `coloring.selected_parent`
     /// must start a selected-parent chain that reaches `root`.
     pub fn new(coloring: &ColoringData, root: Hash, coloring_reader: &'a R, headers_store: &'a H) -> Self {
-        let mut it = Self { root, chain: coloring.selected_parent, heap: BinaryHeap::new(), coloring_reader, headers_store };
+        let mut it = Self {
+            root,
+            chain: coloring.selected_parent,
+            heap: BinaryHeap::with_capacity(coloring.mergeset_blues.len() + 1),
+            coloring_reader,
+            headers_store,
+        };
         for &blue in coloring.mergeset_blues.iter() {
             it.heap.push(it.sortable_block(blue));
         }
@@ -46,11 +54,11 @@ impl<'a, R: ColoringReader, H: HeaderStoreReader> Iterator for ReferenceIterator
     type Item = Hash;
 
     fn next(&mut self) -> Option<Hash> {
-        let block = self.heap.pop()?.hash;
+        let record = self.heap.pop()?;
+        let block = record.hash;
         if block == self.chain && block != self.root {
             let data = self.coloring_reader.get_coloring_data(block);
             self.chain = data.selected_parent;
-            let record = self.sortable_block(block);
             for &blue in data.mergeset_blues.iter() {
                 let blue = self.sortable_block(blue);
                 debug_assert!(blue < record, "mergeset blues sort below their record");
@@ -66,7 +74,7 @@ impl<'a, R: ColoringReader, H: HeaderStoreReader> Iterator for ReferenceIterator
 mod tests {
     use std::{cell::RefCell, cmp::Reverse, collections::HashMap, sync::Arc};
 
-    use kaspa_consensus_core::{BlockHashSet, HashMapCustomHasher, blockhash::ORIGIN, header::Header};
+    use kaspa_consensus_core::{BlockHashSet, HashMapCustomHasher, blockhash::ORIGIN};
     use kaspa_hashes::Hash;
     use parking_lot::RwLock;
 
@@ -87,7 +95,7 @@ mod tests {
                 manager::ConflictZoneManager,
                 umc_voting::{
                     ColoringReader,
-                    test_fixtures::{MemoryColoringReader, make_cd},
+                    test_fixtures::{MemoryColoringReader, insert_header, make_cd},
                 },
             },
             ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
@@ -98,13 +106,6 @@ mod tests {
         },
     };
 
-    fn header_with_work(headers: &MemoryHeaderStore, hash: Hash, blue_work: u64) {
-        let mut header = Header::from_precomputed_hash(hash, vec![]);
-        header.bits = 0x207fffff;
-        header.blue_work = blue_work.into();
-        headers.insert(Arc::new(header));
-    }
-
     /// Blues of equal blue work belonging to consecutive chain records come out by
     /// descending hash, matching the sort order over the collected set.
     #[test]
@@ -113,11 +114,11 @@ mod tests {
             (1_u64.into(), 2_u64.into(), 3_u64.into(), 4_u64.into(), 5_u64.into());
 
         let headers = MemoryHeaderStore::new();
-        header_with_work(&headers, r, 0);
-        header_with_work(&headers, p1, 4);
-        header_with_work(&headers, p2, 4);
-        header_with_work(&headers, c1, 5);
-        header_with_work(&headers, c0, 9);
+        insert_header(&headers, r, vec![], 0.into());
+        insert_header(&headers, p1, vec![], 4.into());
+        insert_header(&headers, p2, vec![], 4.into());
+        insert_header(&headers, c1, vec![], 5.into());
+        insert_header(&headers, c0, vec![], 9.into());
 
         let mut reader = MemoryColoringReader::default();
         reader.add(c1, make_cd(r, vec![r, p1], vec![], 2));
@@ -135,9 +136,9 @@ mod tests {
         let (r, c2, c3, c4): (Hash, Hash, Hash, Hash) = (1_u64.into(), 2_u64.into(), 3_u64.into(), 4_u64.into());
 
         let headers = MemoryHeaderStore::new();
-        header_with_work(&headers, c2, 1);
-        header_with_work(&headers, c3, 2);
-        header_with_work(&headers, c4, 3);
+        insert_header(&headers, c2, vec![], 1.into());
+        insert_header(&headers, c3, vec![], 2.into());
+        insert_header(&headers, c4, vec![], 3.into());
 
         let mut reader = MemoryColoringReader::default();
         reader.add(c4, make_cd(c3, vec![c3], vec![], 3));
@@ -173,7 +174,7 @@ mod tests {
 
         let mut tips = BlockHashSet::new();
         tips.insert(genesis);
-        header_with_work(&headers_store, genesis, 0);
+        insert_header(&headers_store, genesis, vec![], 0.into());
 
         {
             let mut builder = DagBuilder::new(&mut reachability, &mut relations);
@@ -190,10 +191,7 @@ mod tests {
                 builder.add_block_with_selected_parent(DagBlock::new(hash, parent_hashes.clone()), gd.selected_parent);
                 tips.insert(hash);
 
-                let mut header = Header::from_precomputed_hash(hash, parent_hashes);
-                header.bits = 0x207fffff;
-                header.blue_work = gd.blue_work;
-                headers_store.insert(Arc::new(header));
+                insert_header(&headers_store, hash, parent_hashes, gd.blue_work);
                 topology_ghostdag_store.insert(hash, Arc::new(gd)).unwrap();
             }
         }
@@ -214,14 +212,12 @@ mod tests {
         // Zone tips: DAG tips in the root's future
         let zone_tips: Vec<Hash> = tips.iter().copied().filter(|&h| reachability_service.is_dag_ancestor_of(root, h)).collect();
 
-        let sorted_blue_set = |reader: &ConflictZoneManager<
-            MemoryConflictZoneColoringStore,
-            MemoryHeaderStore,
-            MemoryRelationsStore,
-            MemoryReachabilityStore,
-        >,
-                               virtual_cd: &ColoringData|
-         -> Vec<Hash> {
+        fn sorted_blue_set<R: ColoringReader>(
+            reader: &R,
+            virtual_cd: &ColoringData,
+            root: Hash,
+            headers: &MemoryHeaderStore,
+        ) -> Vec<Hash> {
             let mut blue_set = BlockHashSet::new();
             blue_set.extend(virtual_cd.mergeset_blues.iter().copied());
             let mut curr = virtual_cd.selected_parent;
@@ -233,9 +229,9 @@ mod tests {
             }
             blue_set.insert(root);
             let mut blues: Vec<Hash> = blue_set.iter().copied().collect();
-            blues.sort_by_cached_key(|block| Reverse(SortableBlock::new(*block, headers_store.get_header(*block).unwrap().blue_work)));
+            blues.sort_by_cached_key(|block| Reverse(SortableBlock::new(*block, headers.get_header(*block).unwrap().blue_work)));
             blues
-        };
+        }
 
         for g in 0..=3u16 {
             let dk_map = RefCell::new(HashMap::new());
@@ -258,7 +254,7 @@ mod tests {
                 assert!(it.heap.len() <= 2 * g as usize + 1, "width {g}: buffer bound");
                 streamed.push(block);
             }
-            assert_eq!(streamed, sorted_blue_set(&manager, &virtual_cd), "width {g}");
+            assert_eq!(streamed, sorted_blue_set(&manager, &virtual_cd, root, &headers_store), "width {g}");
             assert_eq!(streamed.len(), virtual_cd.blue_score as usize, "width {g}");
             assert_eq!(streamed.last(), Some(&root), "width {g}");
         }

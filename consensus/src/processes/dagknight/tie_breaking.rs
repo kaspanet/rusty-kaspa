@@ -34,11 +34,17 @@ pub struct TieBreakContext<'a> {
     pub k: KType,
 }
 
+/// Liveness window for the witness scan: ell+2 reference positions, the widest gap a
+/// witness chain can bridge.
+fn witness_window(ell: KType) -> usize {
+    ell as usize + 2
+}
+
 /// Conjectured horizon capping the witness scan: (ell+2)^2, quadratic in the liveness window and never cutting inside the window itself.
 ///
 /// TODO[DK]: tighten to the justified bound once the conjecture is proven.
 fn witness_horizon(ell: KType) -> u64 {
-    let side = ell as u64 + 2;
+    let side = witness_window(ell) as u64;
     side * side
 }
 
@@ -118,8 +124,6 @@ impl<
 
         zone.fill_zone_data(all_tips);
 
-        // Run k-colouring with free search — no custom selected parent is passed,
-        // so the manager freely selects from all parents.
         let virtual_cd = zone.k_colouring(all_tips, k, None);
         (zone, virtual_cd)
     }
@@ -133,7 +137,7 @@ impl<
         anchor: Hash,
         ell: KType,
     ) -> usize {
-        let window = ell as usize + 2;
+        let window = witness_window(ell);
         let mut recent: VecDeque<(Hash, bool)> = VecDeque::with_capacity(window);
         let mut last_witness: Option<usize> = None;
         let mut scanned = 0usize;
@@ -187,7 +191,7 @@ impl<
         // Score each side by its earliest suffix-witness start. A start within the
         // liveness window of the cut may continue past the horizon: classify the side
         // live (-1), outranking every measured start
-        let window = ell as usize + 2;
+        let window = witness_window(ell);
         let winner = subgroups
             .iter()
             .map(|group| {
@@ -226,7 +230,7 @@ mod tests {
             reachability::MemoryReachabilityStore, relations::MemoryRelationsStore,
         },
         processes::{
-            dagknight::reference_iterator::ReferenceIterator,
+            dagknight::umc_voting::test_fixtures::insert_header,
             ghostdag::ordering::SortableBlock,
             reachability::tests::{DagBlock, DagBuilder},
         },
@@ -710,12 +714,7 @@ mod tests {
             builder.add_block_with_selected_parent(DagBlock::new(t2, vec![t]), t);
             builder.add_block_with_selected_parent(DagBlock::new(s3, vec![s2, x]), s2);
 
-            let insert = |h: Hash, p: Vec<Hash>, blue_work: u64| {
-                let mut header = Header::from_precomputed_hash(h, p);
-                header.bits = 0x207fffff;
-                header.blue_work = blue_work.into();
-                headers_store.insert(Arc::new(header));
-            };
+            let insert = |h: Hash, p: Vec<Hash>, blue_work: u64| insert_header(&headers_store, h, p, blue_work.into());
             insert(genesis, vec![], 0);
             insert(s, vec![genesis], 2);
             insert(t, vec![genesis], 5);
