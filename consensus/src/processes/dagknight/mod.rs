@@ -14,6 +14,7 @@ pub use appendable_segment_tree_impl::AppendableSegmentTree;
 pub mod manager;
 pub mod protocol;
 pub mod rank_search;
+pub mod reference_iterator;
 pub mod tie_breaking;
 #[cfg(feature = "baseline-debugging")]
 pub mod umc_baseline;
