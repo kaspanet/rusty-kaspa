@@ -243,10 +243,10 @@ mod tests {
             reachability::MemoryReachabilityStore, relations::MemoryRelationsStore,
         },
         processes::{
-            dagknight::umc_voting::test_fixtures::insert_header,
             ghostdag::ordering::SortableBlock,
             reachability::tests::{DagBlock, DagBuilder},
         },
+        test_helpers::insert_header,
     };
 
     /// Shared test DAG used by all tie_breaking tests.

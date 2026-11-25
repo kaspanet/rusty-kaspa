@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use faster_hex::hex_string;
 use kaspa_consensus_core::{
-    BlockHashSet, KType,
+    BlockHashSet, BlueWorkType, KType,
     block::Block,
     blockhash::BlockHashExtensions,
     header::Header,
@@ -20,11 +20,23 @@ use rand::{Rng, rngs::SmallRng, seq::SliceRandom};
 
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
-    stores::{headers::HeaderStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
+    stores::{
+        headers::{HeaderStoreReader, MemoryHeaderStore},
+        reachability::ReachabilityStoreReader,
+        relations::RelationsStoreReader,
+    },
 };
 
 pub fn header_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Header {
     Header::from_precomputed_hash(hash, parents)
+}
+
+/// Inserts a header with uniform test bits and the given blue work into the store.
+pub fn insert_header(headers: &MemoryHeaderStore, hash: Hash, parents: Vec<Hash>, blue_work: BlueWorkType) {
+    let mut header = header_from_precomputed_hash(hash, parents);
+    header.bits = 0x207fffff;
+    header.blue_work = blue_work;
+    headers.insert(Arc::new(header));
 }
 
 pub fn block_from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Block {

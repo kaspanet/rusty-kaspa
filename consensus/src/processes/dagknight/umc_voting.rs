@@ -67,9 +67,8 @@ pub mod test_fixtures {
     use std::{collections::HashMap, sync::Arc};
 
     use kaspa_consensus_core::{
-        BlockHashMap, BlueWorkType, HashKTypeMap, HashMapCustomHasher, KType,
+        BlockHashMap, HashKTypeMap, HashMapCustomHasher, KType,
         blockhash::{BlockHashes, ORIGIN},
-        header::Header,
     };
     use kaspa_hashes::Hash;
     use parking_lot::RwLock;
@@ -89,6 +88,7 @@ pub mod test_fixtures {
             },
         },
         processes::dagknight::umc_voting::ColoringReader,
+        test_helpers::insert_header,
     };
 
     /// In-memory `ColoringReader` backed by a map of synthetic `ColoringData` per chain block.
@@ -118,14 +118,6 @@ pub mod test_fixtures {
             BlockHashes::new(reds),
             HashKTypeMap::new(BlockHashMap::new()),
         )
-    }
-
-    /// Inserts a header with uniform test bits and the given blue work into the store.
-    pub fn insert_header(headers: &MemoryHeaderStore, hash: Hash, parents: Vec<Hash>, blue_work: BlueWorkType) {
-        let mut header = Header::from_precomputed_hash(hash, parents);
-        header.bits = 0x207fffff;
-        header.blue_work = blue_work;
-        headers.insert(Arc::new(header));
     }
 
     /// JSON shape of the UMC fixture zone in umc_fixture.json
@@ -213,10 +205,7 @@ pub mod test_fixtures {
                 }
 
                 // Header with uniform bits; cumulative blue work = blue_work * per-block work.
-                let mut header = Header::from_precomputed_hash(hash, parents);
-                header.bits = 0x207fffff;
-                header.blue_work = block_work * block.blue_work;
-                headers.insert(Arc::new(header));
+                insert_header(&headers, hash, parents, block_work * block.blue_work);
 
                 // Zone coloring entry (only blocks the voter reads carry one).
                 if let Some(cd) = &block.cd {
