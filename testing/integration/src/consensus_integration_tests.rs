@@ -2890,7 +2890,7 @@ fn apply_pruning_proof_rejects_large_scores_in_chain_segment() {
     large_blue.finalize();
     let large_blue = Arc::new(large_blue);
     assert!(matches!(
-        consensus.apply_pruning_proof(proof.clone(), &[], &[large_blue.clone()]),
+        consensus.apply_pruning_proof(proof.clone(), &[], std::slice::from_ref(&large_blue)),
         Err(PruningImportError::BlueScoreTooLarge(hash, score, _)) if hash == large_blue.hash && score == limit
     ));
 
@@ -2899,7 +2899,7 @@ fn apply_pruning_proof_rejects_large_scores_in_chain_segment() {
     large_daa.finalize();
     let large_daa = Arc::new(large_daa);
     assert!(matches!(
-        consensus.apply_pruning_proof(proof, &[], &[large_daa.clone()]),
+        consensus.apply_pruning_proof(proof, &[], std::slice::from_ref(&large_daa)),
         Err(PruningImportError::DaaScoreTooLarge(hash, score, _)) if hash == large_daa.hash && score == limit
     ));
 }
