@@ -134,7 +134,7 @@ impl<
     /// Returns the earliest start of each side's suffix-witness chain along the descending-ordered reference prefix of length `n`, one start per anchor in `anchors` (ascending 0-based positions, or `n` for a side with no witness), in a single pass shared by all sides. A block is a witness when its chain anchor is one of `anchors` and it chains to the endpoint through witnesses of its own side. The scan stops once every side's last witness is over ell+1 positions behind (a causal chain cannot cross a wider gap), so anchors past the stop are never queried.
     fn suffix_witness_starts(
         &self,
-        descending_f: impl Iterator<Item = Hash>,
+        mut descending_f: impl Iterator<Item = Hash>,
         n: usize,
         conflict_genesis: Hash,
         anchors: &[Hash],
@@ -142,32 +142,32 @@ impl<
     ) -> Vec<usize> {
         let window = witness_window(ell);
         let mut recent: VecDeque<(Hash, Option<Hash>)> = VecDeque::with_capacity(window);
-        // Per-side start: n while unwitnessed, n-1-i once position i witnesses.
-        // A side stays scannable while its deepest witness is within the
-        // liveness window of the current position; n keeps an unwitnessed side
-        // scannable only through the initial window.
+        // Per-side start: n while unwitnessed, n-1-i once position i witnesses
         let mut starts = vec![n; anchors.len()];
         let mut scanned = 0usize;
-        for (i, block) in descending_f.enumerate() {
-            if !starts.iter().any(|&start| start + i < n + window) {
-                break;
-            }
+        let mut i = 0;
+        // Keep scanning while some side can resume from position i: its deepest
+        // witness sits within the liveness window (an unwitnessed side, start n,
+        // stays resumable only through the initial window)
+        while let Some(block) = descending_f.next()
+            && starts.iter().any(|&start| start + i < n + window)
+        {
             scanned += 1;
             let chain_anchor = self.reachability_service.try_get_next_chain_ancestor(block, conflict_genesis).unwrap();
-            let side = anchors.iter().position(|&anchor| chain_anchor == Some(anchor));
-            let witness_anchor = match side {
-                Some(s) if i < window || self.chains_to_endpoint(block, anchors[s], &recent) => chain_anchor,
-                _ => None,
-            };
+            // Positions inside the initial window witness unconditionally; later
+            // ones must chain to the endpoint through same-side witnesses
+            let mut witness_anchor = None;
+            if let Some(side) = anchors.iter().position(|&anchor| chain_anchor == Some(anchor))
+                && (i < window || self.chains_to_endpoint(block, anchors[side], &recent))
+            {
+                witness_anchor = chain_anchor;
+                starts[side] = n - 1 - i;
+            }
             if recent.len() == window {
                 recent.pop_back();
             }
             recent.push_front((block, witness_anchor));
-            if let Some(s) = side
-                && witness_anchor.is_some()
-            {
-                starts[s] = n - 1 - i;
-            }
+            i += 1;
         }
         debug!("dk::tiebreak: scanned {} of {} reference positions across {} sides", scanned, n, anchors.len());
         starts
