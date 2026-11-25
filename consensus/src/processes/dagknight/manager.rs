@@ -470,48 +470,46 @@ impl<
 
         let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips);
 
-        let iter =
-            TopologyIterator::new(&last_known_tips, tips, &*self.headers_store, &self.relations_store, &self.reachability_service)
-                .skip(|&c: &Hash| {
-                    if self.free_search {
-                        !self.reachability_service.try_is_dag_ancestor_of(self.root, c).unwrap_or(false)
-                    } else {
-                        !self.reachability_service.try_is_chain_ancestor_of(self.root, c).unwrap_or(false)
-                    }
-                });
+        TopologyIterator::new(&last_known_tips, tips, &*self.headers_store, &self.relations_store, &self.reachability_service)
+            .skip(|&c: &Hash| {
+                if self.free_search {
+                    !self.reachability_service.try_is_dag_ancestor_of(self.root, c).unwrap_or(false)
+                } else {
+                    !self.reachability_service.try_is_chain_ancestor_of(self.root, c).unwrap_or(false)
+                }
+            })
+            .for_each(|current_hash| {
+                if self.has(current_hash) {
+                    return;
+                }
 
-        for current_hash in iter {
-            if self.has(current_hash) {
-                continue;
-            }
+                let parents = &self.relations_store.get_parents(current_hash).unwrap();
 
-            let parents = &self.relations_store.get_parents(current_hash).unwrap();
+                // For free_search, select from all parents; for committed search, only from agreeing parents
+                let selected_parent = if self.free_search {
+                    self.find_selected_parent(parents.iter().copied())
+                } else {
+                    // The block's own next chain ancestor above the root bounds its
+                    // agreeing-parent set (per-block NCA).
+                    let next_chain_ancestor_of_current = self.reachability_service.get_next_chain_ancestor(current_hash, self.root);
+                    let agreeing_parents = parents
+                        .iter()
+                        .copied()
+                        .filter(|&p| {
+                            next_chain_ancestor_of_current == current_hash
+                                || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
+                        })
+                        .collect::<Vec<_>>();
 
-            // For free_search, select from all parents; for committed search, only from agreeing parents
-            let selected_parent = if self.free_search {
-                self.find_selected_parent(parents.iter().copied())
-            } else {
-                // The block's own next chain ancestor above the root bounds its
-                // agreeing-parent set (per-block NCA).
-                let next_chain_ancestor_of_current = self.reachability_service.get_next_chain_ancestor(current_hash, self.root);
-                let agreeing_parents = parents
-                    .iter()
-                    .copied()
-                    .filter(|&p| {
-                        next_chain_ancestor_of_current == current_hash
-                            || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
-                    })
-                    .collect::<Vec<_>>();
+                    self.sanity_check(current_hash, parents, &agreeing_parents, tips, &last_known_tips);
 
-                self.sanity_check(current_hash, parents, &agreeing_parents, tips, &last_known_tips);
+                    self.find_selected_parent(agreeing_parents.iter().copied())
+                };
 
-                self.find_selected_parent(agreeing_parents.iter().copied())
-            };
+                let current_gd = self.k_colouring(parents, self.k, Some(selected_parent));
 
-            let current_gd = self.k_colouring(parents, self.k, Some(selected_parent));
-
-            self.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
-        }
+                self.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
+            });
 
         // Opportunistically cleanup unused locks after zone fill
         cleanup_k_colouring_locks();
