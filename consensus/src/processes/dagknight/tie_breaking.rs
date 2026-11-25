@@ -1,4 +1,5 @@
 use std::cmp::Reverse;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use kaspa_consensus_core::{BlockHashSet, KType};
@@ -82,16 +83,11 @@ impl<
     R: ReachabilityStoreReader + Clone,
 > DagknightTieBreaker<C, O, D, R>
 {
-    /// A block chains to the deciding endpoint (the list head) when it sits
-    /// within ell+2 positions of it, or when it is a DAG ancestor of a witness
-    /// at most ell+2 positions earlier in the list.
-    fn chains_to_endpoint(&self, block: Hash, i: usize, descending_f: &[Hash], is_witness: &[bool], ell: KType) -> bool {
-        let window = ell as usize + 2;
-        i < window
-            || descending_f[i - window..i]
-                .iter()
-                .zip(&is_witness[i - window..i])
-                .any(|(&later, &witness)| witness && self.reachability_service.is_dag_ancestor_of(block, later))
+    /// A block chains to the deciding endpoint (the scan head) when it is a DAG
+    /// ancestor of a witness among the previous ell+2 reference positions; the
+    /// buffer holds exactly those positions, oldest first.
+    fn chains_to_endpoint(&self, block: Hash, recent: &VecDeque<(Hash, bool)>) -> bool {
+        recent.iter().rev().any(|&(later, is_witness)| is_witness && self.reachability_service.is_dag_ancestor_of(block, later))
     }
 
     pub fn new(
@@ -158,26 +154,35 @@ impl<
         ReferenceCluster { blues: blue_set, chain_blocks }
     }
 
-    /// Returns the earliest start of the side's suffix-witness chain along the descending-ordered reference, in ascending 0-based positions, or the list length when no witness exists. A block is a witness when its chain anchor is the side's and it chains to the endpoint. The scan stops once the last witness is over ell+1 positions behind (a causal chain cannot cross a wider gap), so anchors past the stop are never queried.
-    fn suffix_witness_start(&self, descending_f: &[Hash], conflict_genesis: Hash, anchor: Hash, ell: KType) -> usize {
-        let n = descending_f.len();
+    /// Returns the earliest start of the side's suffix-witness chain along the descending-ordered reference prefix of length `n`, in ascending 0-based positions, or `n` when no witness exists. A block is a witness when its chain anchor is the side's and it chains to the endpoint. The scan stops once the last witness is over ell+1 positions behind (a causal chain cannot cross a wider gap), so anchors past the stop are never queried.
+    fn suffix_witness_start(
+        &self,
+        descending_f: impl Iterator<Item = Hash>,
+        n: usize,
+        conflict_genesis: Hash,
+        anchor: Hash,
+        ell: KType,
+    ) -> usize {
         let window = ell as usize + 2;
-        let mut is_witness: Vec<bool> = Vec::new();
+        let mut recent: VecDeque<(Hash, bool)> = VecDeque::with_capacity(window);
         let mut last_witness: Option<usize> = None;
-        let anchors =
-            descending_f.iter().map(|&block| self.reachability_service.try_get_next_chain_ancestor(block, conflict_genesis).unwrap());
-        for (i, (&block, chain_anchor)) in descending_f.iter().zip(anchors).enumerate() {
+        let mut scanned = 0usize;
+        for (i, block) in descending_f.enumerate() {
             if i >= window && !matches!(last_witness, Some(p) if p >= i - window) {
                 break;
             }
-            let witness =
-                chain_anchor == Some(anchor) && (i < window || self.chains_to_endpoint(block, i, descending_f, &is_witness, ell));
-            is_witness.push(witness);
+            scanned += 1;
+            let chain_anchor = self.reachability_service.try_get_next_chain_ancestor(block, conflict_genesis).unwrap();
+            let witness = chain_anchor == Some(anchor) && (i < window || self.chains_to_endpoint(block, &recent));
+            if recent.len() == window {
+                recent.pop_front();
+            }
+            recent.push_back((block, witness));
             if witness {
                 last_witness = Some(i);
             }
         }
-        debug!("dk::tiebreak: scanned {} of {} reference positions", is_witness.len(), n);
+        debug!("dk::tiebreak: scanned {} of {} reference positions", scanned, n);
         match last_witness {
             Some(p) => n - 1 - p,
             None => n,
@@ -228,7 +233,7 @@ impl<
         let winner = subgroups
             .iter()
             .map(|group| {
-                let start = self.suffix_witness_start(ordered_f, *conflict_genesis, group.nca, ell);
+                let start = self.suffix_witness_start(ordered_f.iter().copied(), horizon, *conflict_genesis, group.nca, ell);
                 let score = if truncated && start < window { -1 } else { start as isize };
                 debug!("dk::tiebreak: side {} (rank {}) witness score {} (-1 = live at horizon)", group.nca, group.k, score);
                 (group, score)
@@ -529,7 +534,7 @@ mod tests {
             let anchor = chain[0];
             let agreement: Vec<usize> =
                 ordered.iter().enumerate().filter(|&(_, &block)| anchors(block) == Some(anchor)).map(|(i, _)| i).collect();
-            let start = tie_breaker.suffix_witness_start(&ordered, genesis, anchor, ell);
+            let start = tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, anchor, ell);
             println!(
                 "side {} (anchor {}): agrees at future-to-past positions {agreement:?}, witness score {start:?}",
                 side_idx,
@@ -595,11 +600,11 @@ mod tests {
         // Future-to-past reference by blue work: [B2, Z2, Z1, B1, genesis]; at ell=0 the window is 2
         let ordered = vec![chains[0][1], chains[1][1], chains[1][0], chains[0][0], genesis];
         assert_eq!(
-            tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0),
+            tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[0][0], 0),
             4,
             "B1 at position 1 is 3 positions from B2, beyond the window"
         );
-        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[1][0], 0), 2);
+        assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[1][0], 0), 2);
     }
 
     /// A side whose agreeing blocks never reach the endpoint within the window has
@@ -620,8 +625,8 @@ mod tests {
         let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 2)], &[(3, 3)], &[(4, 4), (5, 5), (6, 6), (7, 7)]]);
         // Future-to-past reference by blue work: [Y4, Y3, Y2, Y1, Z, B, genesis]
         let ordered = vec![chains[2][3], chains[2][2], chains[2][1], chains[2][0], chains[1][0], chains[0][0], genesis];
-        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0), 7);
-        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[2][0], 0), 3);
+        assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[0][0], 0), 7);
+        assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[2][0], 0), 3);
     }
 
     /// Concurrent agreeing blocks within the window do not extend the witness; the
@@ -682,10 +687,75 @@ mod tests {
         let ordered = vec![5_u64.into(), 4_u64.into(), 3_u64.into(), 2_u64.into(), 1_u64.into()];
 
         let (tie_breaker, hash_a, hash_b) = build(vec![2_u64.into()]);
-        assert_eq!(tie_breaker.suffix_witness_start(&ordered, hash_a, hash_b, 0), 4, "concurrent C1 cannot chain into C2");
+        assert_eq!(
+            tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), hash_a, hash_b, 0),
+            4,
+            "concurrent C1 cannot chain into C2"
+        );
 
         let (tie_breaker, hash_a, hash_b) = build(vec![3_u64.into()]);
-        assert_eq!(tie_breaker.suffix_witness_start(&ordered, hash_a, hash_b, 0), 1, "the causal chain B < C1 < C2 witnesses from B");
+        assert_eq!(
+            tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), hash_a, hash_b, 0),
+            1,
+            "the causal chain B < C1 < C2 witnesses from B"
+        );
+    }
+
+    /// The lookback window spans exactly ell+2 positions: an agreeing ancestor exactly
+    /// ell+2 positions later still witnesses, one position further is forgotten.
+    ///
+    /// ```text
+    ///         genesis
+    ///        /     \
+    ///       s       t
+    ///      / \      |
+    ///     S2  X     T2
+    ///      \ /
+    ///       S3        (parents S2, X; chain parent S2)
+    /// ```
+    ///
+    /// Reference, future-to-past: [S3, T2, S2, t, X]. At ell = 0 the window is 2.
+    #[test]
+    fn test_witness_lookback_spans_exactly_the_window() {
+        let (genesis, s, t, x, s2, t2, s3): (Hash, Hash, Hash, Hash, Hash, Hash, Hash) =
+            (1_u64.into(), 2_u64.into(), 3_u64.into(), 4_u64.into(), 5_u64.into(), 6_u64.into(), 7_u64.into());
+
+        let dk_map = RefCell::new(HashMap::new());
+        let coloring_store = Arc::new(MemoryConflictZoneColoringStore::new(dk_map));
+        let headers_store = Arc::new(MemoryHeaderStore::new());
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations_store = MemoryRelationsStore::new();
+        {
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations_store);
+            builder.init();
+            builder.add_block(DagBlock::new(genesis, vec![ORIGIN]));
+            builder.add_block_with_selected_parent(DagBlock::new(s, vec![genesis]), genesis);
+            builder.add_block_with_selected_parent(DagBlock::new(t, vec![genesis]), genesis);
+            builder.add_block_with_selected_parent(DagBlock::new(x, vec![s]), s);
+            builder.add_block_with_selected_parent(DagBlock::new(s2, vec![s]), s);
+            builder.add_block_with_selected_parent(DagBlock::new(t2, vec![t]), t);
+            builder.add_block_with_selected_parent(DagBlock::new(s3, vec![s2, x]), s2);
+
+            let insert = |h: Hash, p: Vec<Hash>, blue_work: u64| {
+                let mut header = Header::from_precomputed_hash(h, p);
+                header.bits = 0x207fffff;
+                header.blue_work = blue_work.into();
+                headers_store.insert(Arc::new(header));
+            };
+            insert(genesis, vec![], 0);
+            insert(s, vec![genesis], 2);
+            insert(t, vec![genesis], 5);
+            insert(x, vec![s], 3);
+            insert(s2, vec![s], 7);
+            insert(t2, vec![t], 9);
+            insert(s3, vec![s2, x], 11);
+        }
+        let reachability_service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
+        let tie_breaker =
+            DagknightTieBreaker::new(coloring_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
+
+        let ordered = vec![s3, t2, s2, t, x];
+        assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, s, 0), 2);
     }
 
     /// The scan stops exactly once the last witness is more than ell+1 positions
@@ -708,11 +778,14 @@ mod tests {
         let (tie_breaker, genesis, chains) =
             chain_sides_dag(&[&[(2, 100), (3, 50)], &[(4, 1)], &[(5, 90), (6, 80), (7, 70), (8, 60)]]);
         let ordered = vec![chains[0][0], chains[2][0], chains[2][1], chains[2][2], chains[2][3], chains[0][1], chains[1][0]];
+        let mut pulls = 0usize;
+        let scanned = ordered.iter().copied().inspect(|_| pulls += 1);
         assert_eq!(
-            tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0),
+            tie_breaker.suffix_witness_start(scanned, ordered.len(), genesis, chains[0][0], 0),
             6,
             "exact stop: full-list answer without scanning past the gap"
         );
+        assert_eq!(pulls, 4, "the scan pulls the breaking position and nothing past the gap");
     }
 
     /// The horizon truncation drives the live/dead classification in `tie_break`: a start within the liveness window of the cut marks the side live, a dead side keeps its measured start.
@@ -727,15 +800,15 @@ mod tests {
 
         // tie_break's classification over the truncated reference
         let score = |anchor| {
-            let start = tie_breaker.suffix_witness_start(&ordered[..horizon], genesis, anchor, 0);
+            let start = tie_breaker.suffix_witness_start(ordered[..horizon].iter().copied(), horizon, genesis, anchor, 0);
             if truncated && start < window { -1 } else { start as isize }
         };
         assert_eq!(score(chains[1][0]), -1, "Z's deepest witness sits at the cut: live at horizon");
         assert_eq!(score(chains[0][0]), 2, "B's chain is dead at the cut: exact truncated start");
 
         // Untruncated scores are unchanged by the cap
-        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[0][0], 0), 4);
-        assert_eq!(tie_breaker.suffix_witness_start(&ordered, genesis, chains[1][0], 0), 2);
+        assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[0][0], 0), 4);
+        assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[1][0], 0), 2);
     }
 
     /// `witness_horizon` is quadratic in the liveness window and never cuts inside it: (ell+2)^2.
