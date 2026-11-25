@@ -1,7 +1,6 @@
 //! Local verification of [`GetSeqCommitLaneProofResponse`] (KIP-21).
 
-use crate::{GetSeqCommitLaneProofResponse, RpcError, RpcHash, RpcLaneEntry};
-use kaspa_consensus_core::{hashing::header::hash as header_hash, header::Header};
+use crate::{GetSeqCommitLaneProofResponse, RpcHash, RpcLaneEntry};
 use kaspa_hashes::SeqCommitActiveNode;
 use kaspa_seq_commit::{
     hashing::smt_leaf_hash,
@@ -9,26 +8,15 @@ use kaspa_seq_commit::{
     verify::{SmtMetadata, SmtVerifyError, verify_smt_metadata},
 };
 use kaspa_smt::proof::OwnedSmtProof;
-use thiserror::Error;
 
-#[derive(Debug, Error)]
-pub enum LaneProofError {
-    #[error("the response has no header")]
-    MissingHeader,
-    #[error("the response header does not hash to the block hash")]
-    HeaderHashMismatch,
-    #[error("invalid response header: {0}")]
-    InvalidHeader(#[from] RpcError),
-    #[error(transparent)]
-    Smt(#[from] SmtVerifyError),
-}
-
-/// Verifies `response` for `lane_key` against `seq_commit` (the block's `accepted_id_merkle_root`).
+/// Verifies `response` for `lane_key` against `seq_commit`.
+///
+/// `seq_commit` is the `accepted_id_merkle_root` of the queried block, from the chain the caller
+/// follows itself, never from the response. This checks the lane state against that commitment;
+/// it does not show that the block is on the selected chain.
 ///
 /// Returns the lane's entry, or `None` for a valid non-inclusion proof. If `parent_seq_commit`
-/// is given, the response must name it as its parent.
-///
-/// The result is only as trustworthy as `seq_commit`: take it from a header the caller has validated.
+/// (the selected parent's) is given, the response must name it as its parent.
 pub fn verify_seq_commit_lane_proof<'a>(
     response: &'a GetSeqCommitLaneProofResponse,
     lane_key: &RpcHash,
@@ -51,43 +39,23 @@ pub fn verify_seq_commit_lane_proof<'a>(
     Ok(response.lane.as_ref())
 }
 
-/// Like [`verify_seq_commit_lane_proof`], against `response.header`, which must hash to `block_hash`.
-///
-/// `block_hash` must come from a trusted source. The header's hash is recomputed: its `hash`
-/// field is the node's claim (wRPC passes it through unchecked).
-pub fn verify_seq_commit_lane_proof_at_block<'a>(
-    response: &'a GetSeqCommitLaneProofResponse,
-    lane_key: &RpcHash,
-    block_hash: &RpcHash,
-    parent_seq_commit: Option<&RpcHash>,
-) -> Result<Option<&'a RpcLaneEntry>, LaneProofError> {
-    let header = response.header.as_ref().ok_or(LaneProofError::MissingHeader)?;
-    if header_hash(&Header::try_from(header)?) != *block_hash {
-        return Err(LaneProofError::HeaderHashMismatch);
-    }
-    Ok(verify_seq_commit_lane_proof(response, lane_key, &header.accepted_id_merkle_root, parent_seq_commit)?)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaspa_consensus_core::{BlueWorkType, header::CompressedParents};
     use kaspa_hashes::{Hash, HasherBase, SeqCommitMerkleBranch};
     use kaspa_seq_commit::{
         hashing::{activity_root_hash, lane_key, seq_state_root},
         types::SeqState,
     };
     use kaspa_smt::tree::SparseMerkleTree;
-    use workflow_serializer::prelude::*;
 
     struct Fixture {
         response: GetSeqCommitLaneProofResponse,
         key: Hash,
         seq_commit: Hash,
-        block_hash: Hash,
     }
 
-    /// Three active lanes with tips derived from `salt`; the response for `queried`, with a header committing to it.
+    /// Three active lanes with tips derived from `salt`; the response for `queried` and the seq commit it verifies against.
     fn fixture_with(queried: u8, salt: u8) -> Fixture {
         let entries: Vec<(Hash, RpcLaneEntry)> = [1u8, 2, 3]
             .iter()
@@ -105,30 +73,14 @@ mod tests {
         let state_root = seq_state_root(&SeqState { activity_root: &activity_root, payload_and_ctx_digest: &payload_and_ctx_digest });
         let mut hasher = SeqCommitMerkleBranch::new();
         hasher.update(parent_seq_commit).update(state_root);
-        let seq_commit = hasher.finalize();
-        let header = Header::new_finalized(
-            1,
-            CompressedParents::try_from(vec![vec![Hash::from_bytes([0xa0; 32])]]).unwrap(),
-            Hash::from_bytes([0xa1; 32]),
-            seq_commit,
-            Hash::from_bytes([0xa2; 32]),
-            1_700_000_000_000,
-            0x1e7fffff,
-            7,
-            500,
-            BlueWorkType::from_u64(12345),
-            400,
-            Hash::from_bytes([0xa3; 32]),
-        );
         let response = GetSeqCommitLaneProofResponse {
             smt_proof: tree.prove(&key).unwrap().to_bytes(),
             lane: entries.iter().find(|(k, _)| *k == key).map(|(_, entry)| entry.clone()),
             payload_and_ctx_digest,
             parent_seq_commit,
             inactivity_shortcut,
-            header: Some((&header).into()),
         };
-        Fixture { response, key, seq_commit, block_hash: header.hash }
+        Fixture { response, key, seq_commit: hasher.finalize() }
     }
 
     fn fixture(queried: u8) -> Fixture {
@@ -145,7 +97,7 @@ mod tests {
         let lane = verify(&f, &f.response).unwrap().unwrap();
         assert_eq!(lane.tip, Hash::from_bytes([2; 32]));
         assert_eq!(lane.blue_score, 1002);
-        assert!(verify_seq_commit_lane_proof(&f.response, &f.key, &f.seq_commit, Some(&f.response.parent_seq_commit)).is_ok());
+        assert!(verify_seq_commit_lane_proof(&f.response, &f.key, &f.seq_commit, Some(&Hash::from_bytes([0xd1; 32]))).is_ok());
     }
 
     #[test]
@@ -182,6 +134,10 @@ mod tests {
         reject(&r);
 
         let mut r = f.response.clone();
+        r.parent_seq_commit = Hash::from_bytes([0xee; 32]);
+        reject(&r);
+
+        let mut r = f.response.clone();
         let last = r.smt_proof.len() - 1;
         r.smt_proof[last] ^= 1;
         reject(&r);
@@ -203,100 +159,14 @@ mod tests {
     }
 
     #[test]
-    fn at_block_verifies_against_the_header() {
-        let f = fixture(2);
-        let lane = verify_seq_commit_lane_proof_at_block(&f.response, &f.key, &f.block_hash, None).unwrap().unwrap();
-        assert_eq!(lane.tip, Hash::from_bytes([2; 32]));
-        let f = fixture(9);
-        assert_eq!(verify_seq_commit_lane_proof_at_block(&f.response, &f.key, &f.block_hash, None).unwrap(), None);
-    }
-
-    #[test]
-    fn at_block_rejects_a_forged_self_consistent_response() {
+    fn a_self_consistent_response_for_another_commitment_is_rejected() {
         let real = fixture(2);
-        let mut forged = fixture_with(2, 0x40).response;
-        // Consistent on its own: the forged proof matches the forged header's root.
-        let forged_root = forged.header.as_ref().unwrap().accepted_id_merkle_root;
-        assert!(verify_seq_commit_lane_proof(&forged, &real.key, &forged_root, None).is_ok());
+        let forged = fixture_with(2, 0x40);
+        // The forged response is valid against its own commitment, but not against the one the caller tracks.
+        assert!(verify_seq_commit_lane_proof(&forged.response, &real.key, &forged.seq_commit, None).is_ok());
         assert!(matches!(
-            verify_seq_commit_lane_proof_at_block(&forged, &real.key, &real.block_hash, None),
-            Err(LaneProofError::HeaderHashMismatch)
+            verify_seq_commit_lane_proof(&forged.response, &real.key, &real.seq_commit, None),
+            Err(SmtVerifyError::SeqCommitMismatch { .. })
         ));
-        // A header `hash` field claiming the real block is not trusted.
-        forged.header.as_mut().unwrap().hash = real.block_hash;
-        assert!(matches!(
-            verify_seq_commit_lane_proof_at_block(&forged, &real.key, &real.block_hash, None),
-            Err(LaneProofError::HeaderHashMismatch)
-        ));
-    }
-
-    #[test]
-    fn at_block_rejects_a_missing_or_altered_header() {
-        let f = fixture(2);
-        let mut r = f.response.clone();
-        r.header = None;
-        assert!(matches!(verify_seq_commit_lane_proof_at_block(&r, &f.key, &f.block_hash, None), Err(LaneProofError::MissingHeader)));
-        let mut r = f.response.clone();
-        r.header.as_mut().unwrap().nonce += 1;
-        assert!(matches!(
-            verify_seq_commit_lane_proof_at_block(&r, &f.key, &f.block_hash, None),
-            Err(LaneProofError::HeaderHashMismatch)
-        ));
-        assert!(matches!(
-            verify_seq_commit_lane_proof_at_block(&f.response, &f.key, &f.block_hash, Some(&Hash::from_bytes([0xee; 32]))),
-            Err(LaneProofError::Smt(SmtVerifyError::ParentSeqCommitMismatch { .. }))
-        ));
-    }
-
-    fn store_v1(response: &GetSeqCommitLaneProofResponse, writer: &mut Vec<u8>) {
-        store!(u16, &1, writer).unwrap();
-        store!(Vec<u8>, &response.smt_proof, writer).unwrap();
-        serialize!(Option<RpcLaneEntry>, &response.lane, writer).unwrap();
-        store!(RpcHash, &response.payload_and_ctx_digest, writer).unwrap();
-        store!(RpcHash, &response.parent_seq_commit, writer).unwrap();
-        store!(RpcHash, &response.inactivity_shortcut, writer).unwrap();
-    }
-
-    #[test]
-    fn lane_proof_response_v1_reads_without_header() {
-        let response = fixture(2).response;
-        let mut v1 = Vec::new();
-        store_v1(&response, &mut v1);
-        let read = <GetSeqCommitLaneProofResponse as Deserializer>::deserialize(&mut v1.as_slice()).unwrap();
-        assert_eq!((read.smt_proof, read.lane, read.header.is_none()), (response.smt_proof, response.lane, true));
-    }
-
-    /// A reader that only knows version 1.
-    struct V1Response(GetSeqCommitLaneProofResponse);
-
-    impl Deserializer for V1Response {
-        fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-            let _version = load!(u16, reader)?;
-            let smt_proof = load!(Vec<u8>, reader)?;
-            let lane = deserialize!(Option<RpcLaneEntry>, reader)?;
-            let payload_and_ctx_digest = load!(RpcHash, reader)?;
-            let parent_seq_commit = load!(RpcHash, reader)?;
-            let inactivity_shortcut = load!(RpcHash, reader)?;
-            Ok(Self(GetSeqCommitLaneProofResponse {
-                smt_proof,
-                lane,
-                payload_and_ctx_digest,
-                parent_seq_commit,
-                inactivity_shortcut,
-                header: None,
-            }))
-        }
-    }
-
-    #[test]
-    fn lane_proof_response_v2_reads_with_a_v1_reader() {
-        let response = fixture(2).response;
-        let mut buffer = Vec::new();
-        serialize!(GetSeqCommitLaneProofResponse, &response, &mut buffer).unwrap();
-        store!(u32, &0x90abcdef, &mut buffer).unwrap();
-        let reader = &mut buffer.as_slice();
-        let read = deserialize!(V1Response, reader).unwrap().0;
-        assert_eq!(load!(u32, reader).unwrap(), 0x90abcdef);
-        assert_eq!((read.smt_proof, read.lane), (response.smt_proof, response.lane));
     }
 }

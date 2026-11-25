@@ -245,18 +245,15 @@ fn get_seq_commit_lane_proof_response_is_a_plain_object() {
             payload_and_ctx_digest: RpcHash::from_bytes([4; 32]),
             parent_seq_commit: RpcHash::from_bytes([5; 32]),
             inactivity_shortcut: RpcHash::from_bytes([6; 32]),
-            header: None,
         })
         .unwrap();
         let value = JsValue::from(response);
         let smt_proof = Reflect::get(&value, &"smtProof".into()).unwrap();
         assert!(js_sys::Array::is_array(&smt_proof));
         assert_eq!(js_sys::Array::from(&smt_proof).to_vec(), vec![JsValue::from(0xde), JsValue::from(0xad), JsValue::from(0x01)]);
-        assert_eq!(
-            Reflect::get(&value, &"parentSeqCommit".into()).unwrap().as_string(),
-            Some(RpcHash::from_bytes([5; 32]).to_string())
-        );
-        assert!(Reflect::get(&value, &"header".into()).unwrap().is_undefined());
+        for (field, byte) in [("payloadAndCtxDigest", 4), ("parentSeqCommit", 5), ("inactivityShortcut", 6)] {
+            assert_eq!(Reflect::get(&value, &field.into()).unwrap().as_string(), Some(RpcHash::from_bytes([byte; 32]).to_string()));
+        }
         let lane = Reflect::get(&value, &"lane".into()).unwrap();
         assert_eq!(lane.is_undefined(), !has_lane);
         if has_lane {

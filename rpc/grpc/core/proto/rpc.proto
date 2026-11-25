@@ -1276,9 +1276,6 @@ message GetSeqCommitLaneProofResponseMessage {
   // inactivity-shortcut block (32 bytes). Folded as
   // activity_root = H_activity_root(inactivityShortcut, lanes_root).
   bytes inactivityShortcut = 6;
-  // Header of blockHash; its acceptedIdMerkleRoot is the seq_commit the proof
-  // verifies against. Not set by older nodes.
-  optional RpcBlockHeader header = 7;
 
   RPCError error = 1000;
 }

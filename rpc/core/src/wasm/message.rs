@@ -2114,10 +2114,6 @@ declare! {
         payloadAndCtxDigest: HexString;
         parentSeqCommit: HexString;
         inactivityShortcut: HexString;
-        /**
-         * Header of `blockHash`. Absent from nodes that predate this field.
-         */
-        header?: IHeader;
     }
 
     /**

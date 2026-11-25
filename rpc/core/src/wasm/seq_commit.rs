@@ -2,10 +2,7 @@
 //! WASM bindings for KIP-21 lane proofs, lane keys and lane tips.
 //!
 
-use crate::model::{
-    lane_proof::{verify_seq_commit_lane_proof, verify_seq_commit_lane_proof_at_block},
-    *,
-};
+use crate::model::{lane_proof::verify_seq_commit_lane_proof, *};
 use kaspa_consensus_core::subnets::{SUBNETWORK_ID_SIZE, SubnetworkId};
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 use kaspa_seq_commit::{
@@ -38,15 +35,10 @@ declare! {
         proof: IGetSeqCommitLaneProofResponse;
         laneKey: HexString;
         /**
-         * The requested block, from a trusted source; `proof.header` must hash to it
-         * (its `hash` field is not trusted).
+         * `acceptedIdMerkleRoot` of the queried block, from the chain you follow yourself
+         * (not from the proof).
          */
-        blockHash: HexString;
-        /**
-         * Required if `proof.header` is absent (older nodes): the `acceptedIdMerkleRoot` of
-         * `blockHash`'s header, from a trusted source. Otherwise it must equal the header's.
-         */
-        seqCommit?: HexString;
+        seqCommit: HexString;
         /**
          * If given, the selected parent's `acceptedIdMerkleRoot` must match `proof.parentSeqCommit`.
          */
@@ -63,8 +55,9 @@ declare! {
      */
     export interface ISeqCommitLaneTipArgs {
         /**
-         * The lane's previous tip if live (`lane.blueScore >= blueScore - finalityDepth`),
-         * otherwise the selected parent's `acceptedIdMerkleRoot`.
+         * The lane's tip from the selected parent's verified proof if still live at this block
+         * (`lane.blueScore >= blueScore - finalityDepth`), otherwise the selected parent's
+         * `acceptedIdMerkleRoot`.
          */
         parentRef: HexString;
         laneKey: HexString;
@@ -103,7 +96,7 @@ declare! {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "IRpcLaneEntry | undefined")]
-    pub type IRpcLaneEntryOrUndefined;
+    pub type RpcLaneEntryOrUndefinedT;
 }
 
 #[derive(Deserialize)]
@@ -111,8 +104,7 @@ extern "C" {
 struct VerifyArgs {
     proof: GetSeqCommitLaneProofResponse,
     lane_key: RpcHash,
-    block_hash: RpcHash,
-    seq_commit: Option<RpcHash>,
+    seq_commit: RpcHash,
     parent_seq_commit: Option<RpcHash>,
 }
 
@@ -135,25 +127,18 @@ struct LaneTransaction {
     merge_index: u32,
 }
 
-/// Verifies a `getSeqCommitLaneProof()` response. Returns the lane's entry, or `undefined`
-/// if the proof shows the lane has no entry at the block. Throws if the proof is invalid.
+/// Verifies a `getSeqCommitLaneProof()` response against `seqCommit`. Returns the lane's entry,
+/// or `undefined` if the proof shows the lane has no entry at the block. Throws if the proof is
+/// invalid.
+///
+/// This does not show that the block is on the selected chain: follow the chain yourself and
+/// pass the commitment of a block on it.
 ///
 /// @category Node RPC
 #[wasm_bindgen(js_name = verifySeqCommitLaneProof)]
-pub fn js_verify_seq_commit_lane_proof(args: IVerifySeqCommitLaneProofArgs) -> Result<IRpcLaneEntryOrUndefined, JsError> {
-    let VerifyArgs { proof, lane_key, block_hash, seq_commit, parent_seq_commit } = from_value(args.into()).map_err(js_error)?;
-    let lane = match (&proof.header, seq_commit) {
-        (Some(header), Some(seq_commit)) if header.accepted_id_merkle_root != seq_commit => {
-            return Err(JsError::new("seqCommit does not match proof.header"));
-        }
-        (Some(_), _) => {
-            verify_seq_commit_lane_proof_at_block(&proof, &lane_key, &block_hash, parent_seq_commit.as_ref()).map_err(js_error)?
-        }
-        (None, Some(seq_commit)) => {
-            verify_seq_commit_lane_proof(&proof, &lane_key, &seq_commit, parent_seq_commit.as_ref()).map_err(js_error)?
-        }
-        (None, None) => return Err(JsError::new("seqCommit is required when the proof has no header")),
-    };
+pub fn js_verify_seq_commit_lane_proof(args: IVerifySeqCommitLaneProofArgs) -> Result<RpcLaneEntryOrUndefinedT, JsError> {
+    let VerifyArgs { proof, lane_key, seq_commit, parent_seq_commit } = from_value(args.into()).map_err(js_error)?;
+    let lane = verify_seq_commit_lane_proof(&proof, &lane_key, &seq_commit, parent_seq_commit.as_ref()).map_err(js_error)?;
     Ok(match lane {
         Some(lane) => to_value(lane).map_err(js_error)?,
         None => JsValue::UNDEFINED,

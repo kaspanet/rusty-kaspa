@@ -1089,8 +1089,6 @@ async fn seq_commit_lane_proof_test() {
     assert_eq!(grpc_proof.payload_and_ctx_digest, wrpc_proof.payload_and_ctx_digest);
     assert_eq!(grpc_proof.parent_seq_commit, wrpc_proof.parent_seq_commit);
     assert_eq!(grpc_proof.inactivity_shortcut, wrpc_proof.inactivity_shortcut);
-    assert_eq!(grpc_proof.header.as_ref().map(|h| h.hash), Some(block_hash));
-    assert_eq!(wrpc_proof.header.as_ref().map(|h| h.hash), Some(block_hash));
 
     // Negative: unknown block hash. gRPC stringifies RpcError, so the typed
     // ConsensusError::HeaderNotFound becomes RpcError::General with the Display
@@ -1145,6 +1143,19 @@ async fn seq_commit_lane_proof_test() {
     assert!(coinbase_proof.lane.is_some(), "coinbase lane must be populated at B2");
     verify_lane_proof_locally(&header2, coinbase_lane_key, &coinbase_proof);
 
+    // The helper also checks the selected parent's commitment: B1 is B2's selected parent.
+    let seq_commit2 = header2.accepted_id_merkle_root;
+    assert!(
+        lane_proof::verify_seq_commit_lane_proof(
+            &coinbase_proof,
+            &coinbase_lane_key,
+            &seq_commit2,
+            Some(&header.accepted_id_merkle_root)
+        )
+        .is_ok()
+    );
+    assert!(lane_proof::verify_seq_commit_lane_proof(&coinbase_proof, &coinbase_lane_key, &seq_commit2, Some(&seq_commit2)).is_err());
+
     wrpc.disconnect().await.unwrap();
     drop(wrpc);
     grpc.disconnect().await.unwrap();
@@ -1154,6 +1165,7 @@ async fn seq_commit_lane_proof_test() {
 
 fn verify_lane_proof_locally(header: &Header, lane_key: Hash, response: &GetSeqCommitLaneProofResponse) {
     use kaspa_hashes::SeqCommitActiveNode;
+    use kaspa_rpc_core::model::lane_proof::verify_seq_commit_lane_proof;
     use kaspa_seq_commit::{
         hashing::smt_leaf_hash,
         types::SmtLeafInput,
@@ -1183,10 +1195,10 @@ fn verify_lane_proof_locally(header: &Header, lane_key: Hash, response: &GetSeqC
     )
     .expect("verify_smt_metadata");
 
-    // The same check through the client helper, bound to the block hash via the returned header.
-    let lane = kaspa_rpc_core::model::lane_proof::verify_seq_commit_lane_proof_at_block(response, &lane_key, &header.hash, None)
-        .expect("verify_seq_commit_lane_proof_at_block");
+    // The same check through the client helper, against the header's commitment.
+    let lane = verify_seq_commit_lane_proof(response, &lane_key, &header.accepted_id_merkle_root, None)
+        .expect("verify_seq_commit_lane_proof");
     assert_eq!(lane, response.lane.as_ref());
     let other = Hash::from_bytes([0xEE; 32]);
-    assert!(kaspa_rpc_core::model::lane_proof::verify_seq_commit_lane_proof_at_block(response, &lane_key, &other, None).is_err());
+    assert!(verify_seq_commit_lane_proof(response, &lane_key, &other, None).is_err());
 }

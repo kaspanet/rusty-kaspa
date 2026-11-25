@@ -1033,8 +1033,8 @@ build_wrpc_wasm_bindgen_interface!(
         /// Retrieves a specific mempool entry by transaction ID.
         /// Returned information: Mempool entry information.
         GetMempoolEntry,
-        /// Retrieves the witness that proves a KIP-21 lane's state against
-        /// the `seq_commit` in a chain block's header.
+        /// Retrieves the proof of a KIP-21 lane's state against the
+        /// `seq_commit` (`acceptedIdMerkleRoot`) of a chain block's header.
         /// Returned information: SMT proof, lane entry (if active) and the
         /// values needed to recompute the `seq_commit`.
         GetSeqCommitLaneProof,
