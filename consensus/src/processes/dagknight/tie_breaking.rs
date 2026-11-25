@@ -83,9 +83,9 @@ impl<
     /// ancestor of a same-side witness among the previous ell+2 reference
     /// positions; the buffer holds exactly those positions, newest first (the
     /// scan head at the front), each with the side it witnessed for.
-    fn chains_to_endpoint(&self, block: Hash, anchor: Hash, recent: &VecDeque<(Hash, Option<Hash>)>) -> bool {
-        recent.iter().any(|&(later, witness_anchor)| {
-            witness_anchor == Some(anchor) && self.reachability_service.is_dag_ancestor_of(block, later)
+    fn chains_to_endpoint(&self, block: Hash, subgroup_nca: Hash, recent: &VecDeque<(Hash, Option<Hash>)>) -> bool {
+        recent.iter().any(|&(later, witness_nca)| {
+            witness_nca == Some(subgroup_nca) && self.reachability_service.is_dag_ancestor_of(block, later)
         })
     }
 
@@ -131,19 +131,19 @@ impl<
         (zone, virtual_cd)
     }
 
-    /// Returns the earliest start of each side's suffix-witness chain along the descending-ordered reference prefix of length `n`, one start per anchor in `anchors` (ascending 0-based positions, or `n` for a side with no witness), in a single pass shared by all sides. A block is a witness when its chain anchor is one of `anchors` and it chains to the endpoint through witnesses of its own side. The scan stops once every side's last witness is over ell+1 positions behind (a causal chain cannot cross a wider gap), so anchors past the stop are never queried.
+    /// Returns the earliest start of each side's suffix-witness chain along the descending-ordered reference prefix of length `n`, one start per subgroup NCA in `subgroup_ncas` (ascending 0-based positions, or `n` for a side with no witness), in a single pass shared by all sides. A block is a witness when its block NCA is one of `subgroup_ncas` and it chains to the endpoint through witnesses of its own side. The scan stops once every side's last witness is over ell+1 positions behind (a causal chain cannot cross a wider gap), so blocks past the stop are never queried.
     fn suffix_witness_starts(
         &self,
         mut descending_f: impl Iterator<Item = Hash>,
         n: usize,
         conflict_genesis: Hash,
-        anchors: &[Hash],
+        subgroup_ncas: &[Hash],
         ell: KType,
     ) -> Vec<usize> {
         let window = witness_window(ell);
         let mut recent: VecDeque<(Hash, Option<Hash>)> = VecDeque::with_capacity(window);
         // Per-side start: n while unwitnessed, n-1-i once position i witnesses
-        let mut starts = vec![n; anchors.len()];
+        let mut starts = vec![n; subgroup_ncas.len()];
         let mut scanned = 0usize;
         let mut i = 0;
         // Keep scanning while some side can resume from position i: its deepest
@@ -153,23 +153,23 @@ impl<
             && starts.iter().any(|&start| start + i < n + window)
         {
             scanned += 1;
-            let chain_anchor = self.reachability_service.try_get_next_chain_ancestor(block, conflict_genesis).unwrap();
+            let block_nca = self.reachability_service.try_get_next_chain_ancestor(block, conflict_genesis).unwrap();
             // Positions inside the initial window witness unconditionally; later
             // ones must chain to the endpoint through same-side witnesses
-            let mut witness_anchor = None;
-            if let Some(side) = anchors.iter().position(|&anchor| chain_anchor == Some(anchor))
-                && (i < window || self.chains_to_endpoint(block, anchors[side], &recent))
+            let mut witness_nca = None;
+            if let Some(side) = subgroup_ncas.iter().position(|&nca| block_nca == Some(nca))
+                && (i < window || self.chains_to_endpoint(block, subgroup_ncas[side], &recent))
             {
-                witness_anchor = chain_anchor;
+                witness_nca = block_nca;
                 starts[side] = n - 1 - i;
             }
             if recent.len() == window {
                 recent.pop_back();
             }
-            recent.push_front((block, witness_anchor));
+            recent.push_front((block, witness_nca));
             i += 1;
         }
-        debug!("dk::tiebreak: scanned {} of {} reference positions across {} sides", scanned, n, anchors.len());
+        debug!("dk::tiebreak: scanned {} of {} reference positions across {} sides", scanned, n, subgroup_ncas.len());
         starts
     }
 }
@@ -187,12 +187,12 @@ impl<
     fn tie_break(&self, input: &TieBreakContext<'_>) -> usize {
         let TieBreakContext { conflict_genesis, all_tips, subgroups, k } = input;
         let m = *k;
-        let g = m.isqrt() as KType;
-        let ell = g.max(m / 2);
-        debug!("dk::tiebreak: m = {} | g(m) = {} | ell = {} | sides = {}", m, g, ell, subgroups.len());
+        let g_m = m.isqrt() as KType;
+        let ell = g_m.max(m / 2);
+        debug!("dk::tiebreak: m = {} | g(m) = {} | ell = {} | sides = {}", m, g_m, ell, subgroups.len());
 
         // Free reference F at width g(m), future-to-past, truncated at the horizon
-        let (zone, virtual_cd) = self.free_coloring(*conflict_genesis, all_tips, g);
+        let (zone, virtual_cd) = self.free_coloring(*conflict_genesis, all_tips, g_m);
         let n = virtual_cd.blue_score as usize;
         let horizon = (witness_horizon(ell) as usize).min(n);
         let truncated = n > horizon;
@@ -203,12 +203,12 @@ impl<
         // continue past the horizon: classify the side live (-1), outranking every
         // measured start
         let window = witness_window(ell);
-        let anchors: Vec<Hash> = subgroups.iter().map(|group| group.nca).collect();
+        let subgroup_ncas: Vec<Hash> = subgroups.iter().map(|group| group.nca).collect();
         let starts = self.suffix_witness_starts(
             ReferenceIterator::new(&virtual_cd, *conflict_genesis, &zone, &*self.headers_store).take(horizon),
             horizon,
             *conflict_genesis,
-            &anchors,
+            &subgroup_ncas,
             ell,
         );
         let winner = subgroups
