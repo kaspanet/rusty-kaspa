@@ -1,6 +1,5 @@
 use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, VecDeque},
+    collections::VecDeque,
     ops::Deref,
     sync::{Arc, OnceLock},
 };
@@ -28,7 +27,7 @@ use crate::{
         },
     },
     processes::{
-        dagknight::umc_voting::ColoringReader,
+        dagknight::{topology_iterator::TopologyIterator, umc_voting::ColoringReader},
         difficulty::calc_work,
         ghostdag::{
             mergeset::unordered_mergeset_without_selected_parent,
@@ -471,70 +470,47 @@ impl<
 
         let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips);
 
-        let mut topological_heap: BinaryHeap<_> = Default::default();
+        let iter =
+            TopologyIterator::new(&last_known_tips, tips, &*self.headers_store, &self.relations_store, &self.reachability_service)
+                .skip(|&c: &Hash| {
+                    if self.free_search {
+                        !self.reachability_service.try_is_dag_ancestor_of(self.root, c).unwrap_or(false)
+                    } else {
+                        !self.reachability_service.try_is_chain_ancestor_of(self.root, c).unwrap_or(false)
+                    }
+                });
 
-        last_known_tips.iter().for_each(|current_root| {
-            topological_heap.push(Reverse(SortableBlock {
-                hash: *current_root,
-                blue_work: self.headers_store.get_header(*current_root).unwrap().blue_work,
-            }));
-        });
-
-        let mut visited = BlockHashSet::new();
-
-        while let Some(current) = topological_heap.pop() {
-            let current_hash = current.0.hash;
-            if !visited.insert(current_hash) {
+        for current_hash in iter {
+            if self.has(current_hash) {
                 continue;
             }
 
-            if !self.reachability_service.is_dag_ancestor_of_any(current_hash, &mut tips.iter().copied()) {
-                continue;
-            }
+            let parents = &self.relations_store.get_parents(current_hash).unwrap();
 
-            if !self.has(current_hash) {
-                let parents = &self.relations_store.get_parents(current_hash).unwrap();
+            // For free_search, select from all parents; for committed search, only from agreeing parents
+            let selected_parent = if self.free_search {
+                self.find_selected_parent(parents.iter().copied())
+            } else {
+                // The block's own next chain ancestor above the root bounds its
+                // agreeing-parent set (per-block NCA).
+                let next_chain_ancestor_of_current = self.reachability_service.get_next_chain_ancestor(current_hash, self.root);
+                let agreeing_parents = parents
+                    .iter()
+                    .copied()
+                    .filter(|&p| {
+                        next_chain_ancestor_of_current == current_hash
+                            || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
+                    })
+                    .collect::<Vec<_>>();
 
-                // For free_search, select from all parents; for committed search, only from agreeing parents
-                let selected_parent = if self.free_search {
-                    self.find_selected_parent(parents.iter().copied())
-                } else {
-                    // The block's own next chain ancestor above the root bounds its
-                    // agreeing-parent set (per-block NCA).
-                    let next_chain_ancestor_of_current = self.reachability_service.get_next_chain_ancestor(current_hash, self.root);
-                    let agreeing_parents = parents
-                        .iter()
-                        .copied()
-                        .filter(|&p| {
-                            next_chain_ancestor_of_current == current_hash
-                                || self.reachability_service.is_chain_ancestor_of(next_chain_ancestor_of_current, p)
-                        })
-                        .collect::<Vec<_>>();
+                self.sanity_check(current_hash, parents, &agreeing_parents, tips, &last_known_tips);
 
-                    self.sanity_check(current_hash, parents, &agreeing_parents, tips, &last_known_tips);
+                self.find_selected_parent(agreeing_parents.iter().copied())
+            };
 
-                    self.find_selected_parent(agreeing_parents.iter().copied())
-                };
+            let current_gd = self.k_colouring(parents, self.k, Some(selected_parent));
 
-                let current_gd = self.k_colouring(parents, self.k, Some(selected_parent));
-
-                self.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
-            }
-
-            for child in self.relations_store.get_children(current_hash).unwrap().read().iter().copied() {
-                // For free_search, use DAG ancestry; for committed search, use chain ancestry
-                // from the conflict genesis (the whole zone, both conflict sides).
-                let is_in_zone = if self.free_search {
-                    self.reachability_service.try_is_dag_ancestor_of(self.root, child).unwrap_or(false)
-                } else {
-                    self.reachability_service.try_is_chain_ancestor_of(self.root, child).unwrap_or(false)
-                };
-                if !is_in_zone {
-                    continue;
-                }
-                topological_heap
-                    .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
-            }
+            self.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
         }
 
         // Opportunistically cleanup unused locks after zone fill
@@ -557,9 +533,10 @@ impl<
 
         // all parents here must already exist assuming topological sorting is honored
         // so finding one that doesn't means an error in processing and must be diagnosed
-        if let Some(&parent) = agreeing_parents.iter().find(|&&parent| {
-            !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip))
-        }) {
+        if let Some(&parent) = agreeing_parents
+            .iter()
+            .find(|&&parent| !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
+        {
             last_known_tips.iter().filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip)).for_each(
                 |&lk_tip| {
                     println!(
