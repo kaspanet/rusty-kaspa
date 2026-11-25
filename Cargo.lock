@@ -3945,6 +3945,8 @@ dependencies = [
  "kaspa-mining-errors",
  "kaspa-notify",
  "kaspa-rpc-macros",
+ "kaspa-seq-commit",
+ "kaspa-smt",
  "kaspa-txscript",
  "kaspa-utils",
  "log",

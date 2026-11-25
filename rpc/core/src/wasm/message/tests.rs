@@ -221,3 +221,44 @@ fn get_utxos_by_covenant_ids_request_rejects_invalid_ids_scripts_and_partial_cur
     args.set("cursor", &cursor).unwrap();
     assert!(GetUtxosByCovenantIdsRequest::try_from(IGetUtxosByCovenantIdsRequest::from(JsValue::from(args))).is_err());
 }
+
+#[wasm_bindgen_test]
+fn get_seq_commit_lane_proof_request_reads_camel_case_hashes() {
+    let block_hash = RpcHash::from_bytes([1; 32]);
+    let lane_key = RpcHash::from_bytes([2; 32]);
+    let args = Object::new();
+    args.set("blockHash", &JsValue::from_str(&block_hash.to_string())).unwrap();
+    args.set("laneKey", &JsValue::from_str(&lane_key.to_string())).unwrap();
+    let request = GetSeqCommitLaneProofRequest::try_from(IGetSeqCommitLaneProofRequest::from(JsValue::from(args))).unwrap();
+    assert_eq!(request.block_hash, block_hash);
+    assert_eq!(request.lane_key, lane_key);
+}
+
+#[wasm_bindgen_test]
+fn get_seq_commit_lane_proof_response_is_a_plain_object() {
+    let tip = RpcHash::from_bytes([3; 32]);
+    for lane in [Some(RpcLaneEntry { tip, blue_score: u64::MAX }), None] {
+        let has_lane = lane.is_some();
+        let response = IGetSeqCommitLaneProofResponse::try_from(GetSeqCommitLaneProofResponse {
+            smt_proof: vec![0xde, 0xad, 0x01],
+            lane,
+            payload_and_ctx_digest: RpcHash::from_bytes([4; 32]),
+            parent_seq_commit: RpcHash::from_bytes([5; 32]),
+            inactivity_shortcut: RpcHash::from_bytes([6; 32]),
+        })
+        .unwrap();
+        let value = JsValue::from(response);
+        let smt_proof = Reflect::get(&value, &"smtProof".into()).unwrap();
+        assert!(js_sys::Array::is_array(&smt_proof));
+        assert_eq!(js_sys::Array::from(&smt_proof).to_vec(), vec![JsValue::from(0xde), JsValue::from(0xad), JsValue::from(0x01)]);
+        for (field, byte) in [("payloadAndCtxDigest", 4), ("parentSeqCommit", 5), ("inactivityShortcut", 6)] {
+            assert_eq!(Reflect::get(&value, &field.into()).unwrap().as_string(), Some(RpcHash::from_bytes([byte; 32]).to_string()));
+        }
+        let lane = Reflect::get(&value, &"lane".into()).unwrap();
+        assert_eq!(lane.is_undefined(), !has_lane);
+        if has_lane {
+            assert_eq!(Reflect::get(&lane, &"tip".into()).unwrap().as_string(), Some(tip.to_string()));
+            assert_eq!(Reflect::get(&lane, &"blueScore".into()).unwrap(), JsValue::from(js_sys::BigInt::from(u64::MAX)));
+        }
+    }
+}

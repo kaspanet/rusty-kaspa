@@ -9,6 +9,7 @@ pub mod feerate_estimate;
 pub mod hash;
 pub mod header;
 pub mod hex_cnv;
+pub mod lane_proof;
 pub mod mempool;
 pub mod message;
 pub mod network;

@@ -2074,6 +2074,65 @@ try_from!(args: GetTransactionsByAcceptingBlockResponse, IGetTransactionsByAccep
     Ok(to_value(&args)?.into())
 });
 
+// ---
+
+declare! {
+    IGetSeqCommitLaneProofRequest,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetSeqCommitLaneProofRequest {
+        /**
+         * A selected-chain block.
+         */
+        blockHash: HexString;
+        /**
+         * See `seqCommitLaneKey()`.
+         */
+        laneKey: HexString;
+    }
+    "#,
+}
+
+try_from!(args: IGetSeqCommitLaneProofRequest, GetSeqCommitLaneProofRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetSeqCommitLaneProofResponse,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetSeqCommitLaneProofResponse {
+        smtProof: number[];
+        /**
+         * Absent when `smtProof` proves the lane has no entry at this block.
+         */
+        lane?: IRpcLaneEntry;
+        payloadAndCtxDigest: HexString;
+        parentSeqCommit: HexString;
+        inactivityShortcut: HexString;
+    }
+
+    /**
+     * @category Node RPC
+     */
+    export interface IRpcLaneEntry {
+        tip: HexString;
+        /**
+         * Blue score of the block that last advanced `tip` (not necessarily the queried block).
+         */
+        blueScore: bigint;
+    }
+    "#,
+}
+
+try_from!(args: GetSeqCommitLaneProofResponse, IGetSeqCommitLaneProofResponse, {
+    Ok(to_value(&args)?.into())
+});
+
 declare! {
     IGetUtxoReturnAddressRequest,
     r#"
