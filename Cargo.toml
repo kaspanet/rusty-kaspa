@@ -207,7 +207,7 @@ getrandom = { version = "0.2.10", features = ["js"] }
 # under a cfg(wasm32) target section with the `wasm_js` backend feature (the
 # backend cfg is set in .cargo/config.toml).
 getrandom_03 = { package = "getrandom", version = "0.3" }
-h2 = "0.4.6"
+h2 = "0.4.21"
 hashbrown = { version = "0.15", default-features = false, features = ["default-hasher", "inline-more", "serde"] }
 # h2 = "0.3.21"
 heapless = "0.8.0"
@@ -324,7 +324,7 @@ risc0-zkvm-platform = "=2.2.3"
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
 workflow-perf-monitor = { package = "kaspa-workflow-perf-monitor", version = "0.0.3" }
 nw-sys = "0.1.6"
-rustls = { version = "0.23.18", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring"] }
 
 # workflow dependencies
 workflow-core = { version = "0.19.0" }
