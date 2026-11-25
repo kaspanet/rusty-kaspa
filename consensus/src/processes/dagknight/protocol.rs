@@ -369,7 +369,9 @@ impl<
                 selected_representative: SortableBlock::new(nca, 0.into()),
             })
             .collect();
-        if evaluate_at(&mut wide_groups, result.rank.saturating_add(1)) {
+        // All subgroups made it into the tiebreak when no side is left wide: skip the
+        // m+1 pass (and its per-side colouring) entirely in that case
+        if !wide_groups.is_empty() && evaluate_at(&mut wide_groups, result.rank.saturating_add(1)) {
             best_groups.extend(wide_groups);
         }
         (result.rank, best_groups)
