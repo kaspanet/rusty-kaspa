@@ -27,7 +27,7 @@ pub struct GroupMetadata {
     nca: Hash,
     subgroup: Arc<Vec<Hash>>,
     k: KType,
-    selected_parent: SortableBlock,
+    selected_representative: SortableBlock,
 }
 
 /// UMC cascade voting performance counters.

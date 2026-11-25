@@ -308,12 +308,12 @@ impl<
                 nca,
                 subgroup: subgroup.clone(),
                 k: KType::MAX,
-                selected_parent: SortableBlock::new(nca, 0.into()),
+                selected_representative: SortableBlock::new(nca, 0.into()),
             })
             .collect();
 
         // Evaluates every side in `groups` at width k, retaining only qualifying sides
-        // and updating their rank/selected parent in place.
+        // and updating their rank/selected representative in place.
         let evaluate_at = |groups: &mut Vec<GroupMetadata>, k: KType| -> bool {
             let reachability_service = self.reachability_service.clone();
             let relations_store = self.relations_store.read();
@@ -335,13 +335,13 @@ impl<
 
             let mut any_qualified = false;
             for g in groups.iter_mut() {
-                let Some(selected_parent) =
+                let Some(selected_representative) =
                     self.select_parent_from_k_colouring(conflict_genesis, g.subgroup.as_ref(), all_tips, k, &conflict_zone_manager)
                 else {
                     continue;
                 };
                 g.k = k;
-                g.selected_parent = selected_parent;
+                g.selected_representative = selected_representative;
                 any_qualified = true;
             }
             // If any group qualified at k, keep only those winners; otherwise keep groups unchanged.
@@ -366,7 +366,7 @@ impl<
                 nca,
                 subgroup: subgroup.clone(),
                 k: KType::MAX,
-                selected_parent: SortableBlock::new(nca, 0.into()),
+                selected_representative: SortableBlock::new(nca, 0.into()),
             })
             .collect();
         if evaluate_at(&mut wide_groups, result.rank.saturating_add(1)) {

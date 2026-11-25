@@ -183,7 +183,7 @@ impl<
 {
     /// Tiebreaking through a common reference: prefers the side whose committed path can follow the free reference F furthest back.
     ///
-    /// Sides are scored by the earliest start of their suffix-witness chain along F (see [`suffix_witness_starts`]), all scanned in one pass over F capped at the conjectured horizon. A side whose chain is still live at the cap outranks every measured start; equal scores fall back to the smallest selected-parent hash.
+    /// Sides are scored by the earliest start of their suffix-witness chain along F (see [`suffix_witness_starts`]), all scanned in one pass over F capped at the conjectured horizon. A side whose chain is still live at the cap outranks every measured start; equal scores fall back to the smallest selected-representative hash.
     fn tie_break(&self, input: &TieBreakContext<'_>) -> usize {
         let TieBreakContext { conflict_genesis, all_tips, subgroups, k } = input;
         let m = *k;
@@ -221,7 +221,7 @@ impl<
             })
             .enumerate()
             .min_by(|(_, (group, score)), (_, (other, other_score))| {
-                score.cmp(other_score).then_with(|| group.selected_parent.hash.cmp(&other.selected_parent.hash))
+                score.cmp(other_score).then_with(|| group.selected_representative.hash.cmp(&other.selected_representative.hash))
             })
             .expect("subgroups should be non-empty")
             .0;
@@ -382,7 +382,7 @@ mod tests {
                 nca: dag.hash_z,
                 subgroup: sg_x,
                 k: mutual_k,
-                selected_parent: SortableBlock {
+                selected_representative: SortableBlock {
                     hash: dag.hash_x,
                     blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_x).unwrap().blue_work,
                 },
@@ -391,7 +391,7 @@ mod tests {
                 nca: dag.hash_b,
                 subgroup: sg_d,
                 k: mutual_k,
-                selected_parent: SortableBlock {
+                selected_representative: SortableBlock {
                     hash: dag.hash_d,
                     blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_d).unwrap().blue_work,
                 },
@@ -408,7 +408,7 @@ mod tests {
                 nca: dag.hash_b,
                 subgroup: sg_d2,
                 k: mutual_k,
-                selected_parent: SortableBlock {
+                selected_representative: SortableBlock {
                     hash: dag.hash_d,
                     blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_d).unwrap().blue_work,
                 },
@@ -417,7 +417,7 @@ mod tests {
                 nca: dag.hash_z,
                 subgroup: sg_x2,
                 k: mutual_k,
-                selected_parent: SortableBlock {
+                selected_representative: SortableBlock {
                     hash: dag.hash_x,
                     blue_work: dag.tie_breaker.headers_store.get_header(dag.hash_x).unwrap().blue_work,
                 },
@@ -491,7 +491,12 @@ mod tests {
     }
 
     fn group_metadata(anchor: Hash, tip: Hash, k: KType, blue_work: u64) -> GroupMetadata {
-        GroupMetadata { nca: anchor, subgroup: Arc::new(vec![tip]), k, selected_parent: SortableBlock::new(tip, blue_work.into()) }
+        GroupMetadata {
+            nca: anchor,
+            subgroup: Arc::new(vec![tip]),
+            k,
+            selected_representative: SortableBlock::new(tip, blue_work.into()),
+        }
     }
 
     fn short(hash: &Hash) -> u64 {
@@ -912,7 +917,7 @@ mod tests {
         assert_eq!(tie_breaker.tie_break(&input), 1, "index flips with input order, same winner");
     }
 
-    /// With both sides witness-less the smallest selected-parent hash decides.
+    /// With both sides witness-less the smallest selected-representative hash decides.
     ///
     /// ```text
     ///              genesis (0)
