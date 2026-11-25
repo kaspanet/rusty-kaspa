@@ -6,7 +6,7 @@ use kaspa_hashes::Hash;
 
 /// Shared utility function to keep the "within threshold" definition consistent across callers.
 pub fn seq_commit_within_threshold(high_blue_score: u64, low_blue_score: u64, threshold: u64) -> bool {
-    low_blue_score + threshold > high_blue_score
+    low_blue_score.saturating_add(threshold) > high_blue_score
 }
 
 #[derive(Copy, Clone)]

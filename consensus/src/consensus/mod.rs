@@ -1166,6 +1166,11 @@ impl ConsensusApi for Consensus {
         use kaspa_hashes::ZERO_HASH;
         use kaspa_smt_store::streaming_import::streaming_import;
 
+        let consensus_pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
+        if new_pruning_point != consensus_pruning_point {
+            return Err(PruningImportError::UnexpectedPruningPoint { expected: consensus_pruning_point, actual: new_pruning_point });
+        }
+
         let kaspa_consensus_core::api::SmtExportMetadata { lanes_root, payload_and_ctx_digest, active_lanes_count, .. } = metadata;
         let expected_lane_count = active_lanes_count;
 

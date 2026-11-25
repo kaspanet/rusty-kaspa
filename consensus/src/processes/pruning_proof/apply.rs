@@ -9,7 +9,10 @@ use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, HashMapCustomHasher,
     blockhash::{BlockHashes, ORIGIN},
-    errors::pruning::{PruningImportError, PruningImportResult},
+    errors::{
+        block::RuleError,
+        pruning::{PruningImportError, PruningImportResult},
+    },
     header::Header,
     pruning::PruningPointProof,
     trusted::TrustedBlock,
@@ -41,7 +44,7 @@ use crate::{
     },
 };
 
-use super::PruningProofManager;
+use super::{IMPORT_SCORE_LIMIT, PruningProofManager, validate_header_scores};
 
 impl PruningProofManager {
     pub fn apply_proof(
@@ -51,6 +54,27 @@ impl PruningProofManager {
         header_only_chain_segment: &[Arc<Header>],
     ) -> PruningImportResult<()> {
         // Following validation of a pruning proof, various consensus storages must be updated
+
+        for trusted_block in trusted_set {
+            validate_header_scores(&trusted_block.block.header)?;
+            if trusted_block.ghostdag.blue_score >= IMPORT_SCORE_LIMIT {
+                return Err(PruningImportError::BlueScoreTooLarge(
+                    trusted_block.block.hash(),
+                    trusted_block.ghostdag.blue_score,
+                    IMPORT_SCORE_LIMIT,
+                ));
+            }
+        }
+        for header in header_only_chain_segment {
+            validate_header_scores(header)?;
+        }
+
+        // trusted headers and the chain segment are supplied separately from the validated proof, so they need origin validation here
+        for header in trusted_set.iter().map(|tb| &tb.block.header).chain(header_only_chain_segment.iter()) {
+            if header.parents_by_level.raw().iter().any(|(_, parents)| parents.contains(&ORIGIN)) {
+                return Err(RuleError::OriginParent.into());
+            }
+        }
 
         let pruning_point_header = proof[0].last().unwrap().clone();
         let pruning_point = pruning_point_header.hash;
@@ -244,6 +268,11 @@ impl PruningProofManager {
             // Find the maximal parent antichain from the possibly redundant set of existing parents
             let mut reachability_parents: Vec<SortableBlock> = Vec::new();
             for parent in parents_in_dag.into_sorted_iter() {
+                // Reject a if entry parents have greater blue work than this entry
+                if parent.blue_work >= dag_entry.header.blue_work {
+                    return Err(PruningImportError::PruningProofNonTopologicalParent(hash, parent.hash));
+                }
+
                 if reachability_read.is_dag_ancestor_of_any(parent.hash, &mut reachability_parents.iter().map(|parent| parent.hash)) {
                     continue;
                 }

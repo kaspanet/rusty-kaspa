@@ -17,27 +17,31 @@ use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
 use kaspa_consensus::model::stores::virtual_state::SeqCommit;
-use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, TESTNET_PARAMS};
+use kaspa_consensus::params::{DEVNET_PARAMS, ForkActivation, MAINNET_PARAMS, OverrideParams, SIMNET_PARAMS, TESTNET_PARAMS};
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
+use kaspa_consensus::processes::difficulty::calc_work;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
 use kaspa_consensus::processes::window::{WindowManager, WindowType};
 use kaspa_consensus_core::api::args::TransactionValidationArgs;
-use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi, SeqCommitLaneEntry};
+use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi, SeqCommitLaneEntry, SmtExportMetadata};
 use kaspa_consensus_core::block::{Block, MutableBlock};
-use kaspa_consensus_core::blockhash::{self, new_unique};
+use kaspa_consensus_core::blockhash::{self, ORIGIN, new_unique};
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, TRANSIENT_BYTE_TO_MASS_FACTOR};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
+use kaspa_consensus_core::errors::pruning::PruningImportError;
 use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::hashing;
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::mass::BlockMassLimits;
 use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::mining_rules::MiningRules;
+use kaspa_consensus_core::pruning::PruningProofMetadata;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::{SUBNETWORK_ID_NATIVE, SubnetworkId};
+use kaspa_consensus_core::trusted::{ExternalGhostdagData, TrustedBlock};
 use kaspa_consensus_core::tx::{
     MutableTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
 };
@@ -47,7 +51,7 @@ use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::tick::TickService;
 use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
-use kaspa_hashes::{Hash, SeqCommitActiveNode};
+use kaspa_hashes::{Hash, SeqCommitActiveNode, ZERO_HASH};
 use kaspa_rpc_core::RpcHeader;
 use kaspa_seq_commit::hashing::{activity_digest_lane, activity_leaf, lane_key, lane_tip_next, mergeset_context_hash, smt_leaf_hash};
 use kaspa_seq_commit::types::{LaneTipInput, MergesetContext, SmtLeafInput};
@@ -2781,4 +2785,188 @@ async fn indirect_parents_test() {
     }
 
     consensus.shutdown(wait_handles);
+}
+
+/// A PoW-valid pruning-point header with a forged blue score must be rejected
+/// without panicking during proof validation or application.
+#[test]
+fn pruning_proof_with_overflowing_blue_score_is_rejected() {
+    let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::new(&config);
+    let genesis = consensus.headers_store().get_header(config.params.genesis.hash).unwrap();
+
+    let mut pruning_point = (*genesis).clone();
+    pruning_point.parents_by_level = vec![vec![genesis.hash]].try_into().unwrap();
+    pruning_point.bits = 0x207f_ffff;
+    pruning_point.blue_work = calc_work(pruning_point.bits);
+    pruning_point.blue_score = u64::MAX;
+
+    pruning_point.finalize();
+    let pruning_point = Arc::new(pruning_point);
+
+    let mut proof = vec![vec![genesis.clone()]; config.params.max_block_level as usize + 1];
+    proof[0].push(pruning_point.clone());
+
+    assert!(matches!(
+        consensus.validate_pruning_proof(&proof, &PruningProofMetadata::new(pruning_point.blue_work)),
+        Err(PruningImportError::BlueScoreTooLarge(hash, score, limit))
+            if hash == pruning_point.hash && score == u64::MAX && limit == u64::MAX / 2
+    ));
+}
+
+#[test]
+fn pruning_proof_header_at_daa_score_limit_is_rejected() {
+    let config = Config::new(MAINNET_PARAMS);
+    let consensus = TestConsensus::new(&config);
+    let genesis = consensus.headers_store().get_header(config.params.genesis.hash).unwrap();
+    let mut header = (*genesis).clone();
+    header.daa_score = u64::MAX / 2;
+    header.finalize();
+    let header = Arc::new(header);
+    let proof = vec![vec![header.clone()]; config.params.max_block_level as usize + 1];
+
+    assert!(matches!(
+        consensus.validate_pruning_proof(&proof, &PruningProofMetadata::new(0.into())),
+        Err(PruningImportError::DaaScoreTooLarge(hash, score, limit))
+            if hash == header.hash && score == limit && limit == u64::MAX / 2
+    ));
+}
+
+fn trusted_block(header: Arc<Header>, blue_score: u64) -> TrustedBlock {
+    TrustedBlock::new(
+        Block::from_header_arc(header),
+        ExternalGhostdagData {
+            blue_score,
+            blue_work: 0.into(),
+            selected_parent: ORIGIN,
+            mergeset_blues: vec![],
+            mergeset_reds: vec![],
+            blues_anticone_sizes: Default::default(),
+        },
+    )
+}
+
+#[test]
+fn apply_pruning_proof_rejects_large_scores_in_trusted_set() {
+    let config = Config::new(MAINNET_PARAMS);
+    let consensus = TestConsensus::new(&config.to_builder().skip_adding_genesis().build());
+    let genesis = Arc::new(Header::from(&config.params.genesis));
+    let proof = vec![vec![genesis.clone()]; config.params.max_block_level as usize + 1];
+    let limit = u64::MAX / 2;
+
+    let mut large_blue = (*genesis).clone();
+    large_blue.blue_score = limit;
+    large_blue.finalize();
+    let large_blue = Arc::new(large_blue);
+    assert!(matches!(
+        consensus.apply_pruning_proof(proof.clone(), &[trusted_block(large_blue.clone(), 0)], &[]),
+        Err(PruningImportError::BlueScoreTooLarge(hash, score, _)) if hash == large_blue.hash && score == limit
+    ));
+
+    let mut large_daa = (*genesis).clone();
+    large_daa.daa_score = limit;
+    large_daa.finalize();
+    let large_daa = Arc::new(large_daa);
+    assert!(matches!(
+        consensus.apply_pruning_proof(proof.clone(), &[trusted_block(large_daa.clone(), 0)], &[]),
+        Err(PruningImportError::DaaScoreTooLarge(hash, score, _)) if hash == large_daa.hash && score == limit
+    ));
+
+    assert!(matches!(
+        consensus.apply_pruning_proof(proof, &[trusted_block(genesis.clone(), limit)], &[]),
+        Err(PruningImportError::BlueScoreTooLarge(hash, score, _)) if hash == genesis.hash && score == limit
+    ));
+}
+
+#[test]
+fn apply_pruning_proof_rejects_large_scores_in_chain_segment() {
+    let config = Config::new(MAINNET_PARAMS);
+    let consensus = TestConsensus::new(&config.to_builder().skip_adding_genesis().build());
+    let genesis = Arc::new(Header::from(&config.params.genesis));
+    let proof = vec![vec![genesis.clone()]; config.params.max_block_level as usize + 1];
+    let limit = u64::MAX / 2;
+
+    let mut large_blue = (*genesis).clone();
+    large_blue.blue_score = limit;
+    large_blue.finalize();
+    let large_blue = Arc::new(large_blue);
+    assert!(matches!(
+        consensus.apply_pruning_proof(proof.clone(), &[], std::slice::from_ref(&large_blue)),
+        Err(PruningImportError::BlueScoreTooLarge(hash, score, _)) if hash == large_blue.hash && score == limit
+    ));
+
+    let mut large_daa = (*genesis).clone();
+    large_daa.daa_score = limit;
+    large_daa.finalize();
+    let large_daa = Arc::new(large_daa);
+    assert!(matches!(
+        consensus.apply_pruning_proof(proof, &[], std::slice::from_ref(&large_daa)),
+        Err(PruningImportError::DaaScoreTooLarge(hash, score, _)) if hash == large_daa.hash && score == limit
+    ));
+}
+
+#[tokio::test]
+async fn peer_chosen_non_pruning_point_cannot_become_virtual_utxo_anchor() {
+    init_allocator_with_default_settings();
+    let config = ConfigBuilder::new(SIMNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::new(&config);
+    let workers = consensus.init();
+    let actual_pruning_point = consensus.pruning_point();
+
+    // The attacker chooses both a UTXO set and the commitment in an unrelated block X.
+    let fabricated_outpoint = TransactionOutpoint::new(42u64.into(), 0);
+    let fabricated_entry = UtxoEntry::new(2_870_000_000_000_000_000, ScriptPublicKey::from_vec(0, vec![0x51]), 0, false, None);
+    let invented_utxos = [(fabricated_outpoint, fabricated_entry.clone())];
+    let mut committed_multiset = MuHash::new();
+    committed_multiset.add_utxo(&fabricated_outpoint, &fabricated_entry);
+
+    let mut x = consensus.build_block_with_parents_and_transactions(blockhash::NONE, vec![actual_pruning_point], vec![]);
+    x.header.utxo_commitment = committed_multiset.finalize();
+    x.header.finalize();
+    let x = x.to_immutable();
+    let x_hash = x.hash();
+    assert_ne!(x_hash, actual_pruning_point);
+
+    // Store X's header, then supply its body through the trusted-block entry point.
+    let header_status =
+        consensus.validate_and_insert_block(Block::from_header_arc(x.header.clone())).virtual_state_task.await.unwrap();
+    assert_eq!(header_status, BlockStatus::StatusHeaderOnly);
+    let ghostdag = consensus.get_ghostdag_data(x_hash).unwrap();
+    let body_status = consensus.validate_and_insert_trusted_block(TrustedBlock::new(x, ghostdag)).virtual_state_task.await.unwrap();
+    assert_eq!(body_status, BlockStatus::StatusUTXOPendingVerification);
+    assert_eq!(consensus.pruning_point(), actual_pruning_point);
+
+    // The real pruning point still rejects a set with the wrong commitment.
+    assert!(matches!(
+        consensus.import_pruning_point_utxo_set(actual_pruning_point, committed_multiset),
+        Err(PruningImportError::ImportedMultisetHashMismatch(..))
+    ));
+
+    // A matching commitment in X is insufficient: X is not the local pruning point.
+    let mut imported_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&invented_utxos, &mut imported_multiset);
+    assert!(matches!(
+        consensus.import_pruning_point_utxo_set(x_hash, imported_multiset),
+        Err(PruningImportError::UnexpectedPruningPoint { expected, actual })
+            if expected == actual_pruning_point && actual == x_hash
+    ));
+    let mut no_lanes = std::iter::empty();
+    let metadata = SmtExportMetadata {
+        lanes_root: ZERO_HASH,
+        payload_and_ctx_digest: ZERO_HASH,
+        parent_seq_commit: ZERO_HASH,
+        active_lanes_count: 0,
+    };
+    assert!(matches!(
+        consensus.import_pruning_point_smt(x_hash, metadata, actual_pruning_point, &mut no_lanes),
+        Err(PruningImportError::UnexpectedPruningPoint { expected, actual })
+            if expected == actual_pruning_point && actual == x_hash
+    ));
+    assert_eq!(consensus.pruning_point(), actual_pruning_point);
+    assert_eq!(consensus.block_status(x_hash), BlockStatus::StatusUTXOPendingVerification);
+    assert_eq!(consensus.get_virtual_parents().into_iter().collect::<Vec<_>>(), vec![actual_pruning_point]);
+    let virtual_utxos = consensus.get_virtual_utxos(None, usize::MAX, false);
+    assert!(!virtual_utxos.iter().any(|(outpoint, _)| *outpoint == fabricated_outpoint));
+
+    consensus.shutdown(workers);
 }

@@ -242,47 +242,23 @@ impl<'de> Deserialize<'de> for ScriptPublicKey {
                     Script,
                 }
 
-                #[derive(Debug, Clone, Deserialize)]
-                #[serde(untagged)]
-                pub enum Value<'a> {
-                    U16(u16),
-                    #[serde(borrow)]
-                    String(Cow<'a, str>),
-                }
-                impl From<Value<'_>> for u16 {
-                    fn from(value: Value<'_>) -> Self {
-                        let Value::U16(v) = value else { panic!("unexpected conversion: {value:?}") };
-                        v
-                    }
-                }
-
-                impl TryFrom<Value<'_>> for Vec<u8> {
-                    type Error = faster_hex::Error;
-
-                    fn try_from(value: Value) -> Result<Self, Self::Error> {
-                        match value {
-                            Value::U16(_) => {
-                                panic!("unexpected conversion: {value:?}")
-                            }
-                            Value::String(script) => {
-                                let mut script_bytes = vec![0u8; script.len() / 2];
-                                faster_hex::hex_decode(script.as_bytes(), script_bytes.as_mut_slice())?;
-
-                                Ok(script_bytes)
-                            }
-                        }
-                    }
-                }
+                #[derive(Deserialize)]
+                struct BorrowedScript<'a>(#[serde(borrow)] Cow<'a, str>);
 
                 let mut version: Option<u16> = None;
                 let mut script: Option<Vec<u8>> = None;
 
-                while let Some((key, value)) = access.next_entry::<Field, Value>()? {
+                while let Some(key) = access.next_key::<Field>()? {
                     match key {
                         Field::Version => {
-                            version = Some(value.into());
+                            version = Some(access.next_value()?);
                         }
-                        Field::Script => script = Some(value.try_into().map_err(Error::custom)?),
+                        Field::Script => {
+                            let BorrowedScript(value) = access.next_value()?;
+                            let mut script_bytes = vec![0u8; value.len() / 2];
+                            faster_hex::hex_decode(value.as_bytes(), script_bytes.as_mut_slice()).map_err(Error::custom)?;
+                            script = Some(script_bytes);
+                        }
                     }
                     if version.is_some() && script.is_some() {
                         break;

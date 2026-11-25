@@ -19,8 +19,17 @@ pub enum PruningImportError {
     #[error("the proof header {0} has no parents and isn't genesis")]
     NonGenesisParentlessHeader(Hash),
 
+    #[error("block {0} has blue score {1} at or above the import limit {2}")]
+    BlueScoreTooLarge(Hash, u64, u64),
+
+    #[error("block {0} has DAA score {1} at or above the import limit {2}")]
+    DaaScoreTooLarge(Hash, u64, u64),
+
     #[error("the proof header {0} at level {1} has blue work inconsistent with its parents")]
     PruningProofInconsistentBlueWork(Hash, BlockLevel),
+
+    #[error("the proof header {0} has parent {1} with equal or greater blue work")]
+    PruningProofNonTopologicalParent(Hash, Hash),
 
     #[error("proof level {0} is missing the block at depth m in level {1}")]
     PruningProofMissingBlockAtDepthMFromNextLevel(BlockLevel, BlockLevel),
@@ -63,6 +72,9 @@ pub enum PruningImportError {
 
     #[error("the imported multiset hash was expected to be {0} and was actually {1}")]
     ImportedMultisetHashMismatch(Hash, Hash),
+
+    #[error("expected pruning point {expected}, got {actual}")]
+    UnexpectedPruningPoint { expected: Hash, actual: Hash },
 
     #[error("pruning import data lead to validation rule error")]
     PruningImportRuleError(#[from] RuleError),

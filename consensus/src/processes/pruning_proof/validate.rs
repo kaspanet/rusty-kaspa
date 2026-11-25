@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
-use crate::errors::{ProofWeakness, PruningImportError, PruningImportResult};
+use crate::errors::{ProofWeakness, PruningImportError, PruningImportResult, RuleError};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     BlockLevel, BlueWorkType,
@@ -39,7 +39,7 @@ use crate::{
     },
 };
 
-use super::PruningProofManager;
+use super::{PruningProofManager, validate_header_scores};
 
 struct ProofContext {
     _headers_store: Arc<DbHeadersStore>,
@@ -107,6 +107,13 @@ impl ProofContext {
 
         if proof[0].is_empty() {
             return Err(PruningImportError::PruningProofNotEnoughHeaders);
+        }
+
+        // ORIGIN is a virtual hash representing the root of the pruned DAG, it cannot physically appear as a parent in a block header.
+        for header in proof.iter().flatten() {
+            if header.parents_by_level.raw().iter().any(|(_, parents)| parents.contains(&ORIGIN)) {
+                return Err(RuleError::OriginParent.into());
+            }
         }
 
         let ghostdag_k = ppm.ghostdag_k;
@@ -327,6 +334,10 @@ impl PruningProofManager {
         proof: &PruningPointProof,
         proof_metadata: &PruningProofMetadata,
     ) -> PruningImportResult<()> {
+        for header in proof.iter().flatten() {
+            validate_header_scores(header)?;
+        }
+
         // Initialize the stores for the incoming pruning proof (the challenger)
         let challenger =
             ProofContext::from_proof(self, proof, true)?.continue_value().ok_or(PruningImportError::PruningValidationInterrupted)?;
