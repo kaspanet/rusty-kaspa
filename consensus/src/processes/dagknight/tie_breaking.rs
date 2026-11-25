@@ -598,7 +598,7 @@ mod tests {
     fn test_witness_start_respects_gap_limit() {
         let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 2), (5, 5)], &[(3, 3), (4, 4)]]);
         // Future-to-past reference by blue work: [B2, Z2, Z1, B1, genesis]; at ell=0 the window is 2
-        let ordered = vec![chains[0][1], chains[1][1], chains[1][0], chains[0][0], genesis];
+        let ordered = [chains[0][1], chains[1][1], chains[1][0], chains[0][0], genesis];
         assert_eq!(
             tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[0][0], 0),
             4,
@@ -624,7 +624,7 @@ mod tests {
     fn test_witness_without_witness_returns_endpoint_position() {
         let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 2)], &[(3, 3)], &[(4, 4), (5, 5), (6, 6), (7, 7)]]);
         // Future-to-past reference by blue work: [Y4, Y3, Y2, Y1, Z, B, genesis]
-        let ordered = vec![chains[2][3], chains[2][2], chains[2][1], chains[2][0], chains[1][0], chains[0][0], genesis];
+        let ordered = [chains[2][3], chains[2][2], chains[2][1], chains[2][0], chains[1][0], chains[0][0], genesis];
         assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[0][0], 0), 7);
         assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, chains[2][0], 0), 3);
     }
@@ -684,7 +684,7 @@ mod tests {
         };
 
         // Future-to-past reference by blue work: [C2, Z, C1, B, A]; at ell=0 the window is 2
-        let ordered = vec![5_u64.into(), 4_u64.into(), 3_u64.into(), 2_u64.into(), 1_u64.into()];
+        let ordered = [5_u64.into(), 4_u64.into(), 3_u64.into(), 2_u64.into(), 1_u64.into()];
 
         let (tie_breaker, hash_a, hash_b) = build(vec![2_u64.into()]);
         assert_eq!(
@@ -754,7 +754,7 @@ mod tests {
         let tie_breaker =
             DagknightTieBreaker::new(coloring_store, headers_store, Arc::new(RwLock::new(relations_store)), reachability_service);
 
-        let ordered = vec![s3, t2, s2, t, x];
+        let ordered = [s3, t2, s2, t, x];
         assert_eq!(tie_breaker.suffix_witness_start(ordered.iter().copied(), ordered.len(), genesis, s, 0), 2);
     }
 
@@ -777,7 +777,7 @@ mod tests {
     fn test_early_stop_never_fetches_past_the_gap() {
         let (tie_breaker, genesis, chains) =
             chain_sides_dag(&[&[(2, 100), (3, 50)], &[(4, 1)], &[(5, 90), (6, 80), (7, 70), (8, 60)]]);
-        let ordered = vec![chains[0][0], chains[2][0], chains[2][1], chains[2][2], chains[2][3], chains[0][1], chains[1][0]];
+        let ordered = [chains[0][0], chains[2][0], chains[2][1], chains[2][2], chains[2][3], chains[0][1], chains[1][0]];
         let mut pulls = 0usize;
         let scanned = ordered.iter().copied().inspect(|_| pulls += 1);
         assert_eq!(
@@ -794,7 +794,7 @@ mod tests {
     #[test]
     fn test_horizon_cap_marks_live_sides() {
         let (tie_breaker, genesis, chains) = chain_sides_dag(&[&[(2, 2), (5, 5)], &[(3, 3), (4, 4)]]);
-        let ordered = vec![chains[0][1], chains[1][1], chains[1][0], chains[0][0], genesis];
+        let ordered = [chains[0][1], chains[1][1], chains[1][0], chains[0][0], genesis];
         let (window, horizon) = (2_usize, 3_usize);
         let truncated = ordered.len() > horizon;
 
