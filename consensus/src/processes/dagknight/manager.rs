@@ -511,41 +511,7 @@ impl<
                         })
                         .collect::<Vec<_>>();
 
-                    // sanity checks - start
-                    assert!(
-                        !agreeing_parents.is_empty(),
-                        "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
-                        current_hash,
-                        parents
-                    );
-
-                    // all parents here must already exist assuming topological sorting is honored
-                    // so finding one that doesn't means an error in processing and must be diagnosed
-                    if let Some(&parent) = agreeing_parents.iter().find(|&&parent| {
-                        !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip))
-                    }) {
-                        last_known_tips
-                            .iter()
-                            .filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip))
-                            .for_each(|&lk_tip| {
-                                println!(
-                                    "cg: {} | k: {} | fs: {} | parent {} is in the past of a last known tip {}",
-                                    self.root, self.k, self.free_search, parent, lk_tip
-                                );
-                            });
-                        panic!(
-                            "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
-                            self.root, self.k, self.free_search, last_known_tips, current_hash, parent, parents, tips
-                        );
-                    };
-
-                    if !agreeing_parents.iter().any(|&parent| self.has(parent)) {
-                        panic!(
-                            "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:#?} | tips: {:?}",
-                            self.root, self.k, self.free_search, last_known_tips, current_hash, agreeing_parents, tips
-                        );
-                    }
-                    // sanity checks - end
+                    self.sanity_check(current_hash, parents, &agreeing_parents, tips, &last_known_tips);
 
                     self.find_selected_parent(agreeing_parents.iter().copied())
                 };
@@ -577,6 +543,44 @@ impl<
         visited_subdag
     }
     // END Copied from GD Manager
+
+    /// Diagnostic sanity checks for a block being colored. These do not affect the coloring logic;
+    /// they only catch processing errors (e.g. a missing parent's coloring data) early, with a
+    /// detailed panic message for diagnosis.
+    fn sanity_check(&self, current_hash: Hash, parents: &[Hash], agreeing_parents: &[Hash], tips: &[Hash], last_known_tips: &[Hash]) {
+        assert!(
+            !agreeing_parents.is_empty(),
+            "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
+            current_hash,
+            parents
+        );
+
+        // all parents here must already exist assuming topological sorting is honored
+        // so finding one that doesn't means an error in processing and must be diagnosed
+        if let Some(&parent) = agreeing_parents.iter().find(|&&parent| {
+            !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip))
+        }) {
+            last_known_tips.iter().filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip)).for_each(
+                |&lk_tip| {
+                    println!(
+                        "cg: {} | k: {} | fs: {} | parent {} is in the past of a last known tip {}",
+                        self.root, self.k, self.free_search, parent, lk_tip
+                    );
+                },
+            );
+            panic!(
+                "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
+                self.root, self.k, self.free_search, last_known_tips, current_hash, parent, parents, tips
+            );
+        };
+
+        if !agreeing_parents.iter().any(|&parent| self.has(parent)) {
+            panic!(
+                "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:#?} | tips: {:?}",
+                self.root, self.k, self.free_search, last_known_tips, current_hash, agreeing_parents, tips
+            );
+        }
+    }
 }
 
 impl<
