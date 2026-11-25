@@ -14,6 +14,7 @@ pub use appendable_segment_tree_impl::AppendableSegmentTree;
 pub mod manager;
 pub mod protocol;
 pub mod rank_search;
+pub mod reference_iterator;
 pub mod tie_breaking;
 #[cfg(feature = "baseline-debugging")]
 pub mod umc_baseline;
@@ -22,10 +23,11 @@ pub mod umc_cascade_persistence;
 pub mod umc_voting;
 
 pub struct GroupMetadata {
-    conflict_genesis: Hash,
+    /// The subgroup's next chain ancestor above the conflict genesis (its NCA)
+    nca: Hash,
     subgroup: Arc<Vec<Hash>>,
     k: KType,
-    selected_parent: SortableBlock,
+    selected_representative: SortableBlock,
 }
 
 /// UMC cascade voting performance counters.
