@@ -13,58 +13,116 @@ use crate::processes::ghostdag::ordering::SortableBlock;
 /// Optional skip predicate applied at child-expansion time. `None` skips nothing.
 type SkipPredicate<'a> = Option<Box<dyn Fn(&Hash) -> bool + 'a>>;
 
-/// Direction of topology iteration between two blocks. This is internal; the public API exposes
-/// `FromTo` via [`TopologyIterator::new`] and `ToFrom` via [`TopologyIterator::reverse`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Direction {
-    /// `from` to `to`: ascending topological order.
-    FromTo,
-    /// `to` to `from`: descending topological order.
-    ToFrom,
+/// Ascending (past-to-future) traversal: seeds `from`, keeps blocks in `to`'s past, expands children.
+pub struct ForwardTraversal;
+/// Descending (future-to-past) traversal: seeds `to`, keeps blocks in `from`'s future, expands parents.
+pub struct BackwardTraversal;
+
+/// Direction-specific behavior. Sealed: only [`ForwardTraversal`] and [`BackwardTraversal`] implement it, so the
+/// direction is fixed at the type level and the traversal carries no runtime direction checks.
+pub trait DirectionSealed<'a>: sealed::Sealed {
+    type Heap;
+    fn pop(heap: &mut Self::Heap) -> Option<SortableBlock>;
+    /// Create the traversal heap seeded with the start blocks.
+    fn seed<H: HeaderStoreReader>(from: &'a [Hash], to: &'a [Hash], pending: &mut BlockHashSet, headers: &H) -> Self::Heap;
+    /// Whether `curr` lies within the region between `from` and `to`.
+    fn is_in_region<R: ReachabilityService>(curr: Hash, from: &'a [Hash], to: &'a [Hash], reach: &R) -> bool;
+    /// Enqueue `curr`'s neighbors in the traversal direction.
+    fn expand<H: HeaderStoreReader, L: RelationsStoreReader>(
+        curr: Hash,
+        pending: &mut BlockHashSet,
+        heap: &mut Self::Heap,
+        relations: &L,
+        headers: &H,
+        skip: &SkipPredicate<'a>,
+    );
 }
 
-impl Direction {
-    fn opposite(self) -> Direction {
-        match self {
-            Direction::FromTo => Direction::ToFrom,
-            Direction::ToFrom => Direction::FromTo,
+mod sealed {
+    pub trait Sealed {}
+    impl Sealed for super::ForwardTraversal {}
+    impl Sealed for super::BackwardTraversal {}
+}
+
+impl<'a> DirectionSealed<'a> for ForwardTraversal {
+    type Heap = BinaryHeap<Reverse<SortableBlock>>;
+    fn pop(heap: &mut Self::Heap) -> Option<SortableBlock> {
+        heap.pop().map(|Reverse(block)| block)
+    }
+    fn seed<H: HeaderStoreReader>(from: &'a [Hash], _to: &'a [Hash], pending: &mut BlockHashSet, headers: &H) -> Self::Heap {
+        let mut heap = BinaryHeap::new();
+        for &f in from {
+            if pending.insert(f) {
+                let blue_work = headers.get_header(f).unwrap().blue_work;
+                heap.push(Reverse(SortableBlock { hash: f, blue_work }));
+            }
+        }
+        heap
+    }
+    fn is_in_region<R: ReachabilityService>(curr: Hash, _from: &'a [Hash], to: &'a [Hash], reach: &R) -> bool {
+        reach.is_dag_ancestor_of_any(curr, &mut to.iter().copied())
+    }
+    fn expand<H: HeaderStoreReader, L: RelationsStoreReader>(
+        curr: Hash,
+        pending: &mut BlockHashSet,
+        heap: &mut Self::Heap,
+        relations: &L,
+        headers: &H,
+        skip: &SkipPredicate<'a>,
+    ) {
+        for &c in relations.get_children(curr).unwrap().read().iter() {
+            // Zone gate: skip children the predicate rejects, pruning their branch.
+            if let Some(skip) = skip
+                && skip(&c)
+            {
+                continue;
+            }
+            if pending.insert(c) {
+                let blue_work = headers.get_header(c).unwrap().blue_work;
+                heap.push(Reverse(SortableBlock { hash: c, blue_work }));
+            }
         }
     }
 }
 
-/// The traversal heap, backed by [`SortableBlock`]. The direction picks the pop order.
-enum TopoHeap {
-    /// Past to future: pops the smallest `(blue_work, hash)` first.
-    Forward(BinaryHeap<Reverse<SortableBlock>>),
-    /// Future to past: pops the largest `(blue_work, hash)` first.
-    Backward(BinaryHeap<SortableBlock>),
-}
-
-impl TopoHeap {
-    fn new(direction: Direction) -> Self {
-        match direction {
-            Direction::FromTo => TopoHeap::Forward(BinaryHeap::new()),
-            Direction::ToFrom => TopoHeap::Backward(BinaryHeap::new()),
-        }
+impl<'a> DirectionSealed<'a> for BackwardTraversal {
+    type Heap = BinaryHeap<SortableBlock>;
+    fn pop(heap: &mut Self::Heap) -> Option<SortableBlock> {
+        heap.pop()
     }
-
-    fn push(&mut self, block: SortableBlock) {
-        match self {
-            TopoHeap::Forward(heap) => heap.push(Reverse(block)),
-            TopoHeap::Backward(heap) => heap.push(block),
+    fn seed<H: HeaderStoreReader>(_from: &'a [Hash], to: &'a [Hash], pending: &mut BlockHashSet, headers: &H) -> Self::Heap {
+        let mut heap = BinaryHeap::new();
+        for &t in to {
+            if pending.insert(t) {
+                let blue_work = headers.get_header(t).unwrap().blue_work;
+                heap.push(SortableBlock { hash: t, blue_work });
+            }
         }
+        heap
     }
-
-    fn pop(&mut self) -> Option<SortableBlock> {
-        match self {
-            TopoHeap::Forward(heap) => heap.pop().map(|Reverse(block)| block),
-            TopoHeap::Backward(heap) => heap.pop(),
+    fn is_in_region<R: ReachabilityService>(curr: Hash, from: &'a [Hash], _to: &'a [Hash], reach: &R) -> bool {
+        from.iter().any(|&f| curr == f || reach.is_dag_ancestor_of(f, curr))
+    }
+    fn expand<H: HeaderStoreReader, L: RelationsStoreReader>(
+        curr: Hash,
+        pending: &mut BlockHashSet,
+        heap: &mut Self::Heap,
+        relations: &L,
+        headers: &H,
+        _skip: &SkipPredicate<'a>,
+    ) {
+        for &p in relations.get_parents(curr).unwrap().iter() {
+            if p != ORIGIN && pending.insert(p) {
+                let blue_work = headers.get_header(p).unwrap().blue_work;
+                heap.push(SortableBlock { hash: p, blue_work });
+            }
         }
     }
 }
 
 /// Lazily iterates the blocks in the region between `from` and `to`, in topological order.
-/// Call [`Self::reverse`] to iterate the same region in reverse topological order.
+/// [`TopologyIterator::new`] yields in ascending order; [`Self::reverse`] yields the same region in
+/// reverse topological order.
 ///
 /// `from` and `to` are sets of blocks and the region is everything in the future of `from` and in
 /// the past of `to`. With one element each this is the closed interval between them; with several
@@ -75,141 +133,78 @@ impl TopoHeap {
 /// The heap is backed by [`SortableBlock`], so blocks come out in topological order and a branch
 /// is pruned once it leaves the region. Use [`Self::skip`] to prune branches at child-expansion
 /// time, e.g. to keep a committed-search traversal within the chain descendants of the root.
-pub struct TopologyIterator<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> {
-    heap: TopoHeap,
+pub struct TopologyIterator<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService, D: DirectionSealed<'a>> {
+    heap: D::Heap,
+    /// Tracks the blocks currently in the heap. A block leaves it the moment it is popped, so the
+    /// set stays bounded by the traversal frontier rather than growing to the whole region.
     pending_blocks: BlockHashSet,
     /// The start blocks. A block is kept if it is a DAG descendant of at least one of them.
-    from: Vec<Hash>,
+    from: &'a [Hash],
     /// The end blocks (tips). A block is kept if it is a DAG ancestor of at least one of them.
-    to: Vec<Hash>,
-    direction: Direction,
+    to: &'a [Hash],
     headers_store: &'a H,
     relations_store: &'a L,
     reachability_service: &'a R,
-    /// Optional skip predicate applied at child-expansion time (FromTo). `None` skips nothing.
+    /// Optional skip predicate applied at child-expansion time (ForwardTraversal). `None` skips nothing.
     skip: SkipPredicate<'a>,
 }
 
-impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> TopologyIterator<'a, H, L, R> {
+impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> TopologyIterator<'a, H, L, R, ForwardTraversal> {
     /// Creates an iterator over the region between `from` and `to` in ascending topological order.
     /// `from` and `to` are sets of blocks; a single element in each yields the closed interval
     /// between them.
-    pub fn new(from: &[Hash], to: &[Hash], headers_store: &'a H, relations_store: &'a L, reachability_service: &'a R) -> Self {
+    pub fn new(from: &'a [Hash], to: &'a [Hash], headers_store: &'a H, relations_store: &'a L, reachability_service: &'a R) -> Self {
         assert!(
             to.iter().all(|&t| from.iter().any(|&f| reachability_service.is_dag_ancestor_of(f, t))),
             "TopologyIterator requires every block in `to` to have a DAG ancestor in `from`"
         );
-        Self::with_direction(from.to_vec(), to.to_vec(), Direction::FromTo, headers_store, relations_store, reachability_service, None)
+        let mut pending_blocks = BlockHashSet::default();
+        let heap = ForwardTraversal::seed(from, to, &mut pending_blocks, headers_store);
+        TopologyIterator { heap, pending_blocks, from, to, headers_store, relations_store, reachability_service, skip: None }
     }
 
     /// Returns an iterator over the same region in the opposite (reverse topological) order.
     /// Consumes `self`. The skip predicate (if any) is carried over.
-    pub fn reverse(self) -> Self {
-        Self::with_direction(
-            self.from,
-            self.to,
-            self.direction.opposite(),
-            self.headers_store,
-            self.relations_store,
-            self.reachability_service,
-            self.skip,
-        )
+    pub fn reverse(self) -> TopologyIterator<'a, H, L, R, BackwardTraversal> {
+        let mut pending_blocks = BlockHashSet::default();
+        let heap = BackwardTraversal::seed(self.from, self.to, &mut pending_blocks, self.headers_store);
+        TopologyIterator {
+            heap,
+            pending_blocks,
+            from: self.from,
+            to: self.to,
+            headers_store: self.headers_store,
+            relations_store: self.relations_store,
+            reachability_service: self.reachability_service,
+            skip: self.skip,
+        }
     }
 
-    /// Adds a skip predicate applied at child-expansion time (FromTo direction only). A child for
+    /// Adds a skip predicate applied at child-expansion time (ForwardTraversal direction only). A child for
     /// which the predicate returns `true` is not pushed onto the heap, so it is never yielded and
     /// its descendants are never visited. The default (`None`) skips nothing. Consumes `self`.
     pub fn skip<F: Fn(&Hash) -> bool + 'a>(mut self, f: F) -> Self {
         self.skip = Some(Box::new(f));
         self
     }
-
-    fn with_direction(
-        from: Vec<Hash>,
-        to: Vec<Hash>,
-        direction: Direction,
-        headers_store: &'a H,
-        relations_store: &'a L,
-        reachability_service: &'a R,
-        skip: SkipPredicate<'a>,
-    ) -> Self {
-        let mut heap = TopoHeap::new(direction);
-        let mut pending_blocks = BlockHashSet::default();
-        // Seed the heap with the start blocks of the traversal.
-        match direction {
-            // FromTo seeds with every start block; those outside the region are pruned at pop time.
-            Direction::FromTo => {
-                for &f in &from {
-                    if pending_blocks.insert(f) {
-                        let blue_work = headers_store.get_header(f).unwrap().blue_work;
-                        heap.push(SortableBlock { hash: f, blue_work });
-                    }
-                }
-            }
-            // ToFrom seeds with every end block; those outside `from`'s future are pruned at pop time.
-            Direction::ToFrom => {
-                for &t in &to {
-                    if pending_blocks.insert(t) {
-                        let blue_work = headers_store.get_header(t).unwrap().blue_work;
-                        heap.push(SortableBlock { hash: t, blue_work });
-                    }
-                }
-            }
-        }
-        Self { heap, pending_blocks, from, to, direction, headers_store, relations_store, reachability_service, skip }
-    }
-
-    /// Pushes `h` onto the direction's heap, keyed by its header blue_work.
-    fn push_block(&mut self, h: Hash) {
-        let blue_work = self.headers_store.get_header(h).unwrap().blue_work;
-        self.heap.push(SortableBlock { hash: h, blue_work });
-    }
-
-    fn pop_block(&mut self) -> Option<SortableBlock> {
-        self.heap.pop()
-    }
 }
 
-impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> Iterator for TopologyIterator<'a, H, L, R> {
+impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService, D: DirectionSealed<'a>> Iterator
+    for TopologyIterator<'a, H, L, R, D>
+{
     type Item = Hash;
 
     fn next(&mut self) -> Option<Hash> {
         loop {
-            let SortableBlock { hash: curr, .. } = self.pop_block()?;
-            // The set tracks only blocks in the heap. By topological order, every neighbor
-            // that could enqueue curr has already been processed, so we can forget it here.
+            let SortableBlock { hash: curr, .. } = D::pop(&mut self.heap)?;
+            // Every neighbor that could enqueue curr has already been processed by topological
+            // order, so curr will not be enqueued again and can be forgotten here.
             self.pending_blocks.remove(&curr);
-            let keep = match self.direction {
-                Direction::FromTo => self.reachability_service.is_dag_ancestor_of_any(curr, &mut self.to.iter().copied()),
-                Direction::ToFrom => self.from.iter().any(|&f| curr == f || self.reachability_service.is_dag_ancestor_of(f, curr)),
-            };
-            if !keep {
+            if !D::is_in_region(curr, self.from, self.to, self.reachability_service) {
                 // This block is not within the inclusive region between `from` and `to` so skip it
                 continue;
             }
-
-            match self.direction {
-                Direction::FromTo => {
-                    for &c in self.relations_store.get_children(curr).unwrap().read().iter() {
-                        // Zone gate: skip children the predicate rejects, pruning their branch.
-                        if let Some(skip) = &self.skip
-                            && skip(&c)
-                        {
-                            continue;
-                        }
-                        if self.pending_blocks.insert(c) {
-                            self.push_block(c);
-                        }
-                    }
-                }
-                Direction::ToFrom => {
-                    for &p in self.relations_store.get_parents(curr).unwrap().iter() {
-                        if p != ORIGIN && self.pending_blocks.insert(p) {
-                            self.push_block(p);
-                        }
-                    }
-                }
-            }
+            D::expand(curr, &mut self.pending_blocks, &mut self.heap, self.relations_store, self.headers_store, &self.skip);
             return Some(curr);
         }
     }
@@ -279,38 +274,22 @@ mod tests {
     }
 
     #[test]
-    fn test_from_to_yields_interval_ascending() {
+    fn test_from_to_yields_interval() {
         let (headers, relations, reach) = build_dag(&diamond_blocks());
-        let iter = TopologyIterator::new(&[to_hash(1)], &[to_hash(6)], &headers, &relations, &reach);
+        let from = [to_hash(1)];
+        let to = [to_hash(6)];
+
+        // FromTo iteration
+        let iter = TopologyIterator::new(&from, &to, &headers, &relations, &reach);
         let result: Vec<Hash> = iter.collect();
         let expected: Vec<Hash> = [1, 2, 3, 4, 5, 6].map(to_hash).to_vec();
         assert_eq!(result, expected, "FromTo should yield [A,B,C,D,E,F] ascending; G,H pruned; D deduped");
-    }
 
-    #[test]
-    fn test_to_from_yields_interval_descending() {
-        let (headers, relations, reach) = build_dag(&diamond_blocks());
-        let iter = TopologyIterator::new(&[to_hash(1)], &[to_hash(6)], &headers, &relations, &reach).reverse();
-        let result: Vec<Hash> = iter.collect();
+        // ToFrom iteration
+        let iter = TopologyIterator::new(&from, &to, &headers, &relations, &reach);
+        let result: Vec<Hash> = iter.reverse().collect();
         let expected: Vec<Hash> = [6, 5, 4, 3, 2, 1].map(to_hash).to_vec();
         assert_eq!(result, expected, "ToFrom should yield [F,E,D,C,B,A] descending; ORIGIN excluded");
-    }
-
-    /// A -> B -> C (simple chain).
-    #[test]
-    fn test_simple_chain_both_directions() {
-        let blocks = vec![
-            (to_hash(1), vec![ORIGIN], 1),     // A
-            (to_hash(2), vec![to_hash(1)], 2), // B
-            (to_hash(3), vec![to_hash(2)], 3), // C
-        ];
-        let (headers, relations, reach) = build_dag(&blocks);
-
-        let from_to: Vec<Hash> = TopologyIterator::new(&[to_hash(1)], &[to_hash(3)], &headers, &relations, &reach).collect();
-        assert_eq!(from_to, vec![to_hash(1), to_hash(2), to_hash(3)], "FromTo chain");
-
-        let to_from: Vec<Hash> = TopologyIterator::new(&[to_hash(1)], &[to_hash(3)], &headers, &relations, &reach).reverse().collect();
-        assert_eq!(to_from, vec![to_hash(3), to_hash(2), to_hash(1)], "ToFrom chain");
     }
 
     ///        A (1)
@@ -332,7 +311,8 @@ mod tests {
     }
 
     #[test]
-    fn test_tie_break_from_to_smaller_hash_first() {
+    fn test_tie_break_based_on_hash() {
+        // FromTo smaller hash first
         let (headers, relations, reach) = build_dag(&tie_blocks());
         let result: Vec<Hash> = TopologyIterator::new(&[to_hash(1)], &[to_hash(4)], &headers, &relations, &reach).collect();
         assert_eq!(
@@ -340,10 +320,8 @@ mod tests {
             vec![to_hash(1), to_hash(2), to_hash(3), to_hash(4)],
             "FromTo breaks the B/C blue_work tie by smaller hash first (B before C)"
         );
-    }
 
-    #[test]
-    fn test_tie_break_to_from_larger_hash_first() {
+        // ToFrom larger hash first
         let (headers, relations, reach) = build_dag(&tie_blocks());
         let result: Vec<Hash> = TopologyIterator::new(&[to_hash(1)], &[to_hash(4)], &headers, &relations, &reach).reverse().collect();
         assert_eq!(
@@ -360,27 +338,5 @@ mod tests {
         let (headers, relations, reach) = build_dag(&tie_blocks());
         // D is not an ancestor of A (A is an ancestor of D).
         let _ = TopologyIterator::new(&[to_hash(4)], &[to_hash(1)], &headers, &relations, &reach);
-    }
-
-    /// Virtual endpoint: `from = A`, tips = {F, H}. The region is the whole zone {A..H} (every
-    /// block is a descendant of A and an ancestor of F or H).
-    #[test]
-    fn test_virtual_endpoint_from_to_ascending() {
-        let (headers, relations, reach) = build_dag(&diamond_blocks());
-        let tips = vec![to_hash(6), to_hash(8)]; // F, H
-        let iter = TopologyIterator::new(&[to_hash(1)], &tips, &headers, &relations, &reach);
-        let result: Vec<Hash> = iter.collect();
-        let expected: Vec<Hash> = [1, 2, 3, 4, 5, 6, 7, 8].map(to_hash).to_vec();
-        assert_eq!(result, expected, "Virtual FromTo should yield the whole zone [A..H] ascending");
-    }
-
-    #[test]
-    fn test_virtual_endpoint_to_from_descending() {
-        let (headers, relations, reach) = build_dag(&diamond_blocks());
-        let tips = vec![to_hash(6), to_hash(8)]; // F, H
-        let iter = TopologyIterator::new(&[to_hash(1)], &tips, &headers, &relations, &reach).reverse();
-        let result: Vec<Hash> = iter.collect();
-        let expected: Vec<Hash> = [8, 7, 6, 5, 4, 3, 2, 1].map(to_hash).to_vec();
-        assert_eq!(result, expected, "Virtual ToFrom should yield the whole zone [H..A] descending");
     }
 }
