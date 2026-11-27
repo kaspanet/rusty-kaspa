@@ -109,9 +109,15 @@ impl<'a> DirectionSealed<'a> for BackwardTraversal {
         heap: &mut Self::Heap,
         relations: &L,
         headers: &H,
-        _skip: &SkipPredicate<'a>,
+        skip: &SkipPredicate<'a>,
     ) {
         for &p in relations.get_parents(curr).unwrap().iter() {
+            // Zone gate: skip parents the predicate rejects, pruning their branch.
+            if let Some(skip) = skip
+                && skip(&p)
+            {
+                continue;
+            }
             if p != ORIGIN && pending.insert(p) {
                 let blue_work = headers.get_header(p).unwrap().blue_work;
                 heap.push(SortableBlock { hash: p, blue_work });
@@ -131,8 +137,8 @@ impl<'a> DirectionSealed<'a> for BackwardTraversal {
 /// [`Self::new`] asserts. The end blocks are yielded; filter them out for an open interval.
 ///
 /// The heap is backed by [`SortableBlock`], so blocks come out in topological order and a branch
-/// is pruned once it leaves the region. Use [`Self::skip`] to prune branches at child-expansion
-/// time, e.g. to keep a committed-search traversal within the chain descendants of the root.
+/// is pruned once it leaves the region. Use [`Self::skip`] to prune branches at expansion time,
+/// e.g. to keep a committed-search traversal within the chain descendants of the root.
 pub struct TopologyIterator<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService, D: DirectionSealed<'a>> {
     heap: D::Heap,
     /// Tracks the blocks currently in the heap. A block leaves it the moment it is popped, so the
@@ -145,7 +151,7 @@ pub struct TopologyIterator<'a, H: HeaderStoreReader, L: RelationsStoreReader, R
     headers_store: &'a H,
     relations_store: &'a L,
     reachability_service: &'a R,
-    /// Optional skip predicate applied at child-expansion time (ForwardTraversal). `None` skips nothing.
+    /// Optional skip predicate applied at expansion time in both directions. `None` skips nothing.
     skip: SkipPredicate<'a>,
 }
 
@@ -180,9 +186,9 @@ impl<'a, H: HeaderStoreReader, L: RelationsStoreReader, R: ReachabilityService> 
         }
     }
 
-    /// Adds a skip predicate applied at child-expansion time (ForwardTraversal direction only). A child for
+    /// Adds a skip predicate applied at expansion time in both directions. A neighbor for
     /// which the predicate returns `true` is not pushed onto the heap, so it is never yielded and
-    /// its descendants are never visited. The default (`None`) skips nothing. Consumes `self`.
+    /// its branch is never visited. The default (`None`) skips nothing. Consumes `self`.
     pub fn skip<F: Fn(&Hash) -> bool + 'a>(mut self, f: F) -> Self {
         self.skip = Some(Box::new(f));
         self
