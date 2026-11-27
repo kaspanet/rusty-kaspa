@@ -1,6 +1,5 @@
 use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, VecDeque},
+    collections::VecDeque,
     ops::Deref,
     sync::{Arc, OnceLock},
 };
@@ -28,7 +27,7 @@ use crate::{
         },
     },
     processes::{
-        dagknight::umc_voting::ColoringReader,
+        dagknight::{topology_iterator::TopologyIterator, umc_voting::ColoringReader},
         difficulty::calc_work,
         ghostdag::{
             mergeset::unordered_mergeset_without_selected_parent,
@@ -471,28 +470,19 @@ impl<
 
         let (last_known_tips, visited_subdag) = self.find_last_known_tips(tips);
 
-        let mut topological_heap: BinaryHeap<_> = Default::default();
+        TopologyIterator::new(&last_known_tips, tips, &*self.headers_store, &self.relations_store, &self.reachability_service)
+            .skip(|&c: &Hash| {
+                if self.free_search {
+                    !self.reachability_service.try_is_dag_ancestor_of(self.root, c).unwrap_or(false)
+                } else {
+                    !self.reachability_service.try_is_chain_ancestor_of(self.root, c).unwrap_or(false)
+                }
+            })
+            .for_each(|current_hash| {
+                if self.has(current_hash) {
+                    return;
+                }
 
-        last_known_tips.iter().for_each(|current_root| {
-            topological_heap.push(Reverse(SortableBlock {
-                hash: *current_root,
-                blue_work: self.headers_store.get_header(*current_root).unwrap().blue_work,
-            }));
-        });
-
-        let mut visited = BlockHashSet::new();
-
-        while let Some(current) = topological_heap.pop() {
-            let current_hash = current.0.hash;
-            if !visited.insert(current_hash) {
-                continue;
-            }
-
-            if !self.reachability_service.is_dag_ancestor_of_any(current_hash, &mut tips.iter().copied()) {
-                continue;
-            }
-
-            if !self.has(current_hash) {
                 let parents = &self.relations_store.get_parents(current_hash).unwrap();
 
                 // For free_search, select from all parents; for committed search, only from agreeing parents
@@ -511,41 +501,7 @@ impl<
                         })
                         .collect::<Vec<_>>();
 
-                    // sanity checks - start
-                    assert!(
-                        !agreeing_parents.is_empty(),
-                        "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
-                        current_hash,
-                        parents
-                    );
-
-                    // all parents here must already exist assuming topological sorting is honored
-                    // so finding one that doesn't means an error in processing and must be diagnosed
-                    if let Some(&parent) = agreeing_parents.iter().find(|&&parent| {
-                        !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip))
-                    }) {
-                        last_known_tips
-                            .iter()
-                            .filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip))
-                            .for_each(|&lk_tip| {
-                                println!(
-                                    "cg: {} | k: {} | fs: {} | parent {} is in the past of a last known tip {}",
-                                    self.root, self.k, self.free_search, parent, lk_tip
-                                );
-                            });
-                        panic!(
-                            "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
-                            self.root, self.k, self.free_search, last_known_tips, current_hash, parent, parents, tips
-                        );
-                    };
-
-                    if !agreeing_parents.iter().any(|&parent| self.has(parent)) {
-                        panic!(
-                            "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:#?} | tips: {:?}",
-                            self.root, self.k, self.free_search, last_known_tips, current_hash, agreeing_parents, tips
-                        );
-                    }
-                    // sanity checks - end
+                    self.committed_coloring_sanity_check(current_hash, parents, &agreeing_parents, tips, &last_known_tips);
 
                     self.find_selected_parent(agreeing_parents.iter().copied())
                 };
@@ -553,23 +509,7 @@ impl<
                 let current_gd = self.k_colouring(parents, self.k, Some(selected_parent));
 
                 self.insert(current_hash, Arc::new(current_gd)).idempotent().unwrap();
-            }
-
-            for child in self.relations_store.get_children(current_hash).unwrap().read().iter().copied() {
-                // For free_search, use DAG ancestry; for committed search, use chain ancestry
-                // from the conflict genesis (the whole zone, both conflict sides).
-                let is_in_zone = if self.free_search {
-                    self.reachability_service.try_is_dag_ancestor_of(self.root, child).unwrap_or(false)
-                } else {
-                    self.reachability_service.try_is_chain_ancestor_of(self.root, child).unwrap_or(false)
-                };
-                if !is_in_zone {
-                    continue;
-                }
-                topological_heap
-                    .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
-            }
-        }
+            });
 
         // Opportunistically cleanup unused locks after zone fill
         cleanup_k_colouring_locks();
@@ -577,6 +517,52 @@ impl<
         visited_subdag
     }
     // END Copied from GD Manager
+
+    /// Diagnostic sanity checks for a block being colored. These do not affect the coloring logic;
+    /// they only catch processing errors (e.g. a missing parent's coloring data) early, with a
+    /// detailed panic message for diagnosis.
+    fn committed_coloring_sanity_check(
+        &self,
+        current_hash: Hash,
+        parents: &[Hash],
+        agreeing_parents: &[Hash],
+        tips: &[Hash],
+        last_known_tips: &[Hash],
+    ) {
+        assert!(
+            !agreeing_parents.is_empty(),
+            "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
+            current_hash,
+            parents
+        );
+
+        // All agreeing parents on the chain path towards one of the tips must have coloring data;
+        // finding one without it means an error in processing and must be diagnosed.
+        if let Some(&parent) = agreeing_parents
+            .iter()
+            .find(|&&parent| !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
+        {
+            last_known_tips.iter().filter(|&&lk_tip| self.reachability_service.is_dag_ancestor_of(parent, lk_tip)).for_each(
+                |&lk_tip| {
+                    println!(
+                        "cg: {} | k: {} | fs: {} | parent {} is in the past of a last known tip {}",
+                        self.root, self.k, self.free_search, parent, lk_tip
+                    );
+                },
+            );
+            panic!(
+                "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | Expected agreeing parent to have coloring data | current: {:#?} | missing_parent: {:#?} | curr_parents: {:#?} | tips: {:?}",
+                self.root, self.k, self.free_search, last_known_tips, current_hash, parent, parents, tips
+            );
+        };
+
+        if !agreeing_parents.iter().any(|&parent| self.has(parent)) {
+            panic!(
+                "cg: {} | k: {} | fs: {} | last_known_tips: {:?} | no agreeing parent with data | current: {:#?} | agreeing_parents: {:#?} | tips: {:?}",
+                self.root, self.k, self.free_search, last_known_tips, current_hash, agreeing_parents, tips
+            );
+        }
+    }
 }
 
 impl<
