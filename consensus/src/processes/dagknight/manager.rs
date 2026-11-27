@@ -501,7 +501,7 @@ impl<
                         })
                         .collect::<Vec<_>>();
 
-                    self.sanity_check(current_hash, parents, &agreeing_parents, tips, &last_known_tips);
+                    self.committed_coloring_sanity_check(current_hash, parents, &agreeing_parents, tips, &last_known_tips);
 
                     self.find_selected_parent(agreeing_parents.iter().copied())
                 };
@@ -521,7 +521,14 @@ impl<
     /// Diagnostic sanity checks for a block being colored. These do not affect the coloring logic;
     /// they only catch processing errors (e.g. a missing parent's coloring data) early, with a
     /// detailed panic message for diagnosis.
-    fn sanity_check(&self, current_hash: Hash, parents: &[Hash], agreeing_parents: &[Hash], tips: &[Hash], last_known_tips: &[Hash]) {
+    fn committed_coloring_sanity_check(
+        &self,
+        current_hash: Hash,
+        parents: &[Hash],
+        agreeing_parents: &[Hash],
+        tips: &[Hash],
+        last_known_tips: &[Hash],
+    ) {
         assert!(
             !agreeing_parents.is_empty(),
             "Expected at least one agreeing parent | current: {:#?} | parents: {:#?}",
@@ -529,8 +536,8 @@ impl<
             parents
         );
 
-        // all parents here must already exist assuming topological sorting is honored
-        // so finding one that doesn't means an error in processing and must be diagnosed
+        // All agreeing parents on the chain path towards one of the tips must have coloring data;
+        // finding one without it means an error in processing and must be diagnosed.
         if let Some(&parent) = agreeing_parents
             .iter()
             .find(|&&parent| !self.has(parent) && tips.iter().any(|&tip| self.reachability_service.is_chain_ancestor_of(parent, tip)))
